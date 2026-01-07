@@ -11,9 +11,9 @@ fn main() {
         1 => println!("You must provide at least one directory path"),
         _ => {
             let dir: String = args.remove(1);
-            let node = Node::new_tree(dir).expect("Unable to create tree");
+            let _node = Node::new_tree(dir).expect("Unable to create tree");
             #[cfg(debug_assertions)]
-            println!("{:?}", node);
+            println!("{:?}", _node);
 
             println!("Tree built successfully!");
         }

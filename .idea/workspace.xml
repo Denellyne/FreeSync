@@ -12,9 +12,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="7191c74c-5cb2-4c45-8496-52ca98d9aebc" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/src/merkle/merkle.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/merkle/mod.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/merkle.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/merkle.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/merkle.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -32,8 +34,23 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Denellyne&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Denellyne/FreeSync.git&quot;,
+    &quot;accountId&quot;: &quot;28bb7b27-4161-4e7a-96c5-a896ed05dfd6&quot;
+  }
+}</component>
   <component name="MacroExpansionManager">
     <option name="directoryName" value="rf3yg5V3" />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
   </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 6
@@ -81,7 +98,7 @@
       <recent name="C:\Users\Gustavo Santos\RustroverProjects\FreeSync\tests" />
     </key>
   </component>
-  <component name="RunManager" selected="Cargo.Expand FreeSync::merkle::merkle">
+  <component name="RunManager" selected="Cargo.Test">
     <configuration name="Expand FreeSync" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="expand --bin FreeSync --color=always --theme=Dracula --tests" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -153,7 +170,7 @@
       </method>
     </configuration>
     <configuration name="Test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-      <option name="buildProfileId" value="dev" />
+      <option name="buildProfileId" value="release" />
       <option name="command" value="test" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
       <envs />
@@ -201,6 +218,8 @@
       <workItem from="1767720305802" duration="246000" />
       <workItem from="1767724318271" duration="6000" />
       <workItem from="1767728801358" duration="7000" />
+      <workItem from="1767739736287" duration="2511000" />
+      <workItem from="1767787664715" duration="10934000" />
     </task>
     <servers />
   </component>
