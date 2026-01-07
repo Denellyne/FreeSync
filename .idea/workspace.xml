@@ -11,16 +11,12 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7191c74c-5cb2-4c45-8496-52ca98d9aebc" name="Changes" comment="Added more tests and implemented a way to find all the differences between 2 merkle trees.&#10;It returns only the top-most difference because anything below it will be different">
-      <change afterPath="$PROJECT_DIR$/src/merkle/node.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/merkle/tests.rs" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/merkle/traits.rs" afterDir="false" />
+    <list default="true" id="7191c74c-5cb2-4c45-8496-52ca98d9aebc" name="Changes" comment="Added compression and organized the code">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/merkle/merkle.rs" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/src/merkle/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/node.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/tests.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/tests.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/traits.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/traits.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -74,6 +70,9 @@
     "Cargo.Run.executor": "Run",
     "Cargo.Test merkle::merkle::tests::test_new_leaf.executor": "Run",
     "Cargo.Test merkle::merkle::tests::test_tree_hash_changes_when_file_changes.executor": "Run",
+    "Cargo.Test merkle::tests::test_diff.executor": "Run",
+    "Cargo.Test merkle::tests::test_new_tree.executor": "Run",
+    "Cargo.Test merkle::tests::test_trees_are_different.executor": "Run",
     "Cargo.Test.executor": "Run",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
@@ -103,23 +102,6 @@
     </key>
   </component>
   <component name="RunManager" selected="Cargo.Test">
-    <configuration name="Expand FreeSync" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
-      <option name="command" value="expand --bin FreeSync --color=always --theme=Dracula --tests" />
-      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-      <envs />
-      <option name="emulateTerminal" value="true" />
-      <option name="channel" value="DEFAULT" />
-      <option name="requiredFeatures" value="true" />
-      <option name="allFeatures" value="false" />
-      <option name="withSudo" value="false" />
-      <option name="buildTarget" value="REMOTE" />
-      <option name="backtrace" value="SHORT" />
-      <option name="isRedirectInput" value="false" />
-      <option name="redirectInputPath" value="" />
-      <method v="2">
-        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
-      </method>
-    </configuration>
     <configuration name="Expand FreeSync::merkle::merkle" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
       <option name="command" value="expand --bin FreeSync --color=always --theme=Dracula --tests merkle::merkle" />
       <option name="workingDirectory" value="file://$PROJECT_DIR$" />
@@ -173,6 +155,59 @@
         <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Test merkle::tests::test_diff" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="test --package FreeSync --bin FreeSync merkle::tests::test_diff -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test merkle::tests::test_new_tree" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="buildProfileId" value="release" />
+      <option name="command" value="test --package FreeSync --bin FreeSync merkle::tests::test_new_tree -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Test merkle::tests::test_trees_are_different" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="buildProfileId" value="test" />
+      <option name="command" value="test --package FreeSync --bin FreeSync merkle::tests::test_trees_are_different -- --exact" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="Test" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
       <option name="buildProfileId" value="release" />
       <option name="command" value="test" />
@@ -194,15 +229,19 @@
     <list>
       <item itemvalue="Cargo.Run" />
       <item itemvalue="Cargo.Test" />
+      <item itemvalue="Cargo.Test merkle::tests::test_diff" />
+      <item itemvalue="Cargo.Test merkle::tests::test_new_tree" />
+      <item itemvalue="Cargo.Test merkle::tests::test_trees_are_different" />
       <item itemvalue="Cargo.Expand FreeSync::merkle::merkle" />
-      <item itemvalue="Cargo.Expand FreeSync" />
       <item itemvalue="Cargo.Run FreeSync" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Cargo.Test merkle::tests::test_diff" />
+        <item itemvalue="Cargo.Test merkle::tests::test_trees_are_different" />
+        <item itemvalue="Cargo.Test merkle::tests::test_new_tree" />
         <item itemvalue="Cargo.Expand FreeSync::merkle::merkle" />
         <item itemvalue="Cargo.Run FreeSync" />
-        <item itemvalue="Cargo.Expand FreeSync" />
       </list>
     </recent_temporary>
   </component>
@@ -224,7 +263,8 @@
       <workItem from="1767728801358" duration="7000" />
       <workItem from="1767739736287" duration="2511000" />
       <workItem from="1767787664715" duration="11429000" />
-      <workItem from="1767802538378" duration="10693000" />
+      <workItem from="1767802538378" duration="22819000" />
+      <workItem from="1767825611353" duration="1653000" />
     </task>
     <task id="LOCAL-00001" summary="Added more tests and implemented a way to find all the differences between 2 merkle trees.&#10;It returns only the top-most difference because anything below it will be different">
       <option name="closed" value="true" />
@@ -234,7 +274,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767798901453</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Added compression and organized the code">
+      <option name="closed" value="true" />
+      <created>1767813575936</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1767813575936</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -242,6 +290,7 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Added more tests and implemented a way to find all the differences between 2 merkle trees.&#10;It returns only the top-most difference because anything below it will be different" />
-    <option name="LAST_COMMIT_MESSAGE" value="Added more tests and implemented a way to find all the differences between 2 merkle trees.&#10;It returns only the top-most difference because anything below it will be different" />
+    <MESSAGE value="Added compression and organized the code" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added compression and organized the code" />
   </component>
 </project>

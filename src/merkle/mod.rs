@@ -1,9 +1,10 @@
 mod node;
-mod traits;
 #[cfg(test)]
 mod tests;
+mod traits;
 
 use crate::merkle::node::{LeafNode, Node, TreeNode};
+use crate::merkle::traits::CompressedData;
 use std::fs;
 use std::fs::DirEntry;
 use std::path::PathBuf;
@@ -40,7 +41,7 @@ impl MerkleBuilder {
         match Self::hash_file(&file_path) {
             Ok((hash, data)) => Ok(Node::Leaf(LeafNode {
                 hash,
-                compressed_data: MerkleBuilder::compress_data(data),
+                compressed_data: MerkleBuilder::compress(&data),
                 file_path,
             })),
             Err(e) => Err(e),
@@ -106,14 +107,5 @@ impl MerkleBuilder {
 
         MerkleBuilder::hash(&path, &data)
     }
-
-    fn compress_data(data: Vec<u8>) -> Vec<u8> {
-        use std::io::prelude::*;
-        use flate2::Compression;
-        use flate2::write::ZlibEncoder;
-
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-        encoder.write_all(&data).expect("Unable to write data");
-        encoder.finish().expect("Unable to finish compression")
-    }
 }
+impl CompressedData for MerkleBuilder {}

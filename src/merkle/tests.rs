@@ -1,3 +1,5 @@
+use crate::merkle::node::{Change, Diff};
+use crate::merkle::traits::LeafData;
 use crate::merkle::*;
 use rand::random;
 use std::io::Write;
@@ -7,7 +9,7 @@ use tempfile::{NamedTempFile, TempDir, tempdir_in};
 
 fn random_tree_builder(
     path: Option<PathBuf>,
-) -> (Result<Node, String>, Vec<PathBuf>, Option<TempDir>) {
+) -> (Result<Node, String>, Vec<Diff>, Option<TempDir>) {
     match path {
         Some(path) => {
             let (node, vec) = generate_random_tree(path);
@@ -19,6 +21,12 @@ fn random_tree_builder(
             (node, vec, Some(temp_dir))
         }
     }
+}
+
+fn generate_file(contents: &str) -> NamedTempFile {
+    let file = NamedTempFile::new().expect("Unable to create temporary file");
+    write!(&file, "{}", contents).expect("Unable to write to file");
+    file
 }
 fn generate_random_file(path: &PathBuf) -> NamedTempFile {
     let write_random_to_file = |file: NamedTempFile| {
@@ -33,8 +41,8 @@ fn generate_random_file(path: &PathBuf) -> NamedTempFile {
 
     write_random_to_file(NamedTempFile::new_in(&path).expect("Unable to create temporary file"))
 }
-fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<PathBuf>) {
-    let mut differences: Vec<PathBuf> = Vec::new();
+fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<Diff>) {
+    let mut differences: Vec<Diff> = Vec::new();
 
     let size = random::<u8>() % u8::MAX + 1;
     let mut first: bool = true;
@@ -53,7 +61,9 @@ fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<PathBuf>) {
             current_path.push(&relative_path);
 
             if first {
-                differences.push(current_path.clone());
+                differences.push(Diff::Created {
+                    file_path: current_path.clone(),
+                });
                 first = false;
             }
 
@@ -63,7 +73,9 @@ fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<PathBuf>) {
             let relative_path: PathBuf = current_path.join(&get_relative_path(&temp_file.path()));
             temporary_files.push(temp_file);
             if first {
-                differences.push(relative_path);
+                differences.push(Diff::Created {
+                    file_path: relative_path,
+                });
             }
         }
     }
@@ -107,4 +119,39 @@ fn test_new_leaf() {
     let temp_file = generate_random_file(&PathBuf::from("."));
     let leaf = MerkleBuilder::new_leaf(temp_file.path().to_path_buf());
     assert!(leaf.is_ok());
+}
+
+#[test]
+fn test_diff() {
+    let f1 = generate_file("abcdfghjqz");
+    let f2 = generate_file("abcdefgijkrxyz");
+    let leaf1 = MerkleBuilder::new_leaf(f1.path().to_path_buf()).expect("Unable to create leaf 1");
+    let leaf2 = MerkleBuilder::new_leaf(f2.path().to_path_buf()).expect("Unable to create leaf 2");
+
+    let diff2 = vec![
+        Change::Copy { start: 0, end: 3 },
+        Change::Insert {
+            data: [120, 218, 75, 5, 0, 0, 102, 0, 102].to_vec(),
+        },
+        Change::Copy { start: 4, end: 5 },
+        Change::Delete { start: 6, end: 6 },
+        Change::Insert {
+            data: [120, 218, 203, 4, 0, 0, 106, 0, 106].to_vec(),
+        },
+        Change::Copy { start: 7, end: 7 },
+        Change::Delete { start: 8, end: 8 },
+        Change::Insert {
+            data: [120, 218, 203, 46, 170, 168, 4, 0, 4, 111, 1, 207].to_vec(),
+        },
+        Change::Copy { start:9, end: 9 },
+        Change::End,
+    ];
+
+    match (leaf1, leaf2) {
+        (Node::Leaf(leaf1), Node::Leaf(leaf2)) => {
+            let diff1 = leaf1.diff_file(&leaf2);
+            assert_eq!(diff1, diff2);
+        }
+        _ => panic!("Unable to create diff"),
+    }
 }
