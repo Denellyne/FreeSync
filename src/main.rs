@@ -1,6 +1,7 @@
 mod merkle;
-use crate::merkle::Node;
+use crate::merkle::MerkleBuilder;
 use std::env;
+use std::path::PathBuf;
 
 fn main() {
     let mut args: Vec<String> = env::args().collect();
@@ -11,7 +12,7 @@ fn main() {
         1 => println!("You must provide at least one directory path"),
         _ => {
             let dir: String = args.remove(1);
-            let _node = Node::new_tree(dir).expect("Unable to create tree");
+            let _node = MerkleBuilder::new(PathBuf::from(dir)).expect("Unable to create tree");
             #[cfg(debug_assertions)]
             println!("{:?}", _node);
 

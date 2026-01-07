@@ -1,0 +1,110 @@
+use crate::merkle::*;
+use rand::random;
+use std::io::Write;
+use std::path;
+use std::path::PathBuf;
+use tempfile::{NamedTempFile, TempDir, tempdir_in};
+
+fn random_tree_builder(
+    path: Option<PathBuf>,
+) -> (Result<Node, String>, Vec<PathBuf>, Option<TempDir>) {
+    match path {
+        Some(path) => {
+            let (node, vec) = generate_random_tree(path);
+            (node, vec, None)
+        }
+        None => {
+            let temp_dir = tempfile::tempdir().expect("Unable to create temp dir");
+            let (node, vec) = generate_random_tree(temp_dir.path().to_path_buf());
+            (node, vec, Some(temp_dir))
+        }
+    }
+}
+fn generate_random_file(path: &PathBuf) -> NamedTempFile {
+    let write_random_to_file = |file: NamedTempFile| {
+        let mut str: String = String::new();
+        let len = random::<u16>() % u16::MAX + 1;
+        for _i in 0..len {
+            str.push(random::<char>());
+        }
+        write!(&file, "{}", str).expect("Unable to write to file");
+        file
+    };
+
+    write_random_to_file(NamedTempFile::new_in(&path).expect("Unable to create temporary file"))
+}
+fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<PathBuf>) {
+    let mut differences: Vec<PathBuf> = Vec::new();
+
+    let size = random::<u8>() % u8::MAX + 1;
+    let mut first: bool = true;
+    let mut current_path: PathBuf = path.clone();
+    let mut temporary_files: Vec<NamedTempFile> = Vec::new();
+    let mut temporary_folders: Vec<TempDir> = Vec::new();
+
+    let get_relative_path =
+        |str: &path::Path| -> PathBuf { str.file_name().expect("Unable to get file name").into() };
+
+    for _i in 0..size {
+        let gen_dir = random::<bool>();
+        if gen_dir {
+            let temp_file = tempdir_in(&current_path).expect("Unable to create temporary folder");
+            let relative_path = get_relative_path(&temp_file.path());
+            current_path.push(&relative_path);
+
+            if first {
+                differences.push(current_path.clone());
+                first = false;
+            }
+
+            temporary_folders.push(temp_file);
+        } else {
+            let temp_file = generate_random_file(&current_path);
+            let relative_path: PathBuf = current_path.join(&get_relative_path(&temp_file.path()));
+            temporary_files.push(temp_file);
+            if first {
+                differences.push(relative_path);
+            }
+        }
+    }
+
+    let tree = MerkleBuilder::new(path.to_path_buf());
+    (tree, differences)
+}
+
+#[test]
+fn test_new_tree() {
+    let (t1, _, _) = random_tree_builder(None::<PathBuf>);
+    assert!(t1.is_ok());
+}
+#[test]
+fn test_trees_are_different() {
+    let (t1, _, temp_folder) = random_tree_builder(None::<PathBuf>);
+    let (t2, differences, _) = random_tree_builder(Some(
+        temp_folder
+            .expect("Expected path from temp folder")
+            .path()
+            .to_path_buf(),
+    ));
+
+    let t1 = match t1 {
+        Ok(tree) => tree,
+        Err(e) => panic!("Unable to create MerkleBuilder: {}", e),
+    };
+    let t2 = match t2 {
+        Ok(tree) => tree,
+        Err(e) => panic!("Unable to create MerkleBuilder: {}", e),
+    };
+
+    assert_ne!(&t1, &t2);
+    match t1.find_differences(&t2) {
+        Some(contents) => assert_ne!(differences, contents),
+        _ => panic!("Unable to find differences for tree"),
+    }
+}
+#[test]
+fn test_new_leaf() {
+    let temp_file = generate_random_file(&PathBuf::from("."));
+    let leaf = MerkleBuilder::new_leaf(temp_file.path().to_path_buf());
+    assert!(leaf.is_ok());
+}

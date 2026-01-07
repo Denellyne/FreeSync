@@ -11,12 +11,16 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7191c74c-5cb2-4c45-8496-52ca98d9aebc" name="Changes" comment="">
+    <list default="true" id="7191c74c-5cb2-4c45-8496-52ca98d9aebc" name="Changes" comment="Added more tests and implemented a way to find all the differences between 2 merkle trees.&#10;It returns only the top-most difference because anything below it will be different">
+      <change afterPath="$PROJECT_DIR$/src/merkle/node.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/merkle/tests.rs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/merkle/traits.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/merkle/merkle.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/merkle.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/merkle.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/mod.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -60,39 +64,39 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Cargo.Build `Run`.executor&quot;: &quot;Run&quot;,
-    &quot;Cargo.Expand FreeSync.executor&quot;: &quot;Run&quot;,
-    &quot;Cargo.Expand FreeSync::merkle::merkle.executor&quot;: &quot;Run&quot;,
-    &quot;Cargo.Install cargo-expand.executor&quot;: &quot;Run&quot;,
-    &quot;Cargo.Run FreeSync.executor&quot;: &quot;Run&quot;,
-    &quot;Cargo.Run.executor&quot;: &quot;Run&quot;,
-    &quot;Cargo.Test merkle::merkle::tests::test_new_leaf.executor&quot;: &quot;Run&quot;,
-    &quot;Cargo.Test merkle::merkle::tests::test_tree_hash_changes_when_file_changes.executor&quot;: &quot;Run&quot;,
-    &quot;Cargo.Test.executor&quot;: &quot;Run&quot;,
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.rust.reset.selective.auto.import&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/Gustavo Santos/RustroverProjects/FreeSync/tests&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;org.rust.cargo.project.model.PROJECT_DISCOVERY&quot;: &quot;true&quot;,
-    &quot;org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon&quot;: &quot;&quot;,
-    &quot;org.rust.first.attach.projects&quot;: &quot;true&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;reference.settings.deploy.options&quot;,
-    &quot;settings.editor.splitter.proportion&quot;: &quot;0.2324159&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Cargo.Build `Run`.executor": "Run",
+    "Cargo.Expand FreeSync.executor": "Run",
+    "Cargo.Expand FreeSync::merkle::merkle.executor": "Run",
+    "Cargo.Install cargo-expand.executor": "Run",
+    "Cargo.Run FreeSync.executor": "Run",
+    "Cargo.Run.executor": "Run",
+    "Cargo.Test merkle::merkle::tests::test_new_leaf.executor": "Run",
+    "Cargo.Test merkle::merkle::tests::test_tree_hash_changes_when_file_changes.executor": "Run",
+    "Cargo.Test.executor": "Run",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.rust.reset.selective.auto.import": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "git-widget-placeholder": "main",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "C:/Users/Gustavo Santos/RustroverProjects/FreeSync/tests",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
+    "org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon": "",
+    "org.rust.first.attach.projects": "true",
+    "settings.editor.selected.configurable": "language.rust.cargo.check",
+    "settings.editor.splitter.proportion": "0.2324159",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\Gustavo Santos\RustroverProjects\FreeSync\tests" />
@@ -219,11 +223,25 @@
       <workItem from="1767724318271" duration="6000" />
       <workItem from="1767728801358" duration="7000" />
       <workItem from="1767739736287" duration="2511000" />
-      <workItem from="1767787664715" duration="10934000" />
+      <workItem from="1767787664715" duration="11429000" />
+      <workItem from="1767802538378" duration="10693000" />
     </task>
+    <task id="LOCAL-00001" summary="Added more tests and implemented a way to find all the differences between 2 merkle trees.&#10;It returns only the top-most difference because anything below it will be different">
+      <option name="closed" value="true" />
+      <created>1767798901453</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1767798901453</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Added more tests and implemented a way to find all the differences between 2 merkle trees.&#10;It returns only the top-most difference because anything below it will be different" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added more tests and implemented a way to find all the differences between 2 merkle trees.&#10;It returns only the top-most difference because anything below it will be different" />
   </component>
 </project>
