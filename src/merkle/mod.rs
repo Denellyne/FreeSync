@@ -2,6 +2,8 @@ mod node;
 #[cfg(test)]
 mod tests;
 mod traits;
+mod diff;
+mod leafnode;
 
 use crate::merkle::node::{LeafNode, Node, TreeNode};
 use crate::merkle::traits::CompressedData;
