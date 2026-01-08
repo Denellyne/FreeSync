@@ -138,18 +138,16 @@ impl LeafIO for LeafNode {
         }
         let file_path = dir_path.join(&Node::get_hash_string(&self.hash)[2..]);
 
-
         let mut file: File;
         file = OpenOptions::new()
-            .create(true).truncate(false)
+            .create(true)
+            .truncate(false)
             .write(true)
             .open(&file_path)
-            .unwrap_or_else(|_| panic!("Unable to open file {}",file_path.display()));
+            .unwrap_or_else(|_| panic!("Unable to open file {}", file_path.display()));
 
         file.write_all(self.data()).expect("Unable to write data");
         file.flush().expect("Unable to flush data");
         true
     }
-
-    
 }

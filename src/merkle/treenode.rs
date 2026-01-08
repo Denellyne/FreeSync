@@ -1,17 +1,17 @@
 use crate::merkle::node::{Node, TreeNode};
-use crate::merkle::traits::TreeIO;
 use crate::merkle::traits::LeafIO;
+use crate::merkle::traits::TreeIO;
+use crate::merkle::traits::internal_traits::TreeIOInternal;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::merkle::traits::internal_traits::TreeIOInternal;
 
 impl TreeIO for TreeNode {
     fn save_tree(&self) -> bool {
-        if !self.init(){
+        if !self.init() {
             eprintln!("Unable to init tree directory");
             return false;
         }
-        if !self.write_tree(){
+        if !self.write_tree() {
             eprintln!("Unable to write tree file");
             return false;
         }
@@ -29,7 +29,7 @@ impl TreeIO for TreeNode {
 
 impl TreeIOInternal for TreeNode {
     fn init(&self) -> bool {
-        let paths = [Self::MAIN_FOLDER,Self::OBJ_FOLDER];
+        let paths = [Self::MAIN_FOLDER, Self::OBJ_FOLDER];
         for path in paths.iter() {
             let path = PathBuf::from(path);
 
@@ -46,17 +46,15 @@ impl TreeIOInternal for TreeNode {
             }
         }
 
-       self.write_file(Self::HEAD_FILE,self.hash)
+        self.write_file(Self::HEAD_FILE, self.hash)
     }
 
     fn write_tree(&self) -> bool {
-
         let path = PathBuf::from(Self::OBJ_FOLDER).join(&Node::get_hash_string(&self.hash)[..2]);
         if !path.exists() {
             fs::create_dir_all(&path).expect("Failed to create tree dir");
         }
         let parent_file = path.join(&Node::get_hash_string(&self.hash)[2..]);
-
 
         for child in &self.children {
             match child {
@@ -73,7 +71,7 @@ impl TreeIOInternal for TreeNode {
                     }
                 }
             }
-            self.write_file(&parent_file,child.get_hash());
+            self.write_file(&parent_file, child.get_hash());
         }
 
         true

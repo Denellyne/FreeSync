@@ -52,17 +52,17 @@ pub(in crate::merkle) mod internal_traits {
         fn write_file(&self, path: impl AsRef<Path>, data: impl AsRef<[u8]>) -> bool {
             let mut file: File;
             file = OpenOptions::new()
-                .create(true).append(true)
+                .create(true)
+                .append(true)
                 .open(&path)
                 .expect("Unable to open file");
 
-
             if let Err(e) = file.write_all(data.as_ref()) {
-                eprintln!("Unable to write file, {}",e);
+                eprintln!("Unable to write file, {}", e);
                 return false;
             }
             if let Err(e) = file.flush() {
-                eprintln!("Unable to flush file, {}",e);
+                eprintln!("Unable to flush file, {}", e);
                 return false;
             }
             true
@@ -79,7 +79,6 @@ pub trait TreeIO: internal_traits::TreeIOInternal {
 
 pub(in crate::merkle) trait LeafIO: LeafData {
     fn write_blob(&self, path: &Path) -> bool;
-
 }
 
 pub trait IO {
@@ -100,7 +99,8 @@ pub trait IO {
     fn write_file(path: impl AsRef<Path>, data: &[u8]) {
         let mut file: File;
         file = OpenOptions::new()
-            .create(true).truncate(false)
+            .create(true)
+            .truncate(false)
             .write(true)
             .open(&path)
             .expect("Unable to open file");

@@ -11,15 +11,7 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7191c74c-5cb2-4c45-8496-52ca98d9aebc" name="Changes" comment="Writing tree to filesystem works now&#10;Will be starting the read process next">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/merkle/leafnode.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/leafnode.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/merkle/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/merkle/traits.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/traits.rs" afterDir="false" />
-    </list>
+    <list default="true" id="7191c74c-5cb2-4c45-8496-52ca98d9aebc" name="Changes" comment="Writing tree to filesystem works now&#10;Will be starting the read process next" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -275,7 +267,7 @@
       <workItem from="1767787664715" duration="11429000" />
       <workItem from="1767802538378" duration="22819000" />
       <workItem from="1767825611353" duration="13297000" />
-      <workItem from="1767864110195" duration="17361000" />
+      <workItem from="1767864110195" duration="17428000" />
     </task>
     <task id="LOCAL-00001" summary="Added more tests and implemented a way to find all the differences between 2 merkle trees.&#10;It returns only the top-most difference because anything below it will be different">
       <option name="closed" value="true" />
@@ -333,7 +325,15 @@
       <option name="project" value="LOCAL" />
       <updated>1767877712264</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="Writing tree to filesystem works now&#10;Will be starting the read process next">
+      <option name="closed" value="true" />
+      <created>1767881652543</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1767881652543</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

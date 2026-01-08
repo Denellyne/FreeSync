@@ -4,7 +4,7 @@ use crate::merkle::*;
 use rand::random;
 use std::io::Write;
 use std::path::PathBuf;
-use tempfile::{tempdir_in, NamedTempFile, TempDir};
+use tempfile::{NamedTempFile, TempDir, tempdir_in};
 
 fn random_tree_builder(
     path: Option<PathBuf>,
@@ -38,9 +38,8 @@ fn write_random_to_file(file: NamedTempFile) -> (NamedTempFile, String) {
 }
 
 fn generate_random_file(path: &PathBuf) -> NamedTempFile {
-    let (file, _) = write_random_to_file(
-        NamedTempFile::new_in(path).expect("Unable to create temporary file"),
-    );
+    let (file, _) =
+        write_random_to_file(NamedTempFile::new_in(path).expect("Unable to create temporary file"));
     file
 }
 fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<Diff>) {
