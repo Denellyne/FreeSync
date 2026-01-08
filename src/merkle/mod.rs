@@ -1,12 +1,14 @@
-mod node;
+
 #[cfg(test)]
 mod tests;
-mod traits;
+pub mod traits;
+pub mod treenode;
 mod diff;
 mod leafnode;
+mod node;
 
 use crate::merkle::node::{LeafNode, Node, TreeNode};
-use crate::merkle::traits::CompressedData;
+use crate::merkle::traits::{CompressedData, TreeIO};
 use std::fs;
 use std::fs::DirEntry;
 use std::path::PathBuf;
@@ -14,7 +16,7 @@ use std::path::PathBuf;
 pub struct MerkleBuilder;
 
 impl MerkleBuilder {
-    pub fn new(path: PathBuf) -> Result<Node, String> {
+    pub fn new(path: PathBuf) -> Result<TreeNode, String> {
         match fs::read_dir(&path) {
             Ok(_) => match path {
                 path if path.is_dir() => MerkleBuilder::new_tree(path),
@@ -28,10 +30,17 @@ impl MerkleBuilder {
             ))?,
         }
     }
+    pub fn from(path: PathBuf) -> Result<Node, String> {
+        match TreeNode::read_tree(&path) {
+             Ok(node) => Ok(Node::Tree(node)),
+             Err(_) => Err(format!("Unable to read tree: {}", path.display())),
+        }
+
+    }
 
     fn new_node(path: DirEntry) -> Result<Node, String> {
         match path.path() {
-            path if path.is_dir() => Self::new_tree(path),
+            path if path.is_dir() => Ok(Node::Tree(Self::new_tree(path)?)),
             path if path.is_file() => Self::new_leaf(path),
             _ => Err(String::from(format!(
                 "Unable to generate new node, {}",
@@ -49,7 +58,7 @@ impl MerkleBuilder {
             Err(e) => Err(e),
         }
     }
-    fn new_tree(dir_path: PathBuf) -> Result<Node, String> {
+    fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
         let paths = fs::read_dir(&dir_path).expect("Unable to read directory");
         let mut vec: Vec<Node> = Vec::new();
 
@@ -65,11 +74,11 @@ impl MerkleBuilder {
         if !vec.is_empty() {
             vec.sort_by(|a, b| a.get_path().cmp(b.get_path()));
         }
-        Ok(Node::Tree(TreeNode {
+        Ok(TreeNode {
             hash: Self::hash_tree(&dir_path, &vec),
             file_path: dir_path,
             children: vec,
-        }))
+        })
     }
 
     fn hash_file(path: &PathBuf) -> Result<([u8; 32], Vec<u8>), String> {

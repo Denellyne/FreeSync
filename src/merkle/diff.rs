@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(PartialEq,Debug)]
+#[derive(PartialEq, Debug)]
 pub(crate) enum Diff {
     Created {
         file_path: PathBuf,
@@ -13,7 +13,7 @@ pub(crate) enum Diff {
         changes: Vec<Change>,
     },
 }
-#[derive(PartialEq,Debug)]
+#[derive(PartialEq, Debug)]
 pub(crate) enum Change {
     Copy { start: u64, end: u64 },
     Delete { start: u64, end: u64 },

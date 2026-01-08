@@ -1,6 +1,8 @@
 use crate::merkle::diff::Change;
 use crate::merkle::node::LeafNode;
-use crate::merkle::traits::{CompressedData, LeafData};
+use crate::merkle::traits::{CompressedData, LeafData, LeafIO};
+use std::path::PathBuf;
+impl CompressedData for LeafNode {}
 
 impl LeafData for LeafNode {
     fn data(&self) -> &Vec<u8> {
@@ -30,7 +32,9 @@ impl LeafData for LeafNode {
 
             if v1.is_empty() && !v2.is_empty() {
                 return (
-                    Change::Insert { data: LeafNode::compress(&v2.to_vec()) },
+                    Change::Insert {
+                        data: LeafNode::compress(&v2.to_vec()),
+                    },
                     &[],
                     &[],
                     v1_start,
@@ -41,7 +45,7 @@ impl LeafData for LeafNode {
                 return (
                     Change::Delete {
                         start: v1_start,
-                        end: v1.len() as u64 - v1_start-1,
+                        end: v1.len() as u64 - v1_start - 1,
                     },
                     &[],
                     &[],
@@ -61,7 +65,7 @@ impl LeafData for LeafNode {
                 return (
                     Change::Copy {
                         start: v1_start,
-                        end: v1_start + len as u64 -1,
+                        end: v1_start + len as u64 - 1,
                     },
                     &v1[len..],
                     &v2[len..],
@@ -75,7 +79,7 @@ impl LeafData for LeafNode {
                 (
                     Change::Delete {
                         start: v1_start,
-                        end: v1_start + delete_len-1,
+                        end: v1_start + delete_len - 1,
                     },
                     &v1[delete_len as usize..],
                     v2,
@@ -123,4 +127,12 @@ impl LeafData for LeafNode {
     }
 }
 
-impl CompressedData for LeafNode {}
+impl LeafIO for LeafNode {
+    fn write_blob(&self) {
+        todo!()
+    }
+
+    fn read_blob(path: &PathBuf) -> Result<Self,String> {
+        todo!()
+    }
+}

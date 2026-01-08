@@ -80,8 +80,8 @@ fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<Diff>) {
         }
     }
 
-    let tree = MerkleBuilder::new(path.to_path_buf());
-    (tree, differences)
+    let tree = Node::Tree(MerkleBuilder::new(path.to_path_buf()).expect("Unable to create tree"));
+    (Ok(tree), differences)
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn test_diff() {
         Change::Insert {
             data: [120, 218, 203, 46, 170, 168, 4, 0, 4, 111, 1, 207].to_vec(),
         },
-        Change::Copy { start:9, end: 9 },
+        Change::Copy { start: 9, end: 9 },
         Change::End,
     ];
 

@@ -24,8 +24,6 @@ pub enum Node {
 }
 // Todo create a builder for a merkle tree and make the data structures pure
 
-
-
 impl Node {
     pub fn get_hash(&self) -> [u8; 32] {
         match self {
@@ -79,7 +77,7 @@ impl Node {
         (common1, common2, differences)
     }
 
-    pub(crate) fn find_differences(&self, other: &Node) -> Option<Vec<Diff>> {
+    pub fn find_differences(&self, other: &Node) -> Option<Vec<Diff>> {
         if self.get_hash() == other.get_hash() {
             return None;
         }
