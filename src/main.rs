@@ -1,8 +1,8 @@
 mod merkle;
 use crate::merkle::MerkleBuilder;
+use crate::merkle::traits::TreeIO;
 use std::env;
 use std::path::PathBuf;
-use crate::merkle::traits::TreeIO;
 
 fn main() {
     let mut args: Vec<String> = env::args().collect();
@@ -18,12 +18,11 @@ fn main() {
             println!("{:?}", node);
 
             println!("Tree built successfully!");
-            
-            match node.write_tree() {
-                true => println!("Initialized tree"),
-                false => println!("Failed to initialize tree")
-            }
 
+            match node.init() && node.write_tree() {
+                true => println!("Initialized tree and saved it successfully!"),
+                false => println!("Failed to initialize tree"),
+            }
         }
     }
 }

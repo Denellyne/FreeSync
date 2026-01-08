@@ -1,6 +1,8 @@
 use crate::merkle::diff::Change;
-use crate::merkle::node::LeafNode;
+use crate::merkle::node::{LeafNode, Node};
 use crate::merkle::traits::{CompressedData, LeafData, LeafIO};
+use std::fs::{File, OpenOptions};
+use std::io::Write;
 use std::path::PathBuf;
 impl CompressedData for LeafNode {}
 
@@ -128,11 +130,22 @@ impl LeafData for LeafNode {
 }
 
 impl LeafIO for LeafNode {
-    fn write_blob(&self) {
+    fn write_blob(&self, path: &PathBuf) -> bool {
+        let file_path = path.join(Node::get_hash_string(self.hash));
+        let mut file: File;
+        file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&file_path)
+            .expect("Unable to open file");
+
+        file.write_all(self.data()).expect("Unable to write data");
+        file.flush().expect("Unable to flush data");
+        return true;
         todo!()
     }
 
-    fn read_blob(path: &PathBuf) -> Result<Self,String> {
+    fn read_blob(path: &PathBuf) -> Result<Self, String> {
         todo!()
     }
 }

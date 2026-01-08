@@ -2,6 +2,7 @@ pub(crate) use crate::merkle::diff::{Change, Diff};
 use crate::merkle::traits::LeafData;
 use std::collections;
 use std::collections::BTreeMap;
+use std::hash::Hash;
 use std::path::PathBuf;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -25,6 +26,15 @@ pub enum Node {
 // Todo create a builder for a merkle tree and make the data structures pure
 
 impl Node {
+    pub fn get_hash_string(hash: [u8; 32]) -> String {
+        let mut str = String::new();
+
+        for ch in hash {
+            str += ch.to_string().as_str();
+        }
+
+        str
+    }
     pub fn get_hash(&self) -> [u8; 32] {
         match self {
             Node::Tree(tree) => tree.hash,

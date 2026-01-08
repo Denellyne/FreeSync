@@ -2,7 +2,6 @@ use crate::merkle::node::Change;
 use flate2::read::ZlibDecoder;
 use std::path::PathBuf;
 
-
 pub(in crate::merkle) trait CompressedData {
     fn compress(data: &Vec<u8>) -> Vec<u8> {
         use flate2::Compression;
@@ -31,16 +30,20 @@ pub(in crate::merkle) trait LeafData: CompressedData {
 }
 
 pub trait TreeIO {
-    fn init() -> bool;
+    fn init(&self) -> bool;
 
     fn write_tree(&self) -> bool;
-    fn read_tree(path: &PathBuf) -> Result<Self,String> where Self: Sized;
+    fn read_tree(path: &PathBuf) -> Result<Self, String>
+    where
+        Self: Sized;
     const MAIN_FOLDER: &'static str = "./.freesync";
 
     const OBJ_FOLDER: &'static str = "./.freesync/objects";
 }
 
 pub(in crate::merkle) trait LeafIO: LeafData {
-    fn write_blob(&self);
-    fn read_blob(path: &PathBuf) -> Result<Self,String> where Self: Sized;
+    fn write_blob(&self, path: &PathBuf) -> bool;
+    fn read_blob(path: &PathBuf) -> Result<Self, String>
+    where
+        Self: Sized;
 }

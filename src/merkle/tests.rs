@@ -5,7 +5,7 @@ use rand::random;
 use std::io::Write;
 use std::path;
 use std::path::PathBuf;
-use tempfile::{NamedTempFile, TempDir, tempdir_in};
+use tempfile::{NamedTempFile, TempDir, tempdir_in, tempfile};
 
 fn random_tree_builder(
     path: Option<PathBuf>,
@@ -28,18 +28,21 @@ fn generate_file(contents: &str) -> NamedTempFile {
     write!(&file, "{}", contents).expect("Unable to write to file");
     file
 }
-fn generate_random_file(path: &PathBuf) -> NamedTempFile {
-    let write_random_to_file = |file: NamedTempFile| {
-        let mut str: String = String::new();
-        let len = random::<u16>() % u16::MAX + 1;
-        for _i in 0..len {
-            str.push(random::<char>());
-        }
-        write!(&file, "{}", str).expect("Unable to write to file");
-        file
-    };
+fn write_random_to_file(file: NamedTempFile) -> (NamedTempFile,String) {
+    let mut str: String = String::new();
+    let len = random::<u16>() % u16::MAX + 1;
+    for _i in 0..len {
+        str.push(random::<char>());
+    }
+    write!(&file, "{}", str).expect("Unable to write to file");
+    (file,str)
+}
 
-    write_random_to_file(NamedTempFile::new_in(&path).expect("Unable to create temporary file"))
+fn generate_random_file(path: &PathBuf) -> NamedTempFile {
+
+
+    let (file,_) = write_random_to_file(NamedTempFile::new_in(&path).expect("Unable to create temporary file"));
+    file
 }
 fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<Diff>) {
     let mut differences: Vec<Diff> = Vec::new();
@@ -154,4 +157,29 @@ fn test_diff() {
         }
         _ => panic!("Unable to create diff"),
     }
+
+
+}
+
+#[test]
+fn test_compression(){
+    use super::*;
+
+    let temp_file : NamedTempFile = NamedTempFile::new().expect("Unable to create temporary file");
+    let (temp_file,str) = write_random_to_file(temp_file);
+    let leaf = MerkleBuilder::new_leaf(temp_file.path().to_path_buf());
+    match leaf {
+        Ok(leaf) => {
+            match leaf {
+                Node::Leaf(leaf) => {
+                    let decompress = LeafNode::decompress(&leaf.compressed_data);
+
+                    assert_eq!(decompress,str.as_bytes());
+                }
+                _ => panic!("Unable to create leaf"),
+            }
+        },
+        Err(_) => panic!("Unable to create leaf"),
+    }
+
 }

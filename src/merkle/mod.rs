@@ -1,14 +1,14 @@
-
+mod diff;
+mod leafnode;
+mod node;
 #[cfg(test)]
 mod tests;
 pub mod traits;
 pub mod treenode;
-mod diff;
-mod leafnode;
-mod node;
 
 use crate::merkle::node::{LeafNode, Node, TreeNode};
 use crate::merkle::traits::{CompressedData, TreeIO};
+use std::collections::HashSet;
 use std::fs;
 use std::fs::DirEntry;
 use std::path::PathBuf;
@@ -32,10 +32,9 @@ impl MerkleBuilder {
     }
     pub fn from(path: PathBuf) -> Result<Node, String> {
         match TreeNode::read_tree(&path) {
-             Ok(node) => Ok(Node::Tree(node)),
-             Err(_) => Err(format!("Unable to read tree: {}", path.display())),
+            Ok(node) => Ok(Node::Tree(node)),
+            Err(_) => Err(format!("Unable to read tree: {}", path.display())),
         }
-
     }
 
     fn new_node(path: DirEntry) -> Result<Node, String> {
@@ -62,8 +61,20 @@ impl MerkleBuilder {
         let paths = fs::read_dir(&dir_path).expect("Unable to read directory");
         let mut vec: Vec<Node> = Vec::new();
 
-        for path in paths {
+        let filter: HashSet<_> = HashSet::from([".freesync"]);
+        'pathLoop: for path in paths {
             let path = path.expect("Unable to read directory entry");
+
+            for str in filter.iter().collect::<Vec<_>>() {
+                if path
+                    .file_name()
+                    .to_str()
+                    .expect("Unable to convert to string")
+                    .contains(str)
+                {
+                    continue 'pathLoop;
+                }
+            }
 
             match Self::new_node(path) {
                 Ok(node) => vec.push(node),
@@ -98,8 +109,8 @@ impl MerkleBuilder {
         match path.to_str() {
             Some(str) => {
                 let mut data = str.as_bytes().to_owned();
-                data.extend(vec);
-                Sha256::digest(data).into()
+                data.extend(vec.clone());
+                Sha256::digest(&data).into()
             }
             None => panic!("Unable to convert path to string"),
         }
