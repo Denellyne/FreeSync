@@ -1,9 +1,10 @@
+use std::fs;
 use crate::merkle::diff::Change;
 use crate::merkle::node::{LeafNode, Node};
 use crate::merkle::traits::{CompressedData, LeafData, LeafIO};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::Path;
 impl CompressedData for LeafNode {}
 
 impl LeafData for LeafNode {
@@ -35,7 +36,7 @@ impl LeafData for LeafNode {
             if v1.is_empty() && !v2.is_empty() {
                 return (
                     Change::Insert {
-                        data: LeafNode::compress(&v2.to_vec()),
+                        data: LeafNode::compress(v2),
                     },
                     &[],
                     &[],
@@ -95,7 +96,7 @@ impl LeafData for LeafNode {
                 }
                 (
                     Change::Insert {
-                        data: LeafNode::compress(&v2[..insert_len].to_vec()),
+                        data: LeafNode::compress(&v2[..insert_len]),
                     },
                     v1,
                     &v2[insert_len..],
@@ -130,21 +131,27 @@ impl LeafData for LeafNode {
 }
 
 impl LeafIO for LeafNode {
-    fn write_blob(&self, path: &PathBuf) -> bool {
-        let file_path = path.join(Node::get_hash_string(self.hash));
+    fn write_blob(&self, path: &Path) -> bool {
+        let dir_path = path.join(&Node::get_hash_string(&self.hash)[..2]);
+        if !dir_path.exists() {
+            fs::create_dir_all(&dir_path).expect("Failed to create tree dir");
+        }
+        let file_path = dir_path.join(&Node::get_hash_string(&self.hash)[2..]);
+
+
         let mut file: File;
         file = OpenOptions::new()
-            .create(true)
+            .create(true).truncate(false)
             .write(true)
             .open(&file_path)
-            .expect("Unable to open file");
+            .unwrap_or_else(|_| panic!("Unable to open file {}",file_path.display()));
 
         file.write_all(self.data()).expect("Unable to write data");
         file.flush().expect("Unable to flush data");
-        return true;
+        true
     }
 
-    fn read_blob(path: &PathBuf) -> Result<Self, String> {
+    fn read_blob(path: &Path) -> Result<Self, String> {
         todo!()
     }
 }

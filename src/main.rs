@@ -1,5 +1,5 @@
 mod merkle;
-use crate::merkle::MerkleBuilder;
+use crate::merkle::MerkleTree;
 use crate::merkle::traits::TreeIO;
 use std::env;
 use std::path::PathBuf;
@@ -10,18 +10,19 @@ fn main() {
     dbg!(&args);
 
     match args.len() {
-        1 => println!("You must provide at least one directory path"),
+        0..=1 => println!("You must provide at least one directory path"),
         _ => {
             let dir: String = args.remove(1);
-            let node = MerkleBuilder::new(PathBuf::from(dir)).expect("Unable to create tree");
+
+            let node = MerkleTree::new(PathBuf::from(dir)).expect("Unable to create tree");
             #[cfg(debug_assertions)]
             println!("{:?}", node);
 
             println!("Tree built successfully!");
 
-            match node.init() && node.write_tree() {
+            match node.save_tree() {
                 true => println!("Initialized tree and saved it successfully!"),
-                false => println!("Failed to initialize tree"),
+                false => eprintln!("Failed to initialize tree"),
             }
         }
     }
@@ -31,4 +32,5 @@ fn main() {
 Todo
 Compare trees and get all different points
 Create Server
+remove expects and unwraps everywhere
 */

@@ -1,25 +1,27 @@
 mod diff;
 mod leafnode;
 mod node;
-#[cfg(test)]
-mod tests;
+
 pub mod traits;
 pub mod treenode;
 
+#[cfg(test)]
+mod tests;
+
 use crate::merkle::node::{LeafNode, Node, TreeNode};
-use crate::merkle::traits::{CompressedData, TreeIO};
+use crate::merkle::traits::{CompressedData, IO, TreeIO};
 use std::collections::HashSet;
 use std::fs;
-use std::fs::DirEntry;
-use std::path::PathBuf;
+use std::fs::{DirEntry};
+use std::path::{Path, PathBuf};
 
-pub struct MerkleBuilder;
+pub struct MerkleTree;
 
-impl MerkleBuilder {
+impl MerkleTree {
     pub fn new(path: PathBuf) -> Result<TreeNode, String> {
         match fs::read_dir(&path) {
             Ok(_) => match path {
-                path if path.is_dir() => MerkleBuilder::new_tree(path),
+                path if path.is_dir() => MerkleTree::new_tree(path),
                 path if path.is_file() => Err(format!("Path is of a file: {}", path.display())),
                 path if path.is_symlink() => Err(format!("Path is a symlink: {}", path.display())),
                 _ => Err(String::from("Unable to generate merkle tree")),
@@ -41,24 +43,25 @@ impl MerkleBuilder {
         match path.path() {
             path if path.is_dir() => Ok(Node::Tree(Self::new_tree(path)?)),
             path if path.is_file() => Self::new_leaf(path),
-            _ => Err(String::from(format!(
+            _ => Err(format!(
                 "Unable to generate new node, {}",
                 path.path().display()
-            ))),
+            )),
         }
     }
     fn new_leaf(file_path: PathBuf) -> Result<Node, String> {
         match Self::hash_file(&file_path) {
             Ok((hash, data)) => Ok(Node::Leaf(LeafNode {
                 hash,
-                compressed_data: MerkleBuilder::compress(&data),
+                compressed_data: MerkleTree::compress(&data),
                 file_path,
             })),
             Err(e) => Err(e),
         }
     }
     fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
-        let paths = fs::read_dir(&dir_path).expect("Unable to read directory");
+        let paths = Self::read_dir(&dir_path);
+        let paths = paths?;
         let mut vec: Vec<Node> = Vec::new();
 
         let filter: HashSet<_> = HashSet::from([".freesync"]);
@@ -93,7 +96,7 @@ impl MerkleBuilder {
     }
 
     fn hash_file(path: &PathBuf) -> Result<([u8; 32], Vec<u8>), String> {
-        let file_contents = fs::read(&path);
+        let file_contents = Self::read_file(path);
         match file_contents {
             Ok(contents) => {
                 let hash = Self::hash(path, &contents);
@@ -102,21 +105,19 @@ impl MerkleBuilder {
             _ => Err(format!("Unable to read file {}", path.display())),
         }
     }
-
-    fn hash(path: &PathBuf, vec: &Vec<u8>) -> [u8; 32] {
+    fn hash(path: &Path, vec: &[u8]) -> [u8; 32] {
         use sha2::{Digest, Sha256};
 
         match path.to_str() {
             Some(str) => {
                 let mut data = str.as_bytes().to_owned();
-                data.extend(vec.clone());
+                data.extend(vec);
                 Sha256::digest(&data).into()
             }
             None => panic!("Unable to convert path to string"),
         }
     }
-
-    fn hash_tree(path: &PathBuf, vec: &Vec<Node>) -> [u8; 32] {
+    fn hash_tree(path: &Path, vec: &[Node]) -> [u8; 32] {
         let mut data: Vec<u8> = Vec::with_capacity(vec.len() * 32);
 
         for index in 0..vec.len() {
@@ -127,7 +128,8 @@ impl MerkleBuilder {
             data.extend_from_slice(&children_hash);
         }
 
-        MerkleBuilder::hash(&path, &data)
+        MerkleTree::hash(path, &data)
     }
 }
-impl CompressedData for MerkleBuilder {}
+impl CompressedData for MerkleTree {}
+impl IO for MerkleTree {}

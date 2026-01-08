@@ -1,38 +1,67 @@
 use crate::merkle::node::{Node, TreeNode};
-use crate::merkle::traits::{LeafIO, TreeIO};
+use crate::merkle::traits::TreeIO;
+use crate::merkle::traits::LeafIO;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use crate::merkle::traits::internal_traits::TreeIOInternal;
 
 impl TreeIO for TreeNode {
-    fn init(&self) -> bool {
-        let path = PathBuf::from(Self::OBJ_FOLDER);
-        if path.exists() {
-            return true;
+    fn save_tree(&self) -> bool {
+        if !self.init(){
+            eprintln!("Unable to init tree directory");
+            return false;
         }
-
-        let obj_dir = fs::create_dir_all(path);
-
-        match obj_dir {
-            Ok(_) => true,
-            Err(e) => {
-                eprintln!("{}", e);
-                false
-            }
-        };
+        if !self.write_tree(){
+            eprintln!("Unable to write tree file");
+            return false;
+        }
 
         true
     }
 
-    fn write_tree(&self) -> bool {
-        let path = PathBuf::from(Self::OBJ_FOLDER).join(Node::get_hash_string(self.hash));
-        if !path.exists() {
-            fs::create_dir(&path).expect("Failed to create tree dir");
+    fn read_tree(path: impl AsRef<Path>) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+}
+
+impl TreeIOInternal for TreeNode {
+    fn init(&self) -> bool {
+        let paths = [Self::MAIN_FOLDER,Self::OBJ_FOLDER];
+        for path in paths.iter() {
+            let path = PathBuf::from(path);
+
+            if !path.exists() {
+                let obj_dir = fs::create_dir_all(path);
+
+                match obj_dir {
+                    Ok(_) => true,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        false
+                    }
+                };
+            }
         }
+
+       self.write_file(Self::HEAD_FILE,self.hash)
+    }
+
+    fn write_tree(&self) -> bool {
+
+        let path = PathBuf::from(Self::OBJ_FOLDER).join(&Node::get_hash_string(&self.hash)[..2]);
+        if !path.exists() {
+            fs::create_dir_all(&path).expect("Failed to create tree dir");
+        }
+        let parent_file = path.join(&Node::get_hash_string(&self.hash)[2..]);
+
 
         for child in &self.children {
             match child {
                 Node::Leaf(child) => {
-                    if !child.write_blob(&path) {
+                    if !child.write_blob(Self::OBJ_FOLDER.as_ref()) {
                         eprintln!("Error writing blob to disk: {}", child.file_path.display());
                         return false;
                     }
@@ -44,12 +73,12 @@ impl TreeIO for TreeNode {
                     }
                 }
             }
+            self.write_file(&parent_file,child.get_hash());
         }
 
         true
     }
-
-    fn read_tree(path: &PathBuf) -> Result<Self, String> {
+    fn read_tree(path: impl AsRef<Path>) -> Result<Self, String> {
         todo!()
     }
 }

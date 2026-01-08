@@ -26,14 +26,8 @@ pub enum Node {
 // Todo create a builder for a merkle tree and make the data structures pure
 
 impl Node {
-    pub fn get_hash_string(hash: [u8; 32]) -> String {
-        let mut str = String::new();
-
-        for ch in hash {
-            str += ch.to_string().as_str();
-        }
-
-        str
+    pub fn get_hash_string(hash: &[u8; 32]) -> String {
+        hash.iter().map(|b| format!("{:02x}", b)).collect()
     }
     pub fn get_hash(&self) -> [u8; 32] {
         match self {
@@ -94,14 +88,11 @@ impl Node {
 
         match (self, other) {
             (Node::Tree(tree1), Node::Tree(tree2)) => {
-                let (common1, common2, mut differences) = Self::separate_different(&tree1, &tree2);
+                let (common1, common2, mut differences) = Self::separate_different(tree1, tree2);
 
                 for (c1, c2) in common1.iter().zip(common2.iter()) {
-                    match c1.find_differences(c2) {
-                        Some(vec) => {
-                            differences.extend(vec);
-                        }
-                        None => {}
+                    if let Some(vec) = c1.find_differences(c2) {
+                        differences.extend(vec);
                     }
                 }
                 Some(differences)
