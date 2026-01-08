@@ -33,13 +33,6 @@ impl Hashable for Node {
     }
 }
 impl Node {
-
-    pub fn get_hash(&self) -> [u8; 32] {
-        match self {
-            Node::Tree(tree) => tree.hash,
-            Node::Leaf(leaf) => leaf.hash,
-        }
-    }
     pub fn get_path(&self) -> &PathBuf {
         match self {
             Node::Tree(tree) => &tree.file_path,

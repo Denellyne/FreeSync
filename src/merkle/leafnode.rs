@@ -7,7 +7,7 @@ use std::io::Write;
 use std::path::Path;
 
 impl CompressedData for LeafNode {}
-impl Hashable for LeafNode{
+impl Hashable for LeafNode {
     fn get_hash(&self) -> [u8; 32] {
         self.hash
     }

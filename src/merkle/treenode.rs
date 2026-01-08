@@ -1,6 +1,6 @@
 use crate::merkle::node::{Node, TreeNode};
-use crate::merkle::traits::internal_traits::TreeIOInternal;
 use crate::merkle::traits::TreeIO;
+use crate::merkle::traits::internal_traits::TreeIOInternal;
 use crate::merkle::traits::{Hashable, HashableNode, LeafIO};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,19 +10,15 @@ impl Hashable for TreeNode {
         self.hash
     }
 }
-impl HashableNode for TreeNode{
-
-
-    fn hash_tree(path: &Path,children: &[Node]) -> [u8; 32]
-
-    {
+impl HashableNode for TreeNode {
+    fn hash_tree(path: &Path, children: &[Node]) -> [u8; 32] {
         let mut data: Vec<u8> = Vec::with_capacity(children.len() * 32);
-        
+
         for index in 0..children.len() {
             let children_hash = children
-              .get(index)
-              .expect("Invalid access to children vector,probably out of bounds")
-              .get_hash();
+                .get(index)
+                .expect("Invalid access to children vector,probably out of bounds")
+                .get_hash();
             data.extend_from_slice(&children_hash);
         }
 

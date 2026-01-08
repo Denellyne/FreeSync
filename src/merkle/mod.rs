@@ -9,7 +9,7 @@ pub mod treenode;
 mod tests;
 
 use crate::merkle::node::{LeafNode, Node, TreeNode};
-use crate::merkle::traits::{CompressedData, IO, LeafData, TreeIO, Hashable, HashableNode};
+use crate::merkle::traits::{CompressedData, Hashable, HashableNode, IO, LeafData, TreeIO};
 use std::collections::HashSet;
 use std::fs;
 use std::fs::DirEntry;
@@ -106,8 +106,6 @@ impl MerkleTree {
         }
     }
 
-
-
     fn from_blob(path: impl AsRef<Path>) -> Result<LeafNode, String> {
         match fs::read(&path) {
             Ok(data) => {
@@ -141,4 +139,3 @@ impl MerkleTree {
 }
 impl CompressedData for MerkleTree {}
 impl IO for MerkleTree {}
-
