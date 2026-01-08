@@ -1,6 +1,6 @@
-use std::fs;
-use crate::merkle::node::{Node, TreeNode};
+use crate::merkle::node::TreeNode;
 use crate::merkle::traits::TreeIO;
+use std::fs;
 use std::path::PathBuf;
 
 impl TreeIO for TreeNode {
