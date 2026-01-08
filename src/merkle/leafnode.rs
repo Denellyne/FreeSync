@@ -142,7 +142,6 @@ impl LeafIO for LeafNode {
         file.write_all(self.data()).expect("Unable to write data");
         file.flush().expect("Unable to flush data");
         return true;
-        todo!()
     }
 
     fn read_blob(path: &PathBuf) -> Result<Self, String> {

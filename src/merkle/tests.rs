@@ -5,7 +5,7 @@ use rand::random;
 use std::io::Write;
 use std::path;
 use std::path::PathBuf;
-use tempfile::{NamedTempFile, TempDir, tempdir_in, tempfile};
+use tempfile::{tempdir_in, NamedTempFile, TempDir};
 
 fn random_tree_builder(
     path: Option<PathBuf>,
