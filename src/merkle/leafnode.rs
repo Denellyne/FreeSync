@@ -1,12 +1,17 @@
 use crate::merkle::diff::Change;
-use crate::merkle::node::{LeafNode, Node};
-use crate::merkle::traits::{CompressedData, LeafData, LeafIO};
+use crate::merkle::node::LeafNode;
+use crate::merkle::traits::{CompressedData, Hashable, LeafData, LeafIO};
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
 impl CompressedData for LeafNode {}
+impl Hashable for LeafNode{
+    fn get_hash(&self) -> [u8; 32] {
+        self.hash
+    }
+}
 impl LeafData for LeafNode {
     fn data(&self) -> &Vec<u8> {
         &self.compressed_data
@@ -132,11 +137,11 @@ impl LeafData for LeafNode {
 
 impl LeafIO for LeafNode {
     fn write_blob(&self, path: &Path) -> bool {
-        let dir_path = path.join(&Node::get_hash_string(&self.hash)[..2]);
+        let dir_path = path.join(&LeafNode::hash_to_hex_string(&self.hash)[..2]);
         if !dir_path.exists() {
             fs::create_dir_all(&dir_path).expect("Failed to create tree dir");
         }
-        let file_path = dir_path.join(&Node::get_hash_string(&self.hash)[2..]);
+        let file_path = dir_path.join(&LeafNode::hash_to_hex_string(&self.hash)[2..]);
 
         let mut file: File;
         file = OpenOptions::new()

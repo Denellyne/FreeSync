@@ -23,7 +23,7 @@ fn execute_commands(mut args: Vec<String>) -> Vec<String> {
 fn build_tree(mut args: Vec<String>) -> Vec<String> {
     let dir: String = args.remove(1);
 
-    let node = MerkleTree::new(PathBuf::from(dir)).expect("Unable to create tree");
+    let node = MerkleTree::create(PathBuf::from(dir)).expect("Unable to create tree");
     #[cfg(debug_assertions)]
     println!("{:?}", node);
 

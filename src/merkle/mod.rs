@@ -9,7 +9,7 @@ pub mod treenode;
 mod tests;
 
 use crate::merkle::node::{LeafNode, Node, TreeNode};
-use crate::merkle::traits::{CompressedData, IO, LeafData, TreeIO};
+use crate::merkle::traits::{CompressedData, IO, LeafData, TreeIO, Hashable, HashableNode};
 use std::collections::HashSet;
 use std::fs;
 use std::fs::DirEntry;
@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 pub struct MerkleTree;
 
 impl MerkleTree {
-    pub fn new(path: PathBuf) -> Result<TreeNode, String> {
+    pub fn create(path: PathBuf) -> Result<TreeNode, String> {
         match fs::read_dir(&path) {
             Ok(_) => match path {
                 path if path.is_dir() => MerkleTree::new_tree(path),
@@ -89,7 +89,7 @@ impl MerkleTree {
             vec.sort_by(|a, b| a.get_path().cmp(b.get_path()));
         }
         Ok(TreeNode {
-            hash: Self::hash_tree(&dir_path, &vec),
+            hash: TreeNode::hash_tree(&dir_path, &vec),
             file_path: dir_path,
             children: vec,
         })
@@ -99,43 +99,20 @@ impl MerkleTree {
         let file_contents = Self::read_file(path);
         match file_contents {
             Ok(contents) => {
-                let hash = Self::hash(path, &contents);
+                let hash = Node::hash(path, &contents);
                 Ok((hash, contents))
             }
             _ => Err(format!("Unable to read file {}", path.display())),
         }
     }
-    fn hash(path: &Path, vec: &[u8]) -> [u8; 32] {
-        use sha2::{Digest, Sha256};
 
-        match path.to_str() {
-            Some(str) => {
-                let mut data = str.as_bytes().to_owned();
-                data.extend(vec);
-                Sha256::digest(&data).into()
-            }
-            None => panic!("Unable to convert path to string"),
-        }
-    }
-    fn hash_tree(path: &Path, vec: &[Node]) -> [u8; 32] {
-        let mut data: Vec<u8> = Vec::with_capacity(vec.len() * 32);
 
-        for index in 0..vec.len() {
-            let children_hash = vec
-                .get(index)
-                .expect("Invalid access to children vector,probably out of bounds")
-                .get_hash();
-            data.extend_from_slice(&children_hash);
-        }
-
-        MerkleTree::hash(path, &data)
-    }
 
     fn from_blob(path: impl AsRef<Path>) -> Result<LeafNode, String> {
         match fs::read(&path) {
             Ok(data) => {
                 let uncompressed = Self::decompress(&data);
-                let hash = MerkleTree::hash(path.as_ref(), &uncompressed);
+                let hash = Node::hash(path.as_ref(), &uncompressed);
                 Ok(LeafNode {
                     file_path: path.as_ref().to_path_buf(),
                     hash,
@@ -149,7 +126,7 @@ impl MerkleTree {
     pub fn get_blob_data(path: impl AsRef<Path>) -> Result<String, String> {
         match Self::from_blob(path) {
             Ok(node) => {
-                let hash = Node::get_hash_string(&node.hash);
+                let hash = Node::hash_to_hex_string(&node.hash);
                 let data = MerkleTree::decompress(node.data());
                 let data = match String::from_utf8(data.clone()) {
                     Ok(data) => data,
@@ -164,3 +141,4 @@ impl MerkleTree {
 }
 impl CompressedData for MerkleTree {}
 impl IO for MerkleTree {}
+

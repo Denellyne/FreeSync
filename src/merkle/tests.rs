@@ -81,7 +81,7 @@ fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<Diff>) {
         }
     }
 
-    let tree = Node::Tree(MerkleTree::new(path.to_path_buf()).expect("Unable to create tree"));
+    let tree = Node::Tree(MerkleTree::create(path.to_path_buf()).expect("Unable to create tree"));
     (Ok(tree), differences)
 }
 

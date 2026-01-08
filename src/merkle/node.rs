@@ -1,5 +1,5 @@
 pub(crate) use crate::merkle::diff::{Change, Diff};
-use crate::merkle::traits::LeafData;
+use crate::merkle::traits::{Hashable, LeafData};
 use std::collections;
 use std::collections::BTreeMap;
 use std::hash::Hash;
@@ -24,11 +24,16 @@ pub enum Node {
     Leaf(LeafNode),
 }
 // Todo create a builder for a merkle tree and make the data structures pure
-
-impl Node {
-    pub fn get_hash_string(hash: &[u8; 32]) -> String {
-        hash.iter().map(|b| format!("{:02x}", b)).collect()
+impl Hashable for Node {
+    fn get_hash(&self) -> [u8; 32] {
+        match self {
+            Node::Tree(tree) => tree.get_hash(),
+            Node::Leaf(leaf) => leaf.get_hash(),
+        }
     }
+}
+impl Node {
+
     pub fn get_hash(&self) -> [u8; 32] {
         match self {
             Node::Tree(tree) => tree.hash,

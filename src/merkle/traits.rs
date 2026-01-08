@@ -1,10 +1,32 @@
-use crate::merkle::node::Change;
+use crate::merkle::node::{Change, Node};
 use flate2::read::ZlibDecoder;
 use std::fs;
 use std::fs::{File, OpenOptions, ReadDir};
 use std::io::Write;
 use std::path::Path;
 
+pub trait Hashable{
+    fn hash(path: &Path,vec: &[u8]) -> [u8; 32]{
+        use sha2::{Digest, Sha256};
+
+        match path.to_str() {
+            Some(str) => {
+                let mut data = str.as_bytes().to_owned();
+                data.extend(vec);
+                Sha256::digest(&data).into()
+            }
+            None => panic!("Unable to convert path to string"),
+        }
+    }
+     fn hash_to_hex_string(hash: &[u8; 32]) -> String {
+        hash.iter().map(|b| format!("{:02x}", b)).collect()
+    }
+    
+    fn get_hash(&self) -> [u8; 32];
+}
+pub trait HashableNode: Hashable + TreeIO{
+    fn hash_tree(path: &Path,vec: &[Node]) -> [u8; 32];
+}
 pub trait CompressedData {
     fn compress(data: &[u8]) -> Vec<u8> {
         use flate2::Compression;

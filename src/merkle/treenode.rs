@@ -1,9 +1,34 @@
 use crate::merkle::node::{Node, TreeNode};
-use crate::merkle::traits::LeafIO;
-use crate::merkle::traits::TreeIO;
 use crate::merkle::traits::internal_traits::TreeIOInternal;
+use crate::merkle::traits::TreeIO;
+use crate::merkle::traits::{Hashable, HashableNode, LeafIO};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+impl Hashable for TreeNode {
+    fn get_hash(&self) -> [u8; 32] {
+        self.hash
+    }
+}
+impl HashableNode for TreeNode{
+
+
+    fn hash_tree(path: &Path,children: &[Node]) -> [u8; 32]
+
+    {
+        let mut data: Vec<u8> = Vec::with_capacity(children.len() * 32);
+        
+        for index in 0..children.len() {
+            let children_hash = children
+              .get(index)
+              .expect("Invalid access to children vector,probably out of bounds")
+              .get_hash();
+            data.extend_from_slice(&children_hash);
+        }
+
+        <Node as Hashable>::hash(path, data.as_slice())
+    }
+}
 
 impl TreeIO for TreeNode {
     fn save_tree(&self) -> bool {
@@ -50,11 +75,11 @@ impl TreeIOInternal for TreeNode {
     }
 
     fn write_tree(&self) -> bool {
-        let path = PathBuf::from(Self::OBJ_FOLDER).join(&Node::get_hash_string(&self.hash)[..2]);
+        let path = PathBuf::from(Self::OBJ_FOLDER).join(&Self::hash_to_hex_string(&self.hash)[..2]);
         if !path.exists() {
             fs::create_dir_all(&path).expect("Failed to create tree dir");
         }
-        let parent_file = path.join(&Node::get_hash_string(&self.hash)[2..]);
+        let parent_file = path.join(&Self::hash_to_hex_string(&self.hash)[2..]);
 
         for child in &self.children {
             match child {
