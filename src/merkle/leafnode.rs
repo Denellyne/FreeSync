@@ -1,12 +1,12 @@
-use std::fs;
 use crate::merkle::diff::Change;
 use crate::merkle::node::{LeafNode, Node};
 use crate::merkle::traits::{CompressedData, LeafData, LeafIO};
+use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
-impl CompressedData for LeafNode {}
 
+impl CompressedData for LeafNode {}
 impl LeafData for LeafNode {
     fn data(&self) -> &Vec<u8> {
         &self.compressed_data
@@ -151,7 +151,5 @@ impl LeafIO for LeafNode {
         true
     }
 
-    fn read_blob(path: &Path) -> Result<Self, String> {
-        todo!()
-    }
+    
 }

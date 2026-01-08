@@ -9,7 +9,7 @@ pub mod treenode;
 mod tests;
 
 use crate::merkle::node::{LeafNode, Node, TreeNode};
-use crate::merkle::traits::{CompressedData, IO, TreeIO};
+use crate::merkle::traits::{CompressedData, IO, TreeIO, LeafData};
 use std::collections::HashSet;
 use std::fs;
 use std::fs::{DirEntry};
@@ -129,6 +129,33 @@ impl MerkleTree {
         }
 
         MerkleTree::hash(path, &data)
+    }
+
+    fn from_blob(path: impl AsRef<Path>) -> Result<LeafNode, String> {
+        match fs::read(&path) {
+            Ok(data)  => {
+                let uncompressed = Self::decompress(&data);
+                let hash = MerkleTree::hash(path.as_ref(),&uncompressed);
+                Ok(LeafNode{file_path:path.as_ref().to_path_buf(),hash,compressed_data:data})
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn get_blob_data(path: impl AsRef<Path>) -> Result<String, String> {
+        match Self::from_blob(path) {
+            Ok(node) =>{
+                let hash = Node::get_hash_string(&node.hash);
+                let data = MerkleTree::decompress(node.data());
+                let data =  match String::from_utf8(data.clone()) {
+                    Ok(data) => data,
+                    _ => data.iter().map(|b| format!("{:02x}", b)).collect()
+                };
+
+                Ok(format!("Data:{}\nHash:{}\n",data,hash))
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 impl CompressedData for MerkleTree {}

@@ -79,9 +79,7 @@ pub trait TreeIO: internal_traits::TreeIOInternal {
 
 pub(in crate::merkle) trait LeafIO: LeafData {
     fn write_blob(&self, path: &Path) -> bool;
-    fn read_blob(path: &Path) -> Result<Self, String>
-    where
-        Self: Sized;
+
 }
 
 pub trait IO {
