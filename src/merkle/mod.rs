@@ -9,13 +9,18 @@ pub mod treenode;
 mod tests;
 
 use crate::merkle::node::{LeafNode, Node, TreeNode};
-use crate::merkle::traits::{CompressedData, Hashable, HashableNode, IO, LeafData, TreeIO};
+use crate::merkle::traits::{CompressedData, Hashable, HashableNode, IO, LeafData, EntryData};
 use std::collections::HashSet;
 use std::fs;
 use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 
 pub struct MerkleTree;
+
+enum MerkleEntry{
+    Blob{hash:[u8; 32],file_name:String,mode:&'static [u8;6]},
+    Tree{hash:[u8; 32],file_name:String,entries: Vec<MerkleEntry>},
+}
 
 impl MerkleTree {
     pub fn create(path: PathBuf) -> Result<TreeNode, String> {
@@ -32,30 +37,72 @@ impl MerkleTree {
             ))?,
         }
     }
-    pub fn from(path: PathBuf) -> Result<Node, String> {
-        match TreeNode::read_tree(&path) {
-            Ok(node) => Ok(Node::Tree(node)),
-            Err(_) => Err(format!("Unable to read tree: {}", path.display())),
+    pub fn from(path: impl AsRef<Path>) -> Result<Node, String> {
+
+        fn read_until_null(data: &[u8]) -> (&[u8], &[u8]) {
+            if let Some(pos) = data.iter().position(|&b| b == 0) {
+                ( &data[..pos], &data[pos + 2..])
+            } else {
+                (data, &[]) // no null found, return everything
+            }
         }
+
+        let path = path.as_ref();
+        let mut entries: Vec<MerkleEntry>  = Vec::new();
+
+        let data = Self::read_file(path)?;
+        while !data.is_empty(){
+            let mode : &[u8;6] =  &data[..=6].try_into().expect("Error converting to slice");
+            if !mode.eq(Self::REGULAR_FILE) && !mode.eq(Self::EXECUTABLE_FILE) && !mode.eq(Self::DIRECTORY) {
+                return Err(format!("Invalid mode: {}", String::from_utf8_lossy(mode)));
+            }
+            let data = &data[7..];
+            let (file_name,mut data) = read_until_null(data);
+            let hash_vec : [u8;32]  =data.split_off(..32).expect("Unable to read blob").to_vec().try_into().expect("Unable to convert blob into a 32 byte array");
+            let file_name = String::from_utf8_lossy(file_name).to_string();
+            let mode = match mode{
+                Self::REGULAR_FILE => Self::REGULAR_FILE,
+                Self::EXECUTABLE_FILE => Self::EXECUTABLE_FILE,
+                Self::DIRECTORY => Self::DIRECTORY,
+                _ => return Err("Invalid mode parsed".to_string()),
+            };
+            entries.push(MerkleEntry::Blob{hash:hash_vec,file_name,mode });
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        todo!()
+
     }
 
     fn new_node(path: DirEntry) -> Result<Node, String> {
         match path.path() {
             path if path.is_dir() => Ok(Node::Tree(Self::new_tree(path)?)),
-            path if path.is_file() => Self::new_leaf(path),
+            path if path.is_file() => Ok(Node::Leaf(Self::new_leaf(path)?)),
             _ => Err(format!(
                 "Unable to generate new node, {}",
                 path.path().display()
             )),
         }
     }
-    fn new_leaf(file_path: PathBuf) -> Result<Node, String> {
+    fn new_leaf(file_path: PathBuf) -> Result<LeafNode, String> {
         match Self::hash_file(&file_path) {
-            Ok((hash, data)) => Ok(Node::Leaf(LeafNode {
+            Ok((hash, data)) => Ok(LeafNode {
                 hash,
                 compressed_data: MerkleTree::compress(&data),
                 file_path,
-            })),
+            }),
             Err(e) => Err(e),
         }
     }
@@ -89,20 +136,20 @@ impl MerkleTree {
             vec.sort_by(|a, b| a.get_path().cmp(b.get_path()));
         }
         Ok(TreeNode {
-            hash: TreeNode::hash_tree(&dir_path, &vec),
+            hash: TreeNode::hash_tree(&vec),
             file_path: dir_path,
             children: vec,
         })
     }
 
-    fn hash_file(path: &PathBuf) -> Result<([u8; 32], Vec<u8>), String> {
-        let file_contents = Self::read_file(path);
+    fn hash_file(path: impl AsRef<Path>) -> Result<([u8; 32], Vec<u8>), String> {
+        let file_contents = Self::read_file(&path);
         match file_contents {
             Ok(contents) => {
-                let hash = Node::hash(path, &contents);
+                let hash = Node::hash(&contents);
                 Ok((hash, contents))
             }
-            _ => Err(format!("Unable to read file {}", path.display())),
+            _ => Err(format!("Unable to read file {}", path.as_ref().display())),
         }
     }
 
@@ -110,7 +157,7 @@ impl MerkleTree {
         match fs::read(&path) {
             Ok(data) => {
                 let uncompressed = Self::decompress(&data);
-                let hash = Node::hash(path.as_ref(), &uncompressed);
+                let hash = Node::hash(&uncompressed);
                 Ok(LeafNode {
                     file_path: path.as_ref().to_path_buf(),
                     hash,
@@ -139,3 +186,5 @@ impl MerkleTree {
 }
 impl CompressedData for MerkleTree {}
 impl IO for MerkleTree {}
+impl EntryData for MerkleTree{}
+impl EntryData for MerkleEntry{}

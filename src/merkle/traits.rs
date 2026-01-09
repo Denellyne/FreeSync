@@ -6,18 +6,7 @@ use std::io::Write;
 use std::path::Path;
 
 pub trait Hashable {
-    fn hash(path: &Path, vec: &[u8]) -> [u8; 32] {
-        use sha2::{Digest, Sha256};
-
-        match path.to_str() {
-            Some(str) => {
-                let mut data = str.as_bytes().to_owned();
-                data.extend(vec);
-                Sha256::digest(&data).into()
-            }
-            None => panic!("Unable to convert path to string"),
-        }
-    }
+    fn hash(vec: &[u8]) -> [u8; 32];
     fn hash_to_hex_string(hash: &[u8; 32]) -> String {
         hash.iter().map(|b| format!("{:02x}", b)).collect()
     }
@@ -25,7 +14,7 @@ pub trait Hashable {
     fn get_hash(&self) -> [u8; 32];
 }
 pub trait HashableNode: Hashable + TreeIO {
-    fn hash_tree(path: &Path, vec: &[Node]) -> [u8; 32];
+    fn hash_tree(vec: &[Node]) -> [u8; 32];
 }
 pub trait CompressedData {
     fn compress(data: &[u8]) -> Vec<u8> {
@@ -55,21 +44,27 @@ pub(in crate::merkle) trait LeafData: CompressedData {
     fn diff_file(&self, other: &Self) -> Vec<Change>;
 }
 
+pub(in crate::merkle) trait EntryData{
+    const REGULAR_FILE: &'static [u8; 6] =    b"100644";
+    const EXECUTABLE_FILE: &'static [u8; 6] = b"100755";
+    const SYMBOLIC_LINK: &'static [u8; 6] =   b"120000";
+    const DIRECTORY: &'static [u8; 6] =       b"040000";
+}
+
 pub(in crate::merkle) mod internal_traits {
     use std::fs::{File, OpenOptions};
     use std::io::Write;
     use std::path::Path;
-
     pub trait TreeIOInternal {
+
+
+
         const MAIN_FOLDER: &'static str = ".\\.freesync";
         const OBJ_FOLDER: &'static str = ".\\.freesync\\objects";
         const HEAD_FILE: &'static str = ".\\.freesync\\HEAD";
         fn init(&self) -> bool;
 
         fn write_tree(&self) -> bool;
-        fn read_tree(path: impl AsRef<Path>) -> Result<Self, String>
-        where
-            Self: Sized;
 
         fn write_file(&self, path: impl AsRef<Path>, data: impl AsRef<[u8]>) -> bool {
             let mut file: File;
@@ -94,13 +89,11 @@ pub(in crate::merkle) mod internal_traits {
 
 pub trait TreeIO: internal_traits::TreeIOInternal {
     fn save_tree(&self) -> bool;
-    fn read_tree(path: impl AsRef<Path>) -> Result<Self, String>
-    where
-        Self: Sized;
 }
 
 pub(in crate::merkle) trait LeafIO: LeafData {
     fn write_blob(&self, path: &Path) -> bool;
+    fn is_executable(&self) -> bool;
 }
 
 pub trait IO {

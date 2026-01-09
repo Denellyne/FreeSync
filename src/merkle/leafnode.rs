@@ -8,6 +8,12 @@ use std::path::Path;
 
 impl CompressedData for LeafNode {}
 impl Hashable for LeafNode {
+    fn hash(vec: &[u8]) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        let mut data: Vec<u8> = format!("blob {}\0", vec.len()).into_bytes();
+        data.extend_from_slice(vec);
+        Sha256::digest(data).into()
+    }
     fn get_hash(&self) -> [u8; 32] {
         self.hash
     }
@@ -151,8 +157,20 @@ impl LeafIO for LeafNode {
             .open(&file_path)
             .unwrap_or_else(|_| panic!("Unable to open file {}", file_path.display()));
 
-        file.write_all(self.data()).expect("Unable to write data");
-        file.flush().expect("Unable to flush data");
+        file.write_all(self.data())
+            .expect("Failed to to write data");
+        file.flush().expect("Failed to flush data");
         true
+    }
+
+    fn is_executable(&self) -> bool {
+        #[cfg(unix)]
+        match fs::metadata(self.file_path).expect("Failed to get file metadata") {
+            metadata if metadata.permissions().mode() & 0o111 != 0 => true,
+            _ => false,
+        }
+
+        #[cfg(windows)]
+        matches!(self.file_path.extension().and_then(|ext| ext.to_str()), Some("exe") | Some("bat") | Some("cmd") | Some("sh"))
     }
 }

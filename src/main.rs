@@ -10,7 +10,7 @@ fn execute_commands(mut args: Vec<String>) -> Vec<String> {
     match opt.as_str() {
         "-b" => {
             let path = args.remove(1);
-            let node = MerkleTree::get_blob_data(path);
+            let node = MerkleTree::get_blob_data(&path);
             match node {
                 Ok(node) => println!("{}", node),
                 Err(msg) => println!("{}", msg),
@@ -54,7 +54,6 @@ fn main() {
 
 /*
 Todo
-Compare trees and get all different points
 Create Server
 remove expects and unwraps everywhere
 */

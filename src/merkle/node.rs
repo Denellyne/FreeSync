@@ -25,6 +25,10 @@ pub enum Node {
 }
 // Todo create a builder for a merkle tree and make the data structures pure
 impl Hashable for Node {
+    fn hash(vec: &[u8]) -> [u8; 32] {
+        <LeafNode as Hashable>::hash(vec)
+    }
+
     fn get_hash(&self) -> [u8; 32] {
         match self {
             Node::Tree(tree) => tree.get_hash(),
@@ -38,6 +42,14 @@ impl Node {
             Node::Tree(tree) => &tree.file_path,
             Node::Leaf(leaf) => &leaf.file_path,
         }
+    }
+
+    pub fn get_filename(&self) -> &str {
+        self.get_path()
+            .file_name()
+            .expect("Failed to get filename")
+            .to_str()
+            .expect("Failed to get filename")
     }
 
     fn separate_different<'a, 'b>(
