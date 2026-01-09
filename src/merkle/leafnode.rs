@@ -4,6 +4,8 @@ use crate::merkle::traits::{CompressedData, Hashable, LeafData, LeafIO};
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 impl CompressedData for LeafNode {}
@@ -165,12 +167,24 @@ impl LeafIO for LeafNode {
 
     fn is_executable(&self) -> bool {
         #[cfg(unix)]
-        match fs::metadata(self.file_path).expect("Failed to get file metadata") {
-            metadata if metadata.permissions().mode() & 0o111 != 0 => true,
-            _ => false,
+        {
+            let metadata = fs::metadata(&self.file_path);
+            let file_mode = metadata
+                .expect("Unable to read file metadata")
+                .permissions()
+                .mode();
+            if file_mode & 0o111 != 0 {
+                return true;
+            }
+            false
         }
 
         #[cfg(windows)]
-        matches!(self.file_path.extension().and_then(|ext| ext.to_str()), Some("exe") | Some("bat") | Some("cmd") | Some("sh"))
+        {
+            matches!(
+                self.file_path.extension().and_then(|ext| ext.to_str()),
+                Some("exe") | Some("bat") | Some("cmd") | Some("sh")
+            );
+        }
     }
 }

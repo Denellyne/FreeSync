@@ -1,2 +1,4 @@
 # FreeSync
-A Git-like storage server
+A Git-like storage server built in rust
+
+
