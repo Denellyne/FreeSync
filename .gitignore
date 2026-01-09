@@ -13,7 +13,7 @@ target
 # Contains mutation testing data
 **/mutants.out*/
 
-./freesync
+./.freesync
 
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
