@@ -1,6 +1,7 @@
 use crate::merkle::node::{Change, Diff};
-use crate::merkle::traits::{LeafData, LeafIO};
+use crate::merkle::traits::{LeafData, LeafIO, TreeIO};
 use crate::merkle::*;
+use core::panic;
 use rand::random;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -12,12 +13,12 @@ fn random_tree_builder(
 ) -> (Result<Node, String>, Vec<Diff>, Option<TempDir>) {
     match path {
         Some(path) => {
-            let (node, vec) = generate_random_tree(path);
+            let (node, vec, _, _) = generate_random_tree(path);
             (node, vec, None)
         }
         None => {
             let temp_dir = tempfile::tempdir().expect("Unable to create temp dir");
-            let (node, vec) = generate_random_tree(temp_dir.path().to_path_buf());
+            let (node, vec, _, _) = generate_random_tree(temp_dir.path().to_path_buf());
             (node, vec, Some(temp_dir))
         }
     }
@@ -60,7 +61,14 @@ fn generate_random_file(path: &PathBuf) -> NamedTempFile {
         write_random_to_file(NamedTempFile::new_in(path).expect("Unable to create temporary file"));
     file
 }
-fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<Diff>) {
+fn generate_random_tree(
+    path: PathBuf,
+) -> (
+    Result<Node, String>,
+    Vec<Diff>,
+    Vec<NamedTempFile>,
+    Vec<TempDir>,
+) {
     let mut differences: Vec<Diff> = Vec::new();
 
     let size = random::<u8>() % u8::MAX + 1;
@@ -100,7 +108,7 @@ fn generate_random_tree(path: PathBuf) -> (Result<Node, String>, Vec<Diff>) {
     }
 
     let tree = Node::Tree(MerkleTree::create(path.to_path_buf()).expect("Unable to create tree"));
-    (Ok(tree), differences)
+    (Ok(tree), differences, temporary_files, temporary_folders)
 }
 
 #[test]
@@ -211,14 +219,32 @@ fn test_read_blob() {
 }
 
 #[test]
+fn test_write_tree() {
+    let dir: TempDir = TempDir::new().expect("Unable to create temporary folder");
+    let path = PathBuf::from(dir.path());
+
+    let (tree, _diff, files, dirs) = match generate_random_tree(dir.path().to_path_buf()) {
+        (Ok(Node::Tree(tree)), _diff, files, dirs) => (tree, _diff, files, dirs),
+        (Ok(Node::Leaf(_)), _, _, _) => panic!("Returned a leaf from random tree function"),
+        (Err(e), _, _, _) => panic!("Unable to create MerkleTree: {}", e),
+    };
+    todo!();
+}
+
+#[test]
 fn test_read_tree() {
-    let dir = TempDir::new().expect("Unable to create temporary folder");
-    let (tree, _diff) = match generate_random_tree(dir.path().to_path_buf()) {
-        (Ok(tree), _diff) => (tree, _diff),
-        (Err(e), _) => panic!("Unable to create MerkleTree: {}", e),
+    let dir: TempDir = TempDir::new().expect("Unable to create temporary folder");
+    let path = PathBuf::from(dir.path());
+
+    let (tree, _diff, files, dirs) = match generate_random_tree(dir.path().to_path_buf()) {
+        (Ok(Node::Tree(tree)), _diff, files, dirs) => (tree, _diff, files, dirs),
+        (Ok(Node::Leaf(_)), _, _, _) => panic!("Returned a leaf from random tree function"),
+        (Err(e), _, _, _) => panic!("Unable to create MerkleTree: {}", e),
     };
 
-    let t2 = MerkleTree::from(PathBuf::from(dir.path())).expect("Unable to read tree");
+    tree.save_tree();
 
-    assert_eq!(tree, t2);
+    let t2 = MerkleTree::from(path).expect("Unable to create tree 2");
+
+    assert_eq!(Node::Tree(tree), t2);
 }

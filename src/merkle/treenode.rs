@@ -3,7 +3,7 @@ use crate::merkle::traits::internal_traits::TreeIOInternal;
 use crate::merkle::traits::{EntryData, TreeIO};
 use crate::merkle::traits::{Hashable, HashableNode, LeafIO};
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 
 impl EntryData for TreeNode {}
 
@@ -36,7 +36,7 @@ impl TreeIO for TreeNode {
             eprintln!("Unable to init tree directory");
             return false;
         }
-        if !self.write_tree() {
+        if !self.write_tree(&self.file_path) {
             eprintln!("Unable to write tree file");
             return false;
         }
@@ -49,7 +49,7 @@ impl TreeIOInternal for TreeNode {
     fn init(&self) -> bool {
         let paths = [Self::MAIN_FOLDER, Self::OBJ_FOLDER];
         for path in paths.iter() {
-            let path = PathBuf::from(path);
+            let path = self.file_path.join(path);
 
             if !path.exists() && fs::create_dir_all(path).is_err() {
                 eprintln!("Unable to create new tree directory");
@@ -57,11 +57,15 @@ impl TreeIOInternal for TreeNode {
             }
         }
 
-        self.write_file(Self::HEAD_FILE, self.hash)
+        self.write_file(self.file_path.join(Self::HEAD_FILE), self.hash)
     }
 
-    fn write_tree(&self) -> bool {
-        let path = PathBuf::from(Self::OBJ_FOLDER).join(&Self::hash_to_hex_string(&self.hash)[..2]);
+    fn write_tree(&self, cwd: impl AsRef<Path>) -> bool {
+        let cwd = cwd.as_ref().to_path_buf();
+        let obj_folder = cwd.join(Self::OBJ_FOLDER);
+        let path = cwd
+            .join(Self::OBJ_FOLDER)
+            .join(&Self::hash_to_hex_string(&self.hash)[..2]);
         if !path.exists() {
             fs::create_dir_all(&path).expect("Failed to create tree dir");
         }
@@ -72,7 +76,7 @@ impl TreeIOInternal for TreeNode {
             let filename = child.get_filename();
             let entry = match child {
                 Node::Leaf(child) => {
-                    if !child.write_blob(Self::OBJ_FOLDER.as_ref()) {
+                    if !child.write_blob(&obj_folder) {
                         eprintln!("Error writing blob to disk: {}", child.file_path.display());
                         return false;
                     }
@@ -82,7 +86,7 @@ impl TreeIOInternal for TreeNode {
                     }
                 }
                 Node::Tree(child) => {
-                    if !child.write_tree() {
+                    if !child.write_tree(&cwd) {
                         eprintln!("Error writing tree to disk: {}", child.file_path.display());
                         return false;
                     }

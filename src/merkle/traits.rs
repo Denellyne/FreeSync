@@ -45,7 +45,7 @@ pub(in crate::merkle) trait LeafData: CompressedData {
 }
 
 pub(in crate::merkle) trait EntryData {
-    const REGULAR_FILE: &'static [u8; 6] = b"100644";
+    const REGULAR_FILE: &'static [u8; 6] = b"100000";
     const EXECUTABLE_FILE: &'static [u8; 6] = b"100755";
     const SYMBOLIC_LINK: &'static [u8; 6] = b"120000";
     const DIRECTORY: &'static [u8; 6] = b"040000";
@@ -56,12 +56,12 @@ pub(in crate::merkle) mod internal_traits {
     use std::io::Write;
     use std::path::Path;
     pub trait TreeIOInternal {
-        const MAIN_FOLDER: &'static str = ".\\.freesync";
-        const OBJ_FOLDER: &'static str = ".\\.freesync\\objects";
-        const HEAD_FILE: &'static str = ".\\.freesync\\HEAD";
+        const MAIN_FOLDER: &'static str = ".freesync";
+        const OBJ_FOLDER: &'static str = ".freesync/objects";
+        const HEAD_FILE: &'static str = ".freesync/HEAD";
         fn init(&self) -> bool;
 
-        fn write_tree(&self) -> bool;
+        fn write_tree(&self, cwd: impl AsRef<Path>) -> bool;
 
         fn write_file(&self, path: impl AsRef<Path>, data: impl AsRef<[u8]>) -> bool {
             let mut file: File;
@@ -97,7 +97,7 @@ pub trait IO {
     fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, String> {
         match fs::read(&path) {
             Ok(data) => Ok(data),
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(format!("{} Path:{}", e, path.as_ref().display())),
         }
     }
 

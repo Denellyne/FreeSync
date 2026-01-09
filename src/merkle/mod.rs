@@ -9,7 +9,8 @@ pub mod treenode;
 mod tests;
 
 use crate::merkle::node::{LeafNode, Node, TreeNode};
-use crate::merkle::traits::{CompressedData, EntryData, Hashable, HashableNode, LeafData, IO};
+use crate::merkle::traits::internal_traits::TreeIOInternal;
+use crate::merkle::traits::{CompressedData, EntryData, Hashable, HashableNode, IO, LeafData};
 use std::collections::HashSet;
 use std::fs;
 use std::fs::DirEntry;
@@ -54,40 +55,49 @@ impl MerkleTree {
             }
         }
 
-        let path = path.as_ref();
+        let head_file = path.as_ref().join(TreeNode::HEAD_FILE);
+        let data = Self::read_file(head_file)?;
+
+        let path = path.as_ref().join(TreeNode::OBJ_FOLDER);
+
+        let header = Node::hash_to_hex_string(data);
+        let data_path = path.join(header);
+        let data = Self::read_file(data_path)?;
+
         let mut entries: Vec<MerkleEntry> = Vec::new();
 
-        let data = Self::read_file(path)?;
+        let data_copied = data.clone();
         while !data.is_empty() {
-            let mode: &[u8; 6] = &data[..=6].try_into().expect("Error converting to slice");
-            if !mode.eq(Self::REGULAR_FILE)
-                && !mode.eq(Self::EXECUTABLE_FILE)
-                && !mode.eq(Self::DIRECTORY)
-            {
-                return Err(format!("Invalid mode: {}", String::from_utf8_lossy(mode)));
+            let mode: &[u8; 6] = &data[..6].try_into().expect("Error converting to slice");
+            match mode {
+                Self::REGULAR_FILE | Self::EXECUTABLE_FILE => {
+                    let mode = match mode {
+                        Self::REGULAR_FILE => Self::REGULAR_FILE,
+                        Self::EXECUTABLE_FILE => Self::EXECUTABLE_FILE,
+                        _ => return Err("Invalid mode parsed".to_string()),
+                    };
+
+                    let data = &data[7..];
+                    let (file_name, mut data) = read_until_null(data);
+                    let hash_vec: [u8; 32] = data
+                        .split_off(..32)
+                        .expect("Unable to read blob")
+                        .to_vec()
+                        .try_into()
+                        .expect("Unable to convert blob into a 32 byte array");
+                    let file_name = String::from_utf8_lossy(file_name).to_string();
+                    entries.push(MerkleEntry::Blob {
+                        hash: hash_vec,
+                        file_name,
+                        mode,
+                    });
+                }
+                Self::DIRECTORY => {}
+                _ => return Err(format!("Invalid mode: {:?}\nData:{:?}", mode, data_copied)),
             }
-            let data = &data[7..];
-            let (file_name, mut data) = read_until_null(data);
-            let hash_vec: [u8; 32] = data
-                .split_off(..32)
-                .expect("Unable to read blob")
-                .to_vec()
-                .try_into()
-                .expect("Unable to convert blob into a 32 byte array");
-            let file_name = String::from_utf8_lossy(file_name).to_string();
-            let mode = match mode {
-                Self::REGULAR_FILE => Self::REGULAR_FILE,
-                Self::EXECUTABLE_FILE => Self::EXECUTABLE_FILE,
-                Self::DIRECTORY => Self::DIRECTORY,
-                _ => return Err("Invalid mode parsed".to_string()),
-            };
-            entries.push(MerkleEntry::Blob {
-                hash: hash_vec,
-                file_name,
-                mode,
-            });
         }
 
+        println!("ahahha");
         todo!()
     }
 

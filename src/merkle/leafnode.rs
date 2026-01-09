@@ -170,7 +170,12 @@ impl LeafIO for LeafNode {
         {
             let metadata = fs::metadata(&self.file_path);
             let file_mode = metadata
-                .expect("Unable to read file metadata")
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "Unable to read file metadata, file:{}",
+                        self.file_path.display()
+                    )
+                })
                 .permissions()
                 .mode();
             if file_mode & 0o111 != 0 {
