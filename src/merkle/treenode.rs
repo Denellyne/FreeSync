@@ -5,7 +5,7 @@ use crate::merkle::traits::{Hashable, HashableNode, LeafIO};
 use std::fs;
 use std::path::PathBuf;
 
-impl EntryData for TreeNode{}
+impl EntryData for TreeNode {}
 
 impl Hashable for TreeNode {
     fn hash(vec: &[u8]) -> [u8; 32] {
@@ -99,5 +99,4 @@ impl TreeIOInternal for TreeNode {
         self.write_file(&parent_file, data);
         true
     }
-    
 }

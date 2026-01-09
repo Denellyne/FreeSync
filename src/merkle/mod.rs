@@ -9,7 +9,7 @@ pub mod treenode;
 mod tests;
 
 use crate::merkle::node::{LeafNode, Node, TreeNode};
-use crate::merkle::traits::{CompressedData, Hashable, HashableNode, IO, LeafData, EntryData};
+use crate::merkle::traits::{CompressedData, EntryData, Hashable, HashableNode, LeafData, IO};
 use std::collections::HashSet;
 use std::fs;
 use std::fs::DirEntry;
@@ -17,9 +17,17 @@ use std::path::{Path, PathBuf};
 
 pub struct MerkleTree;
 
-enum MerkleEntry{
-    Blob{hash:[u8; 32],file_name:String,mode:&'static [u8;6]},
-    Tree{hash:[u8; 32],file_name:String,entries: Vec<MerkleEntry>},
+enum MerkleEntry {
+    Blob {
+        hash: [u8; 32],
+        file_name: String,
+        mode: &'static [u8; 6],
+    },
+    Tree {
+        hash: [u8; 32],
+        file_name: String,
+        entries: Vec<MerkleEntry>,
+    },
 }
 
 impl MerkleTree {
@@ -38,52 +46,49 @@ impl MerkleTree {
         }
     }
     pub fn from(path: impl AsRef<Path>) -> Result<Node, String> {
-
         fn read_until_null(data: &[u8]) -> (&[u8], &[u8]) {
             if let Some(pos) = data.iter().position(|&b| b == 0) {
-                ( &data[..pos], &data[pos + 2..])
+                (&data[..pos], &data[pos + 2..])
             } else {
                 (data, &[]) // no null found, return everything
             }
         }
 
         let path = path.as_ref();
-        let mut entries: Vec<MerkleEntry>  = Vec::new();
+        let mut entries: Vec<MerkleEntry> = Vec::new();
 
         let data = Self::read_file(path)?;
-        while !data.is_empty(){
-            let mode : &[u8;6] =  &data[..=6].try_into().expect("Error converting to slice");
-            if !mode.eq(Self::REGULAR_FILE) && !mode.eq(Self::EXECUTABLE_FILE) && !mode.eq(Self::DIRECTORY) {
+        while !data.is_empty() {
+            let mode: &[u8; 6] = &data[..=6].try_into().expect("Error converting to slice");
+            if !mode.eq(Self::REGULAR_FILE)
+                && !mode.eq(Self::EXECUTABLE_FILE)
+                && !mode.eq(Self::DIRECTORY)
+            {
                 return Err(format!("Invalid mode: {}", String::from_utf8_lossy(mode)));
             }
             let data = &data[7..];
-            let (file_name,mut data) = read_until_null(data);
-            let hash_vec : [u8;32]  =data.split_off(..32).expect("Unable to read blob").to_vec().try_into().expect("Unable to convert blob into a 32 byte array");
+            let (file_name, mut data) = read_until_null(data);
+            let hash_vec: [u8; 32] = data
+                .split_off(..32)
+                .expect("Unable to read blob")
+                .to_vec()
+                .try_into()
+                .expect("Unable to convert blob into a 32 byte array");
             let file_name = String::from_utf8_lossy(file_name).to_string();
-            let mode = match mode{
+            let mode = match mode {
                 Self::REGULAR_FILE => Self::REGULAR_FILE,
                 Self::EXECUTABLE_FILE => Self::EXECUTABLE_FILE,
                 Self::DIRECTORY => Self::DIRECTORY,
                 _ => return Err("Invalid mode parsed".to_string()),
             };
-            entries.push(MerkleEntry::Blob{hash:hash_vec,file_name,mode });
+            entries.push(MerkleEntry::Blob {
+                hash: hash_vec,
+                file_name,
+                mode,
+            });
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
         todo!()
-
     }
 
     fn new_node(path: DirEntry) -> Result<Node, String> {
@@ -186,5 +191,5 @@ impl MerkleTree {
 }
 impl CompressedData for MerkleTree {}
 impl IO for MerkleTree {}
-impl EntryData for MerkleTree{}
-impl EntryData for MerkleEntry{}
+impl EntryData for MerkleTree {}
+impl EntryData for MerkleEntry {}

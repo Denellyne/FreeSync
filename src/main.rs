@@ -1,6 +1,6 @@
 mod merkle;
-use crate::merkle::MerkleTree;
 use crate::merkle::traits::TreeIO;
+use crate::merkle::MerkleTree;
 use std::env;
 use std::path::PathBuf;
 
