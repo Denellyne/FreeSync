@@ -11,13 +11,27 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7191c74c-5cb2-4c45-8496-52ca98d9aebc" name="Changes" comment="Finished writing the merkle tree implementation and refactored the code whilst organizing it a bit better.&#10;&#10;Next on the line is remove all the panics and excepts" />
+    <list default="true" id="7191c74c-5cb2-4c45-8496-52ca98d9aebc" name="Changes" comment="Refactoring">
+      <change afterPath="$PROJECT_DIR$/.idea/dictionaries/project.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/merkle/merklenode/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/entry.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/merkletree.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/merkletree.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/mod.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/node/leafnode.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/merklenode/leaf.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/node/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/node/node.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/merklenode/node.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/node/treenode.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/merklenode/tree.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/tests.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/tests.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/merkle/traits.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/merkle/traits.rs" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
-  <component name="ExecutionTargetManager" SELECTED_TARGET="RsBuildProfile:release" />
+  <component name="ExecutionTargetManager" SELECTED_TARGET="RsBuildProfile:dev" />
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
       <list>
@@ -101,9 +115,8 @@
       <recent name="C:\Users\Gustavo Santos\RustroverProjects\FreeSync\tests" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="C:\Users\Gustavo Santos\RustroverProjects\FreeSync\src\merkle\diff" />
-      <recent name="C:\Users\Gustavo Santos\RustroverProjects\FreeSync\src\merkle" />
       <recent name="C:\Users\Gustavo Santos\RustroverProjects\FreeSync\src\merkle\merklenode" />
+      <recent name="C:\Users\Gustavo Santos\RustroverProjects\FreeSync\src\merkle" />
       <recent name="C:\Users\Gustavo Santos\RustroverProjects\FreeSync\src\merkle\traits" />
     </key>
   </component>
@@ -365,15 +378,7 @@
       <option name="project" value="LOCAL" />
       <updated>1767884082798</updated>
     </task>
-    <task id="LOCAL-00012" summary="Finished writing the merkle tree implementation and refactored the code whilst organizing it a bit better.&#10;&#10;Next on the line is remove all the panics and excepts">
-      <option name="closed" value="true" />
-      <created>1768077390781</created>
-      <option name="number" value="00012" />
-      <option name="presentableId" value="LOCAL-00012" />
-      <option name="project" value="LOCAL" />
-      <updated>1768077390781</updated>
-    </task>
-    <option name="localTasksCounter" value="13" />
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -388,8 +393,7 @@
     <MESSAGE value="Writing tree to filesystem works now&#10;Will be starting the read process next" />
     <MESSAGE value="Formatter" />
     <MESSAGE value="Refactoring" />
-    <MESSAGE value="Finished writing the merkle tree implementation and refactored the code whilst organizing it a bit better.&#10;&#10;Next on the line is remove all the panics and excepts" />
-    <option name="LAST_COMMIT_MESSAGE" value="Finished writing the merkle tree implementation and refactored the code whilst organizing it a bit better.&#10;&#10;Next on the line is remove all the panics and excepts" />
+    <option name="LAST_COMMIT_MESSAGE" value="Refactoring" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />
