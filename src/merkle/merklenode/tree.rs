@@ -25,17 +25,20 @@ impl TreeNode {
 
         let filter: HashSet<_> = HashSet::from([".freesync"]);
         'pathLoop: for path in paths {
-            let path = path.expect("Unable to read directory entry");
+            let path = match path {
+                Ok(path) => path,
+                Err(_) => return Err(format!("Unable to read directory entry, path: {:?}", path)),
+            };
 
             for str in filter.iter().collect::<Vec<_>>() {
-                if path
-                    .file_name()
-                    .to_str()
-                    .expect("Unable to convert to string")
-                    .contains(str)
-                {
-                    continue 'pathLoop;
-                }
+                match path.file_name().to_str() {
+                    Some(file_name) => {
+                        if file_name.contains(str) {
+                            continue 'pathLoop;
+                        }
+                    }
+                    None => return Err(format!("Unable to read file name: {:?}", &path)),
+                };
             }
 
             match Node::new_node(path) {
@@ -169,22 +172,37 @@ impl TreeIOInternal for TreeNode {
             .join(Self::OBJ_FOLDER)
             .join(&Self::hash_to_hex_string(&self.hash)[..2]);
         if !path.exists() {
-            fs::create_dir_all(&path).expect("Failed to create tree dir");
+            match fs::create_dir_all(&path) {
+                Ok(_) => (),
+                Err(_) => eprintln!("Unable to create object folder"),
+            }
         }
 
         let parent_file = path.join(&Self::hash_to_hex_string(&self.hash)[2..]);
         let mut data: Vec<u8> = Vec::new();
         for child in self.children.iter() {
-            let filename = child.get_filename();
+            let filename = match child.get_filename() {
+                Ok(filename) => filename,
+                Err(_) => return false,
+            };
             let entry = match child {
                 Leaf(child) => {
-                    if !child.write_blob(&obj_folder) {
-                        eprintln!("Error writing blob to disk: {}", child.file_path.display());
-                        return false;
+                    match child.write_blob(&obj_folder) {
+                        Ok(_) => (),
+                        Err(_) => {
+                            eprintln!("Error writing blob to disk: {}", child.file_path.display());
+                            return false;
+                        }
                     }
                     match child.is_executable() {
-                        true => Self::EXECUTABLE_FILE.as_slice(),
-                        false => Self::REGULAR_FILE.as_slice(),
+                        Ok(boolean) => match boolean {
+                            true => Self::EXECUTABLE_FILE.as_slice(),
+                            false => Self::REGULAR_FILE.as_slice(),
+                        },
+                        Err(e) => {
+                            eprintln!("{}", e);
+                            return false;
+                        }
                     }
                 }
                 Tree(child) => {
@@ -213,30 +231,27 @@ impl TreeIOInternal for TreeNode {
 
         let entry_type: [u8; 6] = match data.drain(0..6).collect::<Vec<u8>>().try_into() {
             Ok(entry) => entry,
-            Err(_) => panic!("Unable to parse header"),
+            Err(_) => return Err("Unable to parse header".to_string()),
         };
 
         data.remove(0);
         let file_name: Vec<u8>;
         (file_name, data) = match Self::read_until_null(data) {
             Ok((file_name, data)) => (file_name, data),
-            Err(_) => panic!("Unable to parse header"),
+            Err(_) => return Err("Unable to parse header".to_string()),
         };
 
         let hash: [u8; 32] = match data.drain(0..32).collect::<Vec<u8>>().try_into() {
             Ok(entry) => entry,
-            Err(_) => panic!("Unable to parse header"),
+            Err(_) => return Err("Unable to parse header".to_string()),
         };
 
-        Ok((
-            data,
-            (
-                entry_type,
-                String::from_utf8(file_name)
-                    .expect("Unable to convert filename to valid UTF8 String"),
-                hash,
-            ),
-        ))
+        let file_name = match String::from_utf8(file_name) {
+            Ok(file_name) => file_name,
+            Err(_) => return Err("Unable to convert filename to valid UTF8 String".to_string()),
+        };
+
+        Ok((data, (entry_type, file_name, hash)))
     }
 }
 impl IO for TreeNode {}

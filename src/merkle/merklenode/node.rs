@@ -14,7 +14,6 @@ pub enum Node {
     Tree(TreeNode),
     Leaf(LeafNode),
 }
-// Todo create a builder for a merkle tree and make the data structures pure
 impl Hashable for Node {
     fn hash(vec: &[u8]) -> [u8; 32] {
         <LeafNode as Hashable>::hash(vec)
@@ -35,18 +34,20 @@ impl Node {
         }
     }
 
-    pub fn get_filename(&self) -> &str {
-        self.get_path()
-            .file_name()
-            .expect("Failed to get filename")
-            .to_str()
-            .expect("Failed to get filename")
+    pub fn get_filename(&self) -> Result<&str, String> {
+        match self.get_path().file_name() {
+            Some(file_name) => match file_name.to_str() {
+                Some(file_name) => Ok(file_name),
+                None => Err("File name is not valid UTF-8".to_string()),
+            },
+            None => Err(String::from("File name not set")),
+        }
     }
 
     fn separate_different<'a, 'b>(
         tree1: &'a TreeNode,
         tree2: &'b TreeNode,
-    ) -> (Vec<&'a Node>, Vec<&'b Node>, Vec<Diff>) {
+    ) -> Option<(Vec<&'a Node>, Vec<&'b Node>, Vec<Diff>)> {
         let mut differences = Vec::new();
         let map1: BTreeMap<&PathBuf, &Node> =
             tree1.children.iter().map(|n| (n.get_path(), n)).collect();
@@ -74,38 +75,50 @@ impl Node {
                     file_path: (*path).clone(),
                 }),
 
-                _ => panic!("Unable to find differences for path"),
+                _ => return None,
             }
         }
         common1.sort_by(|a, b| a.get_path().cmp(b.get_path()));
         common2.sort_by(|a, b| a.get_path().cmp(b.get_path()));
-        (common1, common2, differences)
+        Some((common1, common2, differences))
     }
 
-    pub fn find_differences(&self, other: &Node) -> Option<Vec<Diff>> {
+    pub fn find_differences(&self, other: &Node) -> Result<Option<Vec<Diff>>, String> {
         if self.get_hash() == other.get_hash() {
-            return None;
+            return Ok(None);
         }
 
         match (self, other) {
             (Node::Tree(tree1), Node::Tree(tree2)) => {
-                let (common1, common2, mut differences) = Self::separate_different(tree1, tree2);
+               let (common1, common2, mut differences) = match Self::separate_different(tree1, tree2){
+                    Some((mut common1,mut common2,differences)) => {
+                        common1.sort_by(|a, b| a.get_path().cmp(b.get_path()));
+                        common2.sort_by(|a, b| a.get_path().cmp(b.get_path()));
+                        (common1,common2,differences)
+                    },
+                    None => (tree1.children.iter().collect(),tree2.children.iter().collect(),vec![]),
+                };
 
                 for (c1, c2) in common1.iter().zip(common2.iter()) {
-                    if let Some(vec) = c1.find_differences(c2) {
-                        differences.extend(vec);
-                    }
+                    match c1.find_differences(c2) {
+                        Ok(vec) => if let Some(diff) = vec { differences.extend(diff) },
+
+                        Err(msg) => return Err(msg),
+                    };
                 }
-                Some(differences)
+                Ok(Some(differences))
             }
             (Node::Leaf(leaf1), Node::Leaf(leaf2)) => {
                 let file_changed = Diff::Changed {
                     file_path: leaf2.file_path.clone(),
-                    changes: leaf1.diff_file(leaf2),
+                    changes: match leaf1.diff_file(leaf2) {
+                        Ok(changes) => changes,
+                        Err(e) => return Err(e.to_string()),
+                    },
                 };
-                Some(vec![file_changed])
+                Ok(Some(vec![file_changed]))
             }
-            _ => panic!("Nodes weren't of the same type"),
+            _ => Ok(None),
         }
     }
 

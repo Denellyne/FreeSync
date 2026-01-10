@@ -1,6 +1,6 @@
 use flate2::read::ZlibDecoder;
 use std::fs;
-use std::fs::{File, OpenOptions, ReadDir};
+use std::fs::{OpenOptions, ReadDir};
 use std::io::Write;
 use std::path::Path;
 
@@ -14,26 +14,29 @@ pub trait Hashable {
 }
 
 pub trait CompressedData {
-    fn compress(data: &[u8]) -> Vec<u8> {
+    fn compress(data: &[u8]) -> Result<Vec<u8>, String> {
         use flate2::Compression;
         use flate2::write::ZlibEncoder;
         use std::io::prelude::*;
 
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-        encoder.write_all(data).expect("Unable to write data");
-
-        encoder.finish().expect("Unable to finish compression")
+        match encoder.write_all(data) {
+            Ok(_) => match encoder.finish() {
+                Ok(data) => Ok(data),
+                Err(_) => Err(String::from("Failed to flush compressed data")),
+            },
+            Err(_) => Err(String::from("Failed to compress")),
+        }
     }
-    fn decompress(data: &[u8]) -> Vec<u8> {
+    fn decompress(data: &[u8]) -> Result<Vec<u8>, String> {
         use std::io::prelude::*;
 
         let mut decoder = ZlibDecoder::new(data);
         let mut decompressed: Vec<u8> = Vec::new();
-        decoder
-            .read_to_end(&mut decompressed)
-            .expect("Error decompressing data");
-
-        decompressed
+        match decoder.read_to_end(&mut decompressed) {
+            Ok(_) => Ok(decompressed),
+            Err(_) => Err(String::from("Failed to decompress")),
+        }
     }
 }
 
@@ -52,17 +55,24 @@ pub(crate) trait IO {
             Err(e) => Err(e.to_string()),
         }
     }
-    fn write_file(path: impl AsRef<Path>, data: &[u8]) {
-        let mut file: File;
-        file = OpenOptions::new()
+    fn write_file(path: impl AsRef<Path>, data: &[u8]) -> Result<(), String> {
+        let mut file = match OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
             .open(&path)
-            .expect("Unable to open file");
+        {
+            Ok(file) => file,
+            Err(e) => return Err(format!("Failed to create file: {}", e)),
+        };
 
-        file.write_all(data).expect("Unable to write data");
-        file.flush().expect("Unable to flush data");
+        match file.write_all(data) {
+            Ok(_) => match file.flush() {
+                Ok(_) => Ok(()),
+                Err(e) => Err(format!("Failed to flush file: {}", e)),
+            },
+            Err(e) => Err(format!("Failed to write to file: {}", e)),
+        }
     }
     fn read_until_null(mut data: Vec<u8>) -> Result<(Vec<u8>, Vec<u8>), String> {
         if let Some(pos) = data.iter().position(|&b| b == 0) {

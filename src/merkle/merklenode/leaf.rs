@@ -24,7 +24,7 @@ impl LeafNode {
                 data.extend_from_slice(&data_raw);
                 Ok(LeafNode {
                     hash,
-                    compressed_data: Self::compress(&data),
+                    compressed_data: Self::compress(&data)?,
                     file_path: file_path.to_path_buf(),
                 })
             }
@@ -41,7 +41,7 @@ impl LeafNode {
 
         Ok(LeafNode {
             hash,
-            compressed_data: Self::compress(&data),
+            compressed_data: Self::compress(&data)?,
             file_path: real_path.to_path_buf(),
         })
     }
@@ -63,13 +63,13 @@ impl LeafData for LeafNode {
         &self.compressed_data
     }
 
-    fn diff_file(&self, other: &Self) -> Vec<Change> {
+    fn diff_file(&self, other: &Self) -> Result<Vec<Change>, String> {
         fn diff<'a>(
             v1: &'a [u8],
             v2: &'a [u8],
             v1_start: u64,
             v2_start: u64,
-        ) -> (Change, &'a [u8], &'a [u8], u64, u64) {
+        ) -> Result<(Change, &'a [u8], &'a [u8], u64, u64), String> {
             fn should_delete(v1: &[u8], v2: &[u8]) -> bool {
                 const LOOK: usize = 32;
 
@@ -85,18 +85,18 @@ impl LeafData for LeafNode {
             }
 
             if v1.is_empty() && !v2.is_empty() {
-                return (
+                return Ok((
                     Change::Insert {
-                        data: LeafNode::compress(v2),
+                        data: LeafNode::compress(v2)?,
                     },
                     &[],
                     &[],
                     v1_start,
                     v2_start + v2.len() as u64,
-                );
+                ));
             }
             if v2.is_empty() && !v1.is_empty() {
-                return (
+                return Ok((
                     Change::Delete {
                         start: v1_start,
                         end: v1.len() as u64 - v1_start - 1,
@@ -105,10 +105,10 @@ impl LeafData for LeafNode {
                     &[],
                     v1_start + v1.len() as u64,
                     v2_start,
-                );
+                ));
             }
             if v1.is_empty() && v2.is_empty() {
-                return (Change::End, &[], &[], v1_start, v2_start);
+                return Ok((Change::End, &[], &[], v1_start, v2_start));
             }
 
             let mut len = 0;
@@ -116,7 +116,7 @@ impl LeafData for LeafNode {
                 len += 1;
             }
             if len > 0 {
-                return (
+                return Ok((
                     Change::Copy {
                         start: v1_start,
                         end: v1_start + len as u64 - 1,
@@ -125,12 +125,12 @@ impl LeafData for LeafNode {
                     &v2[len..],
                     v1_start + len as u64,
                     v2_start + len as u64,
-                );
+                ));
             }
 
             if should_delete(v1, v2) {
                 let delete_len = 1;
-                (
+                Ok((
                     Change::Delete {
                         start: v1_start,
                         end: v1_start + delete_len - 1,
@@ -139,31 +139,32 @@ impl LeafData for LeafNode {
                     v2,
                     v1_start + delete_len,
                     v2_start,
-                )
+                ))
             } else {
                 let mut insert_len = 1;
                 while insert_len < v2.len() && v1[0] != v2[insert_len] {
                     insert_len += 1;
                 }
-                (
+
+                Ok((
                     Change::Insert {
-                        data: LeafNode::compress(&v2[..insert_len]),
+                        data: LeafNode::compress(&v2[..insert_len])?,
                     },
                     v1,
                     &v2[insert_len..],
                     v1_start,
                     v2_start + insert_len as u64,
-                )
+                ))
             }
         }
 
         let v1 = match LeafNode::decompress_data(&self.compressed_data) {
             Ok(leaf1_data) => leaf1_data,
-            _ => panic!("Failed to decompress data of leaf1"),
+            _ => return Err("Failed to decompress data of leaf1".to_string()),
         };
         let v2 = match LeafNode::decompress_data(&other.compressed_data) {
             Ok(leaf2_data) => leaf2_data,
-            _ => panic!("Failed to decompress data of leaf2"),
+            _ => return Err("Failed to decompress data of leaf2".to_string()),
         };
         let mut leaf1_data = v1.as_slice();
         let mut leaf2_data = v2.as_slice();
@@ -175,11 +176,11 @@ impl LeafData for LeafNode {
         loop {
             let change: Change;
             (change, leaf1_data, leaf2_data, start_leaf1, start_leaf2) =
-                diff(leaf1_data, leaf2_data, start_leaf1, start_leaf2);
+                diff(leaf1_data, leaf2_data, start_leaf1, start_leaf2)?;
             match change {
                 Change::End => {
                     changes.push(change);
-                    return changes;
+                    return Ok(changes);
                 }
                 _ => changes.push(change),
             }
@@ -195,7 +196,7 @@ impl LeafData for LeafNode {
             num
         }
 
-        let mut raw_data = LeafNode::decompress(data);
+        let mut raw_data = LeafNode::decompress(data)?;
         raw_data.drain(0..5);
 
         let size: u64;
@@ -216,52 +217,68 @@ impl LeafData for LeafNode {
 }
 
 impl LeafIO for LeafNode {
-    fn write_blob(&self, path: &Path) -> bool {
+    fn write_blob(&self, path: &Path) -> Result<(), String> {
         let dir_path = path.join(&LeafNode::hash_to_hex_string(&self.hash)[..2]);
         if !dir_path.exists() {
-            fs::create_dir_all(&dir_path).expect("Failed to create tree dir");
+            match fs::create_dir_all(&dir_path) {
+                Ok(_) => (),
+                Err(_) => {
+                    return Err(format!(
+                        "Unable to create the directory {}",
+                        dir_path.display()
+                    ));
+                }
+            }
         }
         let file_path = dir_path.join(&LeafNode::hash_to_hex_string(&self.hash)[2..]);
 
         let mut file: File;
-        file = OpenOptions::new()
+        file = match OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
             .open(&file_path)
-            .unwrap_or_else(|_| panic!("Unable to open file {}", file_path.display()));
+        {
+            Ok(file) => file,
+            Err(_) => return Err(format!("Unable to create the file {}", file_path.display())),
+        };
 
-        file.write_all(self.data())
-            .expect("Failed to to write data");
-        file.flush().expect("Failed to flush data");
-        true
+        match file.write_all(self.data()) {
+            Ok(_) => match file.flush() {
+                Ok(_) => Ok(()),
+                Err(_) => Err(format!("Unable to flush file {}", file_path.display())),
+            },
+            Err(_) => Err(format!(
+                "Unable to write to the file {}",
+                file_path.display()
+            )),
+        }
     }
 
-    fn is_executable(&self) -> bool {
+    fn is_executable(&self) -> Result<bool, String> {
         #[cfg(unix)]
         {
             let metadata = fs::metadata(&self.file_path);
-            let file_mode = metadata
-                .unwrap_or_else(|_| {
-                    panic!(
-                        "Unable to read file metadata, file:{}",
+            match metadata {
+                Ok(file_mode) => {
+                    let mode = file_mode.permissions().mode();
+                    if mode & 0o111 != 0 {
+                        return Ok(true);
+                    }
+                    Ok(false)
+                }
+                Err(_) => {
+                    return Err(format!(
+                        "Unable to get metadata for file {}",
                         self.file_path.display()
-                    )
-                })
-                .permissions()
-                .mode();
-            if file_mode & 0o111 != 0 {
-                return true;
+                    ));
+                }
             }
-            false
         }
-
         #[cfg(windows)]
-        {
-            matches!(
-                self.file_path.extension().and_then(|ext| ext.to_str()),
-                Some("exe") | Some("bat") | Some("cmd") | Some("sh")
-            )
-        }
+        Ok(matches!(
+            self.file_path.extension().and_then(|ext| ext.to_str()),
+            Some("exe") | Some("bat") | Some("cmd") | Some("sh")
+        ))
     }
 }

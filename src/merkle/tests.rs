@@ -139,7 +139,10 @@ fn test_trees_are_different() {
 
     assert_ne!(&t1, &t2);
     match t1.find_differences(&t2) {
-        Some(contents) => assert_ne!(differences, contents),
+        Ok(contents) => match contents {
+            Some(contents) => assert_ne!(contents, differences),
+            None => panic!("Unable to find differences"),
+        },
         _ => panic!("Unable to find differences for tree"),
     }
 }
