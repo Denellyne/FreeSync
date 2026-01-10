@@ -1,12 +1,14 @@
-use crate::merkle::node::{Change, Diff};
-use crate::merkle::traits::{LeafData, LeafIO, TreeIO};
-use crate::merkle::*;
+use super::*;
 use core::panic;
 use rand::random;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
-use tempfile::{tempdir_in, NamedTempFile, TempDir};
+use std::path::{Path, PathBuf};
+use tempfile::{NamedTempFile, TempDir, tempdir_in};
+
+use crate::merkle::diff::{Change, Diff};
+use crate::merkle::merkletree::MerkleTree;
+use crate::merkle::node::node::{LeafNode, Node};
 
 fn random_tree_builder(
     path: Option<PathBuf>,
@@ -180,8 +182,6 @@ fn test_diff() {
 
 #[test]
 fn test_compression() {
-    use super::*;
-
     let temp_file: NamedTempFile = NamedTempFile::new().expect("Unable to create temporary file");
     let (temp_file, str) = write_random_to_file(temp_file);
     let leaf = MerkleTree::new_leaf(temp_file.path().to_path_buf());

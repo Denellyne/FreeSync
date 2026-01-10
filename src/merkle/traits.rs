@@ -1,9 +1,11 @@
-use crate::merkle::node::{Change, Node};
 use flate2::read::ZlibDecoder;
 use std::fs;
 use std::fs::{File, OpenOptions, ReadDir};
 use std::io::Write;
 use std::path::Path;
+
+use crate::merkle::diff::Change;
+use crate::merkle::node::node::Node;
 
 pub trait Hashable {
     fn hash(vec: &[u8]) -> [u8; 32];
@@ -18,8 +20,8 @@ pub trait HashableNode: Hashable + TreeIO {
 }
 pub trait CompressedData {
     fn compress(data: &[u8]) -> Vec<u8> {
-        use flate2::write::ZlibEncoder;
         use flate2::Compression;
+        use flate2::write::ZlibEncoder;
         use std::io::prelude::*;
 
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());

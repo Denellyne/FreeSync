@@ -1,4 +1,4 @@
-use crate::merkle::node::{Node, TreeNode};
+use crate::merkle::node::node::{Node, TreeNode};
 use crate::merkle::traits::internal_traits::TreeIOInternal;
 use crate::merkle::traits::{EntryData, TreeIO};
 use crate::merkle::traits::{Hashable, HashableNode, LeafIO};

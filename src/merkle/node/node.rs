@@ -1,4 +1,4 @@
-pub(crate) use crate::merkle::diff::{Change, Diff};
+pub(crate) use crate::merkle::diff::Diff;
 use crate::merkle::traits::{Hashable, LeafData};
 use std::collections;
 use std::collections::BTreeMap;

@@ -1,5 +1,5 @@
 use crate::merkle::diff::Change;
-use crate::merkle::node::LeafNode;
+use crate::merkle::node::node::LeafNode;
 use crate::merkle::traits::{CompressedData, Hashable, LeafData, LeafIO};
 use std::fs;
 use std::fs::{File, OpenOptions};
@@ -12,9 +12,7 @@ impl CompressedData for LeafNode {}
 impl Hashable for LeafNode {
     fn hash(vec: &[u8]) -> [u8; 32] {
         use sha2::{Digest, Sha256};
-        let mut data: Vec<u8> = format!("blob {}\0", vec.len()).into_bytes();
-        data.extend_from_slice(vec);
-        Sha256::digest(data).into()
+        Sha256::digest(vec).into()
     }
     fn get_hash(&self) -> [u8; 32] {
         self.hash
