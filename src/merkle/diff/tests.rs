@@ -28,6 +28,10 @@ fn test_diff() {
         Change::End,
     ];
 
-    let diff1 = leaf1.diff_file(&leaf2);
+    let diff1 = match leaf1.diff_file(&leaf2){
+        Ok(diff) => diff,
+        Err(e) =>  panic!("{}", e),
+    };
+
     assert_eq!(diff1, diff2);
 }

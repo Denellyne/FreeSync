@@ -33,11 +33,17 @@ pub(super) mod internal_traits {
 
         fn write_file(&self, path: impl AsRef<Path>, data: impl AsRef<[u8]>) -> bool {
             let mut file: File;
-            file = OpenOptions::new()
+            file = match OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(&path)
-                .expect("Unable to open file");
+                .open(&path){
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to open file: {}", e);
+                    return false
+                }
+            };
+               
 
             if let Err(e) = file.write_all(data.as_ref()) {
                 eprintln!("Unable to write file, {}", e);
@@ -78,13 +84,13 @@ pub trait TreeIO: TreeIOInternal + IO {
 }
 
 pub(crate) trait LeafIO: LeafData {
-    fn write_blob(&self, path: &Path) -> bool;
-    fn is_executable(&self) -> bool;
+    fn write_blob(&self, path: &Path) -> Result<(), String>;
+    fn is_executable(&self) -> Result<bool, String>;
 }
 
 pub(crate) trait LeafData: CompressedData + IO {
     fn data(&self) -> &Vec<u8>;
-    fn diff_file(&self, other: &Self) -> Vec<Change>;
+    fn diff_file(&self, other: &Self) -> Result<Vec<Change>,String>;
 
     fn decompress_data(data: &[u8]) -> Result<Vec<u8>, String>;
 

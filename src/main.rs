@@ -16,7 +16,7 @@ fn execute_commands(mut args: Vec<String>) -> Vec<String> {
                 Err(msg) => println!("{}", msg),
             }
         }
-        _ => println!("You must provide at least one argument"),
+        _ => eprintln!("You must provide at least one argument"),
     }
     args
 }
@@ -42,7 +42,7 @@ fn main() {
     dbg!(&args);
 
     match args.len() {
-        0..=1 => println!("You must provide at least one directory path"),
+        0..=1 => eprintln!("You must provide at least one directory path"),
         3 => {
             execute_commands(args);
         }
@@ -55,6 +55,5 @@ fn main() {
 /*
 Todo
 Create Server
-remove expects and unwraps everywhere
 allow symbolic links or not
 */
