@@ -1,14 +1,54 @@
-use crate::merkle::diff::Change;
-use crate::merkle::node::node::LeafNode;
-use crate::merkle::traits::{CompressedData, Hashable, LeafData, LeafIO};
+use crate::merkle::diff::diff::Change;
+use crate::merkle::merklenode::traits::{LeafData, LeafIO};
+use crate::merkle::traits::{CompressedData, Hashable, IO};
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct LeafNode {
+    pub hash: [u8; 32],
+    pub compressed_data: Vec<u8>,
+    pub file_path: PathBuf,
+}
+
+impl LeafNode {
+    pub(crate) fn new(path: impl AsRef<Path>) -> Result<LeafNode, String> {
+        let file_path = path.as_ref();
+        match Self::hash_file(file_path) {
+            Ok((hash, data_raw)) => {
+                let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();
+                data.extend_from_slice(&data_raw);
+                Ok(LeafNode {
+                    hash,
+                    compressed_data: Self::compress(&data),
+                    file_path: file_path.to_path_buf(),
+                })
+            }
+            Err(e) => Err(e),
+        }
+    }
+    pub(crate) fn from(path: impl AsRef<Path>, real_path: PathBuf) -> Result<LeafNode, String> {
+        let file_path = path.as_ref();
+        let raw_data = Self::read_file(file_path)?;
+        let data_raw = Self::decompress_data(&raw_data)?;
+        let hash = Self::hash(&data_raw);
+        let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();
+        data.extend_from_slice(&data_raw);
+
+        Ok(LeafNode {
+            hash,
+            compressed_data: Self::compress(&data),
+            file_path: real_path.to_path_buf(),
+        })
+    }
+}
 
 impl CompressedData for LeafNode {}
+impl IO for LeafNode {}
 impl Hashable for LeafNode {
     fn hash(vec: &[u8]) -> [u8; 32] {
         use sha2::{Digest, Sha256};
@@ -117,8 +157,14 @@ impl LeafData for LeafNode {
             }
         }
 
-        let v1 = LeafNode::decompress(&self.compressed_data);
-        let v2 = LeafNode::decompress(&other.compressed_data);
+        let v1 = match LeafNode::decompress_data(&self.compressed_data) {
+            Ok(leaf1_data) => leaf1_data,
+            _ => panic!("Failed to decompress data of leaf1"),
+        };
+        let v2 = match LeafNode::decompress_data(&other.compressed_data) {
+            Ok(leaf2_data) => leaf2_data,
+            _ => panic!("Failed to decompress data of leaf2"),
+        };
         let mut leaf1_data = v1.as_slice();
         let mut leaf2_data = v2.as_slice();
 
@@ -138,6 +184,34 @@ impl LeafData for LeafNode {
                 _ => changes.push(change),
             }
         }
+    }
+
+    fn decompress_data(data: &[u8]) -> Result<Vec<u8>, String> {
+        fn to_num(vec: Vec<u8>) -> u64 {
+            let mut num: u64 = 0;
+            for n in vec {
+                num = (num * 10) + (n - b'0') as u64;
+            }
+            num
+        }
+
+        let mut raw_data = LeafNode::decompress(data);
+        raw_data.drain(0..5);
+
+        let size: u64;
+        (size, raw_data) = match Self::read_until_null(raw_data) {
+            Ok((size_vec, data)) => (to_num(size_vec), data),
+            Err(_) => return Err("Unable to retrieve size from data".to_string()),
+        };
+        if raw_data.len() as u64 != size {
+            return Err(format!(
+                "The size of the data is inconsistent, read size:{} buffer size:{}",
+                size,
+                raw_data.len()
+            ));
+        }
+
+        Ok(raw_data)
     }
 }
 
@@ -187,7 +261,7 @@ impl LeafIO for LeafNode {
             matches!(
                 self.file_path.extension().and_then(|ext| ext.to_str()),
                 Some("exe") | Some("bat") | Some("cmd") | Some("sh")
-            );
+            )
         }
     }
 }

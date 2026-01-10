@@ -1,6 +1,5 @@
 mod diff;
-mod entry;
-pub mod node;
+pub mod merklenode;
 
 pub mod merkletree;
 pub mod traits;
