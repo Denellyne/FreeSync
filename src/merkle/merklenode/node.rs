@@ -1,22 +1,13 @@
-pub(crate) use crate::merkle::diff::Diff;
-use crate::merkle::traits::{Hashable, LeafData};
-use std::collections;
+use crate::merkle::diff::diff::Diff;
+use crate::merkle::merklenode::leaf::LeafNode;
+use crate::merkle::merklenode::traits::LeafData;
+use crate::merkle::merklenode::tree::TreeNode;
+use crate::merkle::traits::Hashable;
 use std::collections::BTreeMap;
+use std::fs::DirEntry;
 use std::hash::Hash;
-use std::path::PathBuf;
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub(crate) struct TreeNode {
-    pub(crate) hash: [u8; 32],
-    pub(crate) children: Vec<Node>,
-    pub(crate) file_path: PathBuf,
-}
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub(crate) struct LeafNode {
-    pub(crate) hash: [u8; 32],
-    pub(crate) compressed_data: Vec<u8>,
-    pub(crate) file_path: PathBuf,
-}
+use std::path::{Path, PathBuf};
+use std::{collections, fs};
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Node {
@@ -115,6 +106,31 @@ impl Node {
                 Some(vec![file_changed])
             }
             _ => panic!("Nodes weren't of the same type"),
+        }
+    }
+
+    pub fn from(path: impl AsRef<Path>, real_path: PathBuf) -> Result<Node, String> {
+        let path = path.as_ref();
+        let metadata = match fs::metadata(path) {
+            Ok(metadata) => metadata,
+            Err(e) => return Err(e.to_string()),
+        };
+
+        match metadata {
+            metadata if metadata.is_dir() => Ok(Node::Tree(TreeNode::from(path, real_path)?)),
+            metadata if metadata.is_file() => Ok(Node::Leaf(LeafNode::from(path, real_path)?)),
+            _ => Err(format!("Unable to generate new node, {}", path.display())),
+        }
+    }
+
+    pub fn new_node(path: DirEntry) -> Result<Node, String> {
+        match path.path() {
+            path if path.is_dir() => Ok(Node::Tree(TreeNode::new(path)?)),
+            path if path.is_file() => Ok(Node::Leaf(LeafNode::new(path)?)),
+            _ => Err(format!(
+                "Unable to generate new node, {}",
+                path.path().display()
+            )),
         }
     }
 }

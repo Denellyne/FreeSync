@@ -1,6 +1,6 @@
 mod merkle;
+use crate::merkle::merklenode::traits::TreeIO;
 use crate::merkle::merkletree::MerkleTree;
-use crate::merkle::traits::TreeIO;
 use std::env;
 use std::path::PathBuf;
 
@@ -56,4 +56,5 @@ fn main() {
 Todo
 Create Server
 remove expects and unwraps everywhere
+allow symbolic links or not
 */
