@@ -10,6 +10,7 @@ dependencies = [
  "rand",
  "sha2",
  "tempfile",
+ "windows-sys",
 ]
 
 [[package]]

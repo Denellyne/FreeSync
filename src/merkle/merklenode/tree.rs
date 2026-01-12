@@ -1,15 +1,16 @@
+use crate::merkle::diff::diff::{Change, Diff};
 use crate::merkle::merklenode::leaf::LeafNode;
 use crate::merkle::merklenode::node::Node;
 use crate::merkle::merklenode::node::Node::{Leaf, Tree};
 use crate::merkle::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::merkle::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
 use crate::merkle::traits::Hashable;
-use crate::merkle::traits::IO;
+use crate::merkle::traits::ReadFile;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub(crate) struct TreeNode {
     pub(crate) hash: [u8; 32],
     pub(crate) children: Vec<Node>,
@@ -41,17 +42,14 @@ impl TreeNode {
                 };
             }
 
-            match Node::new_node(path) {
+            match Node::new(path) {
                 Ok(node) => vec.push(node),
                 Err(e) => return Err(format!("{} at {}", e, dir_path.display())),
             }
         }
 
-        if !vec.is_empty() {
-            vec.sort_by(|a, b| a.get_path().cmp(b.get_path()));
-        }
         Ok(TreeNode {
-            hash: TreeNode::hash_tree(&vec),
+            hash: TreeNode::hash_tree(&mut vec),
             file_path: dir_path.to_path_buf(),
             children: vec,
         })
@@ -102,10 +100,167 @@ impl TreeNode {
         }
 
         Ok(TreeNode {
-            hash: Self::hash_tree(&children),
+            hash: Self::hash_tree(&mut children),
             children,
             file_path: real_path.to_path_buf(),
         })
+    }
+
+    pub(crate) fn apply_diff(&mut self, diffs: Vec<Diff>) -> Result<(), String> {
+        for diff in diffs {
+            match diff {
+                Diff::Created { node } => match self.insert(node.to_owned()) {
+                    Err((_, e)) => return Err(e),
+                    _ => continue,
+                },
+                Diff::Deleted { file_path } => self.remove(&file_path)?,
+                Diff::Changed { file_path, changes } => {
+                    self.apply_blob(&file_path, changes)?;
+                }
+            }
+        }
+
+        self.recompute_tree();
+
+        // if !self.save_tree() {
+        //     return Err(String::from(
+        //         "Failed to write tree to disk after applying diffs",
+        //     ));
+        // }
+
+        Ok(())
+    }
+
+    fn insert(&mut self, mut node: Node) -> Result<(), (Node, String)> {
+        let node_path = node.get_path().clone();
+        let parent_dir = match node_path.parent() {
+            Some(dir) => dir,
+            None => {
+                return Err((
+                    node,
+                    format!(
+                        "Unable to get parent directory of node of path: {}",
+                        node_path.display()
+                    ),
+                ));
+            }
+        };
+        if parent_dir == self.file_path {
+            self.children.push(node);
+            return Ok(());
+        }
+
+        for child in &mut self.children {
+            match child {
+                Tree(tree) => match tree.insert(node) {
+                    Ok(_) => return Ok(()),
+
+                    Err((node_val, _)) => {
+                        node = node_val;
+                    }
+                },
+                _ => continue,
+            }
+        }
+
+        Err((
+            node,
+            format!("Unable to insert node of path: {}", node_path.display()),
+        ))
+    }
+
+    fn remove(&mut self, file_path: &PathBuf) -> Result<(), String> {
+        let parent_dir = match file_path.parent() {
+            Some(dir) => dir,
+            None => {
+                return Err(format!(
+                    "Unable to get parent directory of file of path: {}",
+                    file_path.display()
+                ));
+            }
+        };
+        if parent_dir == self.file_path {
+            let original_size = self.children.len();
+            self.children.retain(|x| x.get_path() != file_path);
+            if original_size == self.children.len() {
+                return Err(format!(
+                    "Unable to remove node of path:{}",
+                    file_path.display()
+                ));
+            }
+            return Ok(());
+        }
+
+        for child in &mut self.children {
+            match child {
+                Tree(tree) => match tree.remove(file_path) {
+                    Ok(_) => {
+                        return Ok(());
+                    }
+                    Err(_) => continue,
+                },
+                _ => continue,
+            }
+        }
+
+        Err(format!(
+            "Unable to remove node of path: {}",
+            file_path.display()
+        ))
+    }
+
+    fn apply_blob(&mut self, file_path: &Path, changes: Vec<Change>) -> Result<(), String> {
+        let parent_dir = match file_path.parent() {
+            Some(dir) => dir,
+            None => {
+                return Err(format!(
+                    "Unable to get parent directory of file of path: {}",
+                    file_path.display()
+                ));
+            }
+        };
+
+        if parent_dir == self.file_path {
+            for child in &mut self.children {
+                match child {
+                    Leaf(leaf) => {
+                        if leaf.file_path == file_path.to_path_buf() {
+                            return match leaf.apply_blob(changes) {
+                                Ok(_) => Ok(()),
+
+                                Err(_) => Err(format!(
+                                    "Unable to apply blob changes to file of path:{}",
+                                    file_path.display()
+                                )),
+                            };
+                        }
+                    }
+
+                    _ => continue,
+                }
+            }
+
+            return Err(format!(
+                "Unable to apply blob changes to file of path:{}",
+                file_path.display()
+            ));
+        }
+
+        Err(format!(
+            "Unable to apply blob changes to file of path:{}",
+            file_path.display()
+        ))
+    }
+
+    fn recompute_tree(&mut self) {
+        for child in &mut self.children {
+            match child {
+                Tree(tree) => tree.recompute_tree(),
+                _ => continue,
+            }
+        }
+
+        self.hash = TreeNode::hash_tree(&mut self.children);
     }
 }
 
@@ -123,7 +278,9 @@ impl Hashable for TreeNode {
 }
 
 impl HashableNode for TreeNode {
-    fn hash_tree(children: &[Node]) -> [u8; 32] {
+    fn hash_tree(children: &mut [Node]) -> [u8; 32] {
+        children.sort_by(|a, b| a.get_path().cmp(b.get_path()));
+
         let mut data: Vec<u8> = Vec::with_capacity(children.len() * 32);
 
         for child in children.iter() {
@@ -131,7 +288,7 @@ impl HashableNode for TreeNode {
             data.extend_from_slice(&children_hash);
         }
 
-        <Node as Hashable>::hash(data.as_slice())
+        Self::hash(data.as_slice())
     }
 }
 
@@ -254,4 +411,4 @@ impl TreeIOInternal for TreeNode {
         Ok((data, (entry_type, file_name, hash)))
     }
 }
-impl IO for TreeNode {}
+impl ReadFile for TreeNode {}

@@ -1,7 +1,6 @@
 use flate2::read::ZlibDecoder;
 use std::fs;
-use std::fs::{OpenOptions, ReadDir};
-use std::io::Write;
+use std::fs::ReadDir;
 use std::path::Path;
 
 pub trait Hashable {
@@ -40,7 +39,7 @@ pub trait CompressedData {
     }
 }
 
-pub(crate) trait IO {
+pub(crate) trait ReadFile {
     fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, String> {
         match fs::read(&path) {
             Ok(data) => Ok(data),
@@ -55,25 +54,7 @@ pub(crate) trait IO {
             Err(e) => Err(e.to_string()),
         }
     }
-    fn write_file(path: impl AsRef<Path>, data: &[u8]) -> Result<(), String> {
-        let mut file = match OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&path)
-        {
-            Ok(file) => file,
-            Err(e) => return Err(format!("Failed to create file: {}", e)),
-        };
 
-        match file.write_all(data) {
-            Ok(_) => match file.flush() {
-                Ok(_) => Ok(()),
-                Err(e) => Err(format!("Failed to flush file: {}", e)),
-            },
-            Err(e) => Err(format!("Failed to write to file: {}", e)),
-        }
-    }
     fn read_until_null(mut data: Vec<u8>) -> Result<(Vec<u8>, Vec<u8>), String> {
         if let Some(pos) = data.iter().position(|&b| b == 0) {
             let head: Vec<u8> = data.drain(0..pos).collect();

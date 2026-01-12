@@ -14,7 +14,9 @@ fn test_read_blob() {
 
     let leaf1 =
         MerkleTree::new_leaf(temp_file.as_path().to_path_buf()).expect("Unable to create tree");
-    leaf1.write_blob(temp_dir.as_ref());
+    leaf1
+        .write_blob(temp_dir.as_ref())
+        .expect("Unable to write data");
     let blob_path = temp_dir
         .path()
         .join(&LeafNode::hash_to_hex_string(&leaf1.hash)[..2])
@@ -38,12 +40,12 @@ fn test_read_write_tree() {
     let path = PathBuf::from(dir.path());
 
     match crate::merkle::tests::generate_random_tree(dir.path().to_path_buf()) {
-        (Ok(Node::Tree(tree)), _diff, _files, _dirs) => {
+        (Ok(Node::Tree(tree)), _files, _dirs) => {
             tree.save_tree();
             let t2 = MerkleTree::from(&path, path.clone()).expect("Unable to create second tree");
             assert_eq!(Node::Tree(tree), t2);
         }
-        (Ok(Node::Leaf(_)), _, _, _) => core::panic!("Returned a leaf from random tree function"),
-        (Err(e), _, _, _) => core::panic!("Unable to create MerkleTree: {}", e),
+        (Ok(Node::Leaf(_)), _, _) => core::panic!("Returned a leaf from random tree function"),
+        (Err(e), _, _) => core::panic!("Unable to create MerkleTree: {}", e),
     };
 }

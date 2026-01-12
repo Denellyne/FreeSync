@@ -2,7 +2,7 @@ use crate::merkle::merklenode::leaf::LeafNode;
 use crate::merkle::merklenode::node::Node;
 use crate::merkle::merklenode::traits::LeafData;
 use crate::merkle::merklenode::tree::TreeNode;
-use crate::merkle::traits::{CompressedData, Hashable, IO};
+use crate::merkle::traits::{CompressedData, Hashable, ReadFile};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -39,7 +39,7 @@ impl MerkleTree {
         match LeafNode::from(path.as_ref(), "".to_string().into()) {
             Ok(node) => {
                 let hash = Node::hash_to_hex_string(&node.hash);
-                let data =  MerkleTree::decompress(node.data())?;
+                let data = MerkleTree::decompress(node.data())?;
                 let data = String::from_utf8_lossy(&data);
 
                 Ok(format!("Data:{}\nHash:{}\n", data, hash))
@@ -49,4 +49,4 @@ impl MerkleTree {
     }
 }
 impl CompressedData for MerkleTree {}
-impl IO for MerkleTree {}
+impl ReadFile for MerkleTree {}

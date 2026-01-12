@@ -1,11 +1,12 @@
 use crate::merkle::diff::diff::Change;
 use crate::merkle::merklenode::node::Node;
 use crate::merkle::merklenode::traits::internal_traits::TreeIOInternal;
-use crate::merkle::traits::{CompressedData, Hashable, IO};
+use crate::merkle::traits::{CompressedData, Hashable, ReadFile};
 use std::path::{Path, PathBuf};
+use tempfile::NamedTempFile;
 
 pub trait HashableNode: Hashable + TreeIO {
-    fn hash_tree(vec: &[Node]) -> [u8; 32];
+    fn hash_tree(vec: &mut [Node]) -> [u8; 32];
 }
 
 pub(super) trait EntryData {
@@ -33,17 +34,13 @@ pub(super) mod internal_traits {
 
         fn write_file(&self, path: impl AsRef<Path>, data: impl AsRef<[u8]>) -> bool {
             let mut file: File;
-            file = match OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path){
+            file = match OpenOptions::new().create(true).append(true).open(&path) {
                 Ok(f) => f,
                 Err(e) => {
                     eprintln!("Failed to open file: {}", e);
-                    return false
+                    return false;
                 }
             };
-               
 
             if let Err(e) = file.write_all(data.as_ref()) {
                 eprintln!("Unable to write file, {}", e);
@@ -60,7 +57,7 @@ pub(super) mod internal_traits {
     }
 }
 
-pub trait TreeIO: TreeIOInternal + IO {
+pub trait TreeIO: TreeIOInternal + ReadFile {
     fn save_tree(&self) -> bool;
     fn get_head_path(path: impl AsRef<Path>) -> Result<PathBuf, String> {
         let path = path.as_ref();
@@ -86,11 +83,13 @@ pub trait TreeIO: TreeIOInternal + IO {
 pub(crate) trait LeafIO: LeafData {
     fn write_blob(&self, path: &Path) -> Result<(), String>;
     fn is_executable(&self) -> Result<bool, String>;
+    fn atomic_write_file(&self, path: &Path, data: &[u8]) -> Result<NamedTempFile, String>;
+    fn atomic_rename(&self, file: &Path, path: &Path) -> Result<(), String>;
 }
 
-pub(crate) trait LeafData: CompressedData + IO {
+pub(crate) trait LeafData: CompressedData + ReadFile {
     fn data(&self) -> &Vec<u8>;
-    fn diff_file(&self, other: &Self) -> Result<Vec<Change>,String>;
+    fn diff_file(&self, other: &Self) -> Result<Vec<Change>, String>;
 
     fn decompress_data(data: &[u8]) -> Result<Vec<u8>, String>;
 

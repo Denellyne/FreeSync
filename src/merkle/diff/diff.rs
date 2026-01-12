@@ -1,9 +1,10 @@
+use crate::merkle::merklenode::node::Node;
 use std::path::PathBuf;
 
 #[derive(PartialEq, Debug)]
 pub(crate) enum Diff {
     Created {
-        file_path: PathBuf,
+        node: Node,
     },
     Deleted {
         file_path: PathBuf,
@@ -18,7 +19,5 @@ pub(crate) enum Change {
     Copy { start: u64, end: u64 },
     Delete { start: u64, end: u64 },
     Insert { data: Vec<u8> },
-    End,
+    End { final_hash: [u8; 32] },
 }
-
- 

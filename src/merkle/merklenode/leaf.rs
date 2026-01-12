@@ -1,14 +1,24 @@
 use crate::merkle::diff::diff::Change;
+use crate::merkle::merklenode::node::Node;
 use crate::merkle::merklenode::traits::{LeafData, LeafIO};
-use crate::merkle::traits::{CompressedData, Hashable, IO};
+use crate::merkle::traits::{CompressedData, Hashable, ReadFile};
+use std::ffi::OsStr;
 use std::fs;
-use std::fs::{File, OpenOptions};
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use tempfile::NamedTempFile;
+#[cfg(windows)]
+use windows_sys::Win32::Storage::FileSystem::{
+    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+};
+#[cfg(windows)]
+use windows_sys::core::BOOL;
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct LeafNode {
     pub hash: [u8; 32],
     pub compressed_data: Vec<u8>,
@@ -22,6 +32,7 @@ impl LeafNode {
             Ok((hash, data_raw)) => {
                 let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();
                 data.extend_from_slice(&data_raw);
+
                 Ok(LeafNode {
                     hash,
                     compressed_data: Self::compress(&data)?,
@@ -45,10 +56,59 @@ impl LeafNode {
             file_path: real_path.to_path_buf(),
         })
     }
+
+
+    pub(crate) fn apply_blob(&mut self, changes: Vec<Change>) -> Result<(), String> {
+        let mut uncompressed_data = Self::decompress_data(self.compressed_data.as_slice())?;
+        let mut data_raw: Vec<u8> = Vec::with_capacity(uncompressed_data.len());
+
+        debug_assert!(!changes.is_empty());
+
+        for change in changes.into_iter() {
+            match change {
+                Change::Copy { start, end } => {
+                    let slice = uncompressed_data
+                        .drain(..=(end - start) as usize)
+                        .collect::<Vec<u8>>();
+                    data_raw.extend_from_slice(slice.as_slice())
+                }
+                Change::Delete { start, end } => {
+                    let _ = uncompressed_data
+                        .drain(..=(end - start) as usize)
+                        .collect::<Vec<u8>>();
+                }
+                Change::Insert { data } => {
+                    let slice = Self::decompress(&data)?;
+                    data_raw.extend_from_slice(&slice);
+                }
+
+                Change::End { final_hash } => {
+                    data_raw.shrink_to_fit();
+                    self.hash = Self::hash(&data_raw);
+
+                    let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();
+                    data.extend_from_slice(&data_raw);
+
+                    self.compressed_data = Self::compress(&data)?;
+
+                    debug_assert_eq!(self.hash, final_hash);
+                    if self.hash != final_hash {
+                        return Err(format!(
+                            "Final hash of blob {} {} is different from passed value {}",
+                            self.file_path.display(),
+                            Node::hash_to_hex_string(&self.hash),
+                            Node::hash_to_hex_string(&final_hash)
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl CompressedData for LeafNode {}
-impl IO for LeafNode {}
+impl ReadFile for LeafNode {}
 impl Hashable for LeafNode {
     fn hash(vec: &[u8]) -> [u8; 32] {
         use sha2::{Digest, Sha256};
@@ -69,6 +129,7 @@ impl LeafData for LeafNode {
             v2: &'a [u8],
             v1_start: u64,
             v2_start: u64,
+            other_hash: &[u8; 32],
         ) -> Result<(Change, &'a [u8], &'a [u8], u64, u64), String> {
             fn should_delete(v1: &[u8], v2: &[u8]) -> bool {
                 const LOOK: usize = 32;
@@ -108,7 +169,15 @@ impl LeafData for LeafNode {
                 ));
             }
             if v1.is_empty() && v2.is_empty() {
-                return Ok((Change::End, &[], &[], v1_start, v2_start));
+                return Ok((
+                    Change::End {
+                        final_hash: *other_hash,
+                    },
+                    &[],
+                    &[],
+                    v1_start,
+                    v2_start,
+                ));
             }
 
             let mut len = 0;
@@ -175,10 +244,15 @@ impl LeafData for LeafNode {
         let mut start_leaf2: u64 = 0;
         loop {
             let change: Change;
-            (change, leaf1_data, leaf2_data, start_leaf1, start_leaf2) =
-                diff(leaf1_data, leaf2_data, start_leaf1, start_leaf2)?;
+            (change, leaf1_data, leaf2_data, start_leaf1, start_leaf2) = diff(
+                leaf1_data,
+                leaf2_data,
+                start_leaf1,
+                start_leaf2,
+                &other.hash,
+            )?;
             match change {
-                Change::End => {
+                Change::End { .. } => {
                     changes.push(change);
                     return Ok(changes);
                 }
@@ -197,6 +271,8 @@ impl LeafData for LeafNode {
         }
 
         let mut raw_data = LeafNode::decompress(data)?;
+        debug_assert_ne!(raw_data.len(), 0);
+
         raw_data.drain(0..5);
 
         let size: u64;
@@ -204,6 +280,7 @@ impl LeafData for LeafNode {
             Ok((size_vec, data)) => (to_num(size_vec), data),
             Err(_) => return Err("Unable to retrieve size from data".to_string()),
         };
+        debug_assert_eq!(raw_data.len() as u64, size);
         if raw_data.len() as u64 != size {
             return Err(format!(
                 "The size of the data is inconsistent, read size:{} buffer size:{}",
@@ -232,26 +309,18 @@ impl LeafIO for LeafNode {
         }
         let file_path = dir_path.join(&LeafNode::hash_to_hex_string(&self.hash)[2..]);
 
-        let mut file: File;
-        file = match OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&file_path)
-        {
-            Ok(file) => file,
-            Err(_) => return Err(format!("Unable to create the file {}", file_path.display())),
-        };
-
-        match file.write_all(self.data()) {
-            Ok(_) => match file.flush() {
-                Ok(_) => Ok(()),
-                Err(_) => Err(format!("Unable to flush file {}", file_path.display())),
-            },
-            Err(_) => Err(format!(
-                "Unable to write to the file {}",
-                file_path.display()
-            )),
+        match self.atomic_write_file(&file_path, self.data()) {
+            Ok(file) => {
+                let temp_path = file.into_temp_path();
+                match self.atomic_rename(&temp_path, &file_path) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(format!(
+                        "Unable to persist the file {} Error:{e}",
+                        temp_path.display()
+                    )),
+                }
+            }
+            Err(e) => Err(e),
         }
     }
 
@@ -280,5 +349,90 @@ impl LeafIO for LeafNode {
             self.file_path.extension().and_then(|ext| ext.to_str()),
             Some("exe") | Some("bat") | Some("cmd") | Some("sh")
         ))
+    }
+
+    fn atomic_write_file(&self, path: &Path, data: &[u8]) -> Result<NamedTempFile, String> {
+        let parent_dir = match path.parent() {
+            Some(dir) => dir,
+            None => {
+                return Err(format!(
+                    "Unable to get parent directory of file of path:{}",
+                    path.display()
+                ));
+            }
+        };
+        let mut file = match NamedTempFile::new_in(parent_dir) {
+            Ok(file) => file,
+            Err(_) => return Err(format!("Unable to create the file {}", path.display())),
+        };
+
+        match file.write_all(data) {
+            Ok(_) => (),
+            Err(_) => return Err(format!("Unable to write to the file {}", path.display())),
+        }
+        match file.flush() {
+            Ok(_) => (),
+            Err(_) => return Err(format!("Unable to write to the file {}", path.display())),
+        }
+
+        Ok(file)
+    }
+
+    fn atomic_rename(&self, file: &Path, path: &Path) -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            fn to_wide_string(s: &str) -> Vec<u16> {
+                let mut wide: Vec<u16> = OsStr::new(s).encode_wide().collect();
+                wide.push(0);
+                wide
+            }
+            let path = match path.to_str() {
+                Some(path) => to_wide_string(path),
+                None => {
+                    return Err(format!(
+                        "Unable to convert path to string, {}",
+                        path.display()
+                    ));
+                }
+            };
+            let file_path = match file.to_str() {
+                Some(file_path) => to_wide_string(file_path),
+                None => {
+                    return Err(format!(
+                        "Unable to convert path to string, {}",
+                        file.display()
+                    ));
+                }
+            };
+
+            let success: BOOL = unsafe {
+                MoveFileExW(
+                    file_path.as_ptr(),
+                    path.as_ptr(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+                )
+            };
+
+            if success == 0 {
+                return Err(format!(
+                    "{success} Failed to replace file:{} {}",
+                    String::from_utf16(&file_path).unwrap_or_default(),
+                    String::from_utf16(&path).unwrap_or_default(),
+                ));
+            }
+            Ok(())
+        }
+
+        #[cfg(unix)]
+        {
+            let file_path = file.as_ref().to_path_buf();
+            match file.persist(path) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(format!(
+                    "Unable to persist the file {} Error:{e}",
+                    file_path.display()
+                )),
+            }
+        }
     }
 }
