@@ -58,7 +58,7 @@ impl Node {
 
         match self {
             Node::Tree(tree) => tree.apply_diff(diffs),
-            _ => Err("Unable to apply diffs".to_string()),
+            _ => Err("Apply diff is invalid for leaf nodes".to_string()),
         }
     }
 

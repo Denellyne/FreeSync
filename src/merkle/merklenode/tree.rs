@@ -10,11 +10,20 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Eq, PartialEq, Clone, Hash)]
 pub(crate) struct TreeNode {
     pub(crate) hash: [u8; 32],
     pub(crate) children: Vec<Node>,
     pub(crate) file_path: PathBuf,
+}
+
+impl std::fmt::Debug for TreeNode{
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+      f.debug_struct("TreeNode")
+        .field("Folder",&self.file_path)
+        .field("Children",&self.children)
+        .finish()
+  }
 }
 
 impl TreeNode {
@@ -109,7 +118,7 @@ impl TreeNode {
     pub(crate) fn apply_diff(&mut self, diffs: Vec<Diff>) -> Result<(), String> {
         for diff in diffs {
             match diff {
-                Diff::Created { node } => match self.insert(node.to_owned()) {
+                Diff::Created { node } => match self.insert(node.clone()) {
                     Err((_, e)) => return Err(e),
                     _ => continue,
                 },

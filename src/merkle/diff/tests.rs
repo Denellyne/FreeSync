@@ -89,7 +89,7 @@ fn tree_from_diff() {
             .to_path_buf(),
     ));
 
-    let t1 = match t1 {
+    let mut t1 = match t1 {
         Ok(tree) => tree,
         Err(e) => panic!("Unable to create MerkleBuilder: {}", e),
     };
@@ -102,14 +102,15 @@ fn tree_from_diff() {
     match t1.find_differences(t2.clone()) {
         Ok(contents) => match contents {
             Some(contents) => {
-                t1.to_owned()
+                println!("{:?}", contents);
+                t1
                     .apply_diff(contents)
                     .expect("Unable to apply diff");
 // Adicionar novos diretorios ta bugado!!
                assert_eq!(t1, t2)
             }
-            None => core::panic!("Unable to find differences"),
+            None => panic!("Unable to find differences"),
         },
-        _ => core::panic!("Unable to find differences for tree"),
+        _ => panic!("Unable to find differences for tree"),
     }
 }

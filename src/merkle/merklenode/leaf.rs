@@ -18,11 +18,19 @@ use windows_sys::Win32::Storage::FileSystem::{
 #[cfg(windows)]
 use windows_sys::core::BOOL;
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive( Eq, PartialEq, Clone, Hash)]
 pub struct LeafNode {
     pub hash: [u8; 32],
     pub compressed_data: Vec<u8>,
     pub file_path: PathBuf,
+}
+
+impl std::fmt::Debug for LeafNode{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("LeafNode")
+          .field("File",&self.file_path)
+          .finish()
+    }
 }
 
 impl LeafNode {
