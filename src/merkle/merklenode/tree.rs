@@ -28,6 +28,8 @@ impl std::fmt::Debug for TreeNode{
 
 impl TreeNode {
     pub(crate) fn new(path: impl AsRef<Path>) -> Result<TreeNode, String> {
+        assert!(path.as_ref().exists(),"There isn't any folder in the path {}",path.as_ref().display());
+
         let dir_path = path.as_ref();
         let paths = Self::read_dir(dir_path);
         let paths = paths?;

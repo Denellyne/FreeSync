@@ -102,11 +102,9 @@ fn tree_from_diff() {
     match t1.find_differences(t2.clone()) {
         Ok(contents) => match contents {
             Some(contents) => {
-                println!("{:?}", contents);
                 t1
                     .apply_diff(contents)
                     .expect("Unable to apply diff");
-// Adicionar novos diretorios ta bugado!!
                assert_eq!(t1, t2)
             }
             None => panic!("Unable to find differences"),

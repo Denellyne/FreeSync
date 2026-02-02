@@ -35,6 +35,7 @@ impl std::fmt::Debug for LeafNode{
 
 impl LeafNode {
     pub(crate) fn new(path: impl AsRef<Path>) -> Result<LeafNode, String> {
+        assert!(path.as_ref().exists(),"There isn't any file in the path {}",path.as_ref().display());
         let file_path = path.as_ref();
         match Self::hash_file(file_path) {
             Ok((hash, data_raw)) => {
@@ -51,8 +52,13 @@ impl LeafNode {
         }
     }
     pub(crate) fn from(path: impl AsRef<Path>, real_path: PathBuf) -> Result<LeafNode, String> {
+        debug_assert!(path.as_ref().exists(),"There isn't any file in the path {}",path.as_ref().display());
+        
         let file_path = path.as_ref();
         let raw_data = Self::read_file(file_path)?;
+        debug_assert!(!raw_data.is_empty(),"File is empty {}",file_path.display());
+        
+        
         let data_raw = Self::decompress_data(&raw_data)?;
         let hash = Self::hash(&data_raw);
         let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();
