@@ -25,16 +25,19 @@ pub(super) mod internal_traits {
     use std::path::Path;
 
     pub trait TreeIOInternal {
-        const MAIN_FOLDER: &'static str = ".freesync";
-        const OBJ_FOLDER: &'static str = ".freesync\\objects";
-        const HEAD_FILE: &'static str = ".freesync\\HEAD";
-        fn init(&self) -> bool;
+        fn init(&self) -> Result<(), String>;
 
         fn write_tree(&self, cwd: impl AsRef<Path>) -> bool;
 
         fn write_file(&self, path: impl AsRef<Path>, data: impl AsRef<[u8]>) -> bool {
             let mut file: File;
-            file = match OpenOptions::new().create(true).append(true).open(&path) {
+            file = match OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .append(false)
+                .open(&path)
+            {
                 Ok(f) => f,
                 Err(e) => {
                     eprintln!("Failed to open file: {}", e);
@@ -58,11 +61,21 @@ pub(super) mod internal_traits {
 }
 
 pub trait TreeIO: TreeIOInternal + ReadFile {
-    fn save_tree(&self) -> bool;
+    const MAIN_FOLDER: &'static str = ".freesync";
+    const OBJ_FOLDER: &'static str = ".freesync/objects";
+    const BRANCH_FOLDER: &'static str = ".freesync/branch";
+    const DEFAULT_BRANCH: &'static str = "main";
+    const HEAD_FILE: &'static str = ".freesync/HEAD";
+    fn save_tree(&self) -> Result<(), String>;
     fn get_head_path(path: impl AsRef<Path>) -> Result<PathBuf, String> {
         let path = path.as_ref();
 
         let head_file = path.join(Self::HEAD_FILE);
+        let branch: String = match Self::read_file(head_file)?.try_into() {
+            Ok(it) => it,
+            Err(_) => return Err(format!("Unable to read file:{}", path.display())),
+        };
+        let head_file = path.join(Self::BRANCH_FOLDER).join(branch);
         let data: [u8; 32] = match Self::read_file(head_file)?.try_into() {
             Ok(it) => it,
             Err(_) => return Err(format!("Unable to read file:{}", path.display())),

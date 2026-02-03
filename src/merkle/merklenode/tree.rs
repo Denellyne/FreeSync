@@ -17,18 +17,22 @@ pub(crate) struct TreeNode {
     pub(crate) file_path: PathBuf,
 }
 
-impl std::fmt::Debug for TreeNode{
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-      f.debug_struct("TreeNode")
-        .field("Folder",&self.file_path)
-        .field("Children",&self.children)
-        .finish()
-  }
+impl std::fmt::Debug for TreeNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("TreeNode")
+            .field("Folder", &self.file_path)
+            .field("Children", &self.children)
+            .finish()
+    }
 }
 
 impl TreeNode {
     pub(crate) fn new(path: impl AsRef<Path>) -> Result<TreeNode, String> {
-        assert!(path.as_ref().exists(),"There isn't any folder in the path {}",path.as_ref().display());
+        assert!(
+            path.as_ref().exists(),
+            "There isn't any folder in the path {}",
+            path.as_ref().display()
+        );
 
         let dir_path = path.as_ref();
         let paths = Self::read_dir(dir_path);
@@ -304,33 +308,49 @@ impl HashableNode for TreeNode {
 }
 
 impl TreeIO for TreeNode {
-    fn save_tree(&self) -> bool {
-        if !self.init() {
-            eprintln!("Unable to init tree directory");
-            return false;
-        }
+    fn save_tree(&self) -> Result<(), String> {
+        self.init()?;
         if !self.write_tree(&self.file_path) {
-            eprintln!("Unable to write tree file");
-            return false;
+            return Err("Unable to write tree file".to_string());
         }
 
-        true
+        let path = self.file_path.join(Self::HEAD_FILE);
+        let branch = match path.exists() {
+            true => match fs::read(path) {
+                Ok(head) => match String::from_utf8(head) {
+                    Ok(str) => str,
+                    Err(_) => return Err("Unable to convert string from utf8".to_string()),
+                },
+                Err(_) => return Err("Unable to read contents of head file".to_string()),
+            },
+            false => Self::DEFAULT_BRANCH.to_string(),
+        };
+
+        match self.write_file(self.file_path.join(Self::HEAD_FILE), &branch) {
+            true => match self.write_file(
+                self.file_path.join(Self::BRANCH_FOLDER).join(branch),
+                self.hash,
+            ) {
+                true => Ok(()),
+                false => Err("Unable to write selected branch to head file".to_string()),
+            },
+
+            false => Err("Unable to write hash to branch file".to_string()),
+        }
     }
 }
 
 impl TreeIOInternal for TreeNode {
-    fn init(&self) -> bool {
-        let paths = [Self::MAIN_FOLDER, Self::OBJ_FOLDER];
+    fn init(&self) -> Result<(), String> {
+        let paths = [Self::MAIN_FOLDER, Self::OBJ_FOLDER, Self::BRANCH_FOLDER];
         for path in paths.iter() {
             let path = self.file_path.join(path);
 
             if !path.exists() && fs::create_dir_all(path).is_err() {
-                eprintln!("Unable to create new tree directory");
-                return false;
+                return Err("Unable to create new tree directory".to_string());
             }
         }
-
-        self.write_file(self.file_path.join(Self::HEAD_FILE), self.hash)
+        Ok(())
     }
 
     fn write_tree(&self, cwd: impl AsRef<Path>) -> bool {
@@ -347,6 +367,9 @@ impl TreeIOInternal for TreeNode {
         }
 
         let parent_file = path.join(&Self::hash_to_hex_string(&self.hash)[2..]);
+        if parent_file.exists() {
+            return true;
+        }
         let mut data: Vec<u8> = Vec::new();
         for child in self.children.iter() {
             let filename = match child.get_filename() {

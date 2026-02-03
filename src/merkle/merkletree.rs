@@ -1,6 +1,6 @@
 use crate::merkle::merklenode::leaf::LeafNode;
 use crate::merkle::merklenode::node::Node;
-use crate::merkle::merklenode::traits::LeafData;
+use crate::merkle::merklenode::traits::{LeafData, TreeIO};
 use crate::merkle::merklenode::tree::TreeNode;
 use crate::merkle::traits::{CompressedData, Hashable, ReadFile};
 use std::fs;
@@ -33,6 +33,19 @@ impl MerkleTree {
 
     pub(super) fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
         TreeNode::new(dir_path)
+    }
+    pub fn get_head_path(path: impl AsRef<Path>) -> Result<PathBuf, String> {
+        let path = path.as_ref();
+
+        let head_file = path.join(TreeNode::HEAD_FILE);
+        let head = match fs::read(head_file) {
+            Ok(it) => it,
+            Err(_) => return Err(format!("Unable to read file:{}", path.display())),
+        };
+        Ok(path
+            .to_path_buf()
+            .join(TreeNode::BRANCH_FOLDER)
+            .join(String::from_utf8_lossy(&head).to_string()))
     }
 
     pub fn get_blob_data(path: impl AsRef<Path>) -> Result<String, String> {

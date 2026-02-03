@@ -40,12 +40,15 @@ fn test_read_write_tree() {
     let path = PathBuf::from(dir.path());
 
     match crate::merkle::tests::generate_random_tree(dir.path().to_path_buf()) {
-        (Ok(Node::Tree(tree)), _files, _dirs) => {
-            tree.save_tree();
-            let t2 = MerkleTree::from(&path, path.clone()).expect("Unable to create second tree");
-            assert_eq!(Node::Tree(tree), t2);
-        }
-        (Ok(Node::Leaf(_)), _, _) => core::panic!("Returned a leaf from random tree function"),
-        (Err(e), _, _) => core::panic!("Unable to create MerkleTree: {}", e),
+        (Ok(Node::Tree(tree)), _files, _dirs) => match tree.save_tree() {
+            Ok(_) => {
+                let t2 =
+                    MerkleTree::from(&path, path.clone()).expect("Unable to create second tree");
+                assert_eq!(Node::Tree(tree), t2);
+            }
+            Err(e) => panic!("{}", e),
+        },
+        (Ok(Node::Leaf(_)), _, _) => panic!("Returned a leaf from random tree function"),
+        (Err(e), _, _) => panic!("Unable to create MerkleTree: {}", e),
     };
 }
