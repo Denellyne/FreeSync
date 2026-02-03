@@ -49,7 +49,7 @@ pub(crate) fn write_random_to_filepath(path: &PathBuf) -> String {
 }
 fn write_random_to_file(file: NamedTempFile) -> (NamedTempFile, String) {
     let mut str: String = String::new();
-    let len = random::<u16>() % u16::MAX/4 + 1;
+    let len = random::<u16>() % u16::MAX / 4 + 1;
     for _i in 0..len {
         str.push(random::<char>());
     }
