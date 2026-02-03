@@ -2,7 +2,6 @@ use crate::merkle::diff::diff::Change;
 use crate::merkle::merklenode::node::Node;
 use crate::merkle::merklenode::traits::{LeafData, LeafIO};
 use crate::merkle::traits::{CompressedData, Hashable, ReadFile};
-use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
 #[cfg(unix)]
@@ -18,24 +17,28 @@ use windows_sys::Win32::Storage::FileSystem::{
 #[cfg(windows)]
 use windows_sys::core::BOOL;
 
-#[derive( Eq, PartialEq, Clone, Hash)]
+#[derive(Eq, PartialEq, Clone, Hash)]
 pub struct LeafNode {
     pub hash: [u8; 32],
     pub compressed_data: Vec<u8>,
     pub file_path: PathBuf,
 }
 
-impl std::fmt::Debug for LeafNode{
+impl std::fmt::Debug for LeafNode {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("LeafNode")
-          .field("File",&self.file_path)
-          .finish()
+            .field("File", &self.file_path)
+            .finish()
     }
 }
 
 impl LeafNode {
     pub(crate) fn new(path: impl AsRef<Path>) -> Result<LeafNode, String> {
-        assert!(path.as_ref().exists(),"There isn't any file in the path {}",path.as_ref().display());
+        assert!(
+            path.as_ref().exists(),
+            "There isn't any file in the path {}",
+            path.as_ref().display()
+        );
         let file_path = path.as_ref();
         match Self::hash_file(file_path) {
             Ok((hash, data_raw)) => {
@@ -52,13 +55,20 @@ impl LeafNode {
         }
     }
     pub(crate) fn from(path: impl AsRef<Path>, real_path: PathBuf) -> Result<LeafNode, String> {
-        debug_assert!(path.as_ref().exists(),"There isn't any file in the path {}",path.as_ref().display());
-        
+        debug_assert!(
+            path.as_ref().exists(),
+            "There isn't any file in the path {}",
+            path.as_ref().display()
+        );
+
         let file_path = path.as_ref();
         let raw_data = Self::read_file(file_path)?;
-        debug_assert!(!raw_data.is_empty(),"File is empty {}",file_path.display());
-        
-        
+        debug_assert!(
+            !raw_data.is_empty(),
+            "File is empty {}",
+            file_path.display()
+        );
+
         let data_raw = Self::decompress_data(&raw_data)?;
         let hash = Self::hash(&data_raw);
         let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();
@@ -70,7 +80,6 @@ impl LeafNode {
             file_path: real_path.to_path_buf(),
         })
     }
-
 
     pub(crate) fn apply_blob(&mut self, changes: Vec<Change>) -> Result<(), String> {
         let mut uncompressed_data = Self::decompress_data(self.compressed_data.as_slice())?;
@@ -350,12 +359,10 @@ impl LeafIO for LeafNode {
                     }
                     Ok(false)
                 }
-                Err(_) => {
-                    return Err(format!(
-                        "Unable to get metadata for file {}",
-                        self.file_path.display()
-                    ));
-                }
+                Err(_) => Err(format!(
+                    "Unable to get metadata for file {}",
+                    self.file_path.display()
+                )),
             }
         }
         #[cfg(windows)]
@@ -379,74 +386,24 @@ impl LeafIO for LeafNode {
             Ok(file) => file,
             Err(_) => return Err(format!("Unable to create the file {}", path.display())),
         };
-
         match file.write_all(data) {
             Ok(_) => (),
             Err(_) => return Err(format!("Unable to write to the file {}", path.display())),
         }
         match file.flush() {
-            Ok(_) => (),
-            Err(_) => return Err(format!("Unable to write to the file {}", path.display())),
+            Ok(_) => Ok(file),
+            Err(_) => Err(format!("Unable to write to the file {}", path.display())),
         }
-
-        Ok(file)
     }
 
-    fn atomic_rename(&self, file: &Path, path: &Path) -> Result<(), String> {
-        #[cfg(windows)]
-        {
-            fn to_wide_string(s: &str) -> Vec<u16> {
-                let mut wide: Vec<u16> = OsStr::new(s).encode_wide().collect();
-                wide.push(0);
-                wide
-            }
-            let path = match path.to_str() {
-                Some(path) => to_wide_string(path),
-                None => {
-                    return Err(format!(
-                        "Unable to convert path to string, {}",
-                        path.display()
-                    ));
-                }
-            };
-            let file_path = match file.to_str() {
-                Some(file_path) => to_wide_string(file_path),
-                None => {
-                    return Err(format!(
-                        "Unable to convert path to string, {}",
-                        file.display()
-                    ));
-                }
-            };
-
-            let success: BOOL = unsafe {
-                MoveFileExW(
-                    file_path.as_ptr(),
-                    path.as_ptr(),
-                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-                )
-            };
-
-            if success == 0 {
-                return Err(format!(
-                    "{success} Failed to replace file:{} {}",
-                    String::from_utf16(&file_path).unwrap_or_default(),
-                    String::from_utf16(&path).unwrap_or_default(),
-                ));
-            }
-            Ok(())
-        }
-
-        #[cfg(unix)]
-        {
-            let file_path = file.as_ref().to_path_buf();
-            match file.persist(path) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(format!(
-                    "Unable to persist the file {} Error:{e}",
-                    file_path.display()
-                )),
-            }
+    fn atomic_rename(&self, old_path: &Path, new_path: &Path) -> Result<(), String> {
+        match fs::rename(old_path, new_path) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(format!(
+                "Unable to rename file from {} to {}",
+                old_path.display(),
+                new_path.display()
+            )),
         }
     }
 }
