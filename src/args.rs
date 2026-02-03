@@ -1,18 +1,16 @@
 use crate::merkle::merklenode::traits::TreeIO;
 use crate::merkle::merkletree::MerkleTree;
-use crate::merkle::traits::Hashable;
-use std::path::PathBuf;
 use std::{env, fs};
 
 fn display_help() {
-    println!("FreeSync:\n");
-    println!("-h/--help) Prints the help menu");
-    println!("-b/--blob [blob hash]) Decrypts blob and displays its contents");
+    println!("FreeSync:");
+    println!("-h | --help) Prints the help menu");
+    println!("-b | --blob [blob hash]) Decrypts blob and displays its contents");
     println!("--status) Prints the current status of the tree");
     println!("--build) Builds the tree");
-    println!("--fetch) Fetchs the server for updates");
+    println!("--fetch) Fetches the server for updates");
     println!("--pull) Pulls the updates to the server");
-    println!("--push) Pushs the diffs to the server");
+    println!("--push) Pushes the diffs to the server");
     println!(
         "--branch [-n|-s]) Branch command:\n\t-n [name of branch]) Creates a new branch\n\t-s [name of branch]) Switches to another branch"
     )
@@ -83,7 +81,10 @@ pub(crate) fn parse_args(mut args: Vec<String>) {
     dbg!(&args);
 
     match args.len() {
-        0..=1 => eprintln!("You must provide at least one directory path"),
+        0..=1 =>{
+            eprintln!("You must provide at least one directory path");
+            display_help();
+        }
         _ => {
             args.remove(0);
             while !args.is_empty() {
