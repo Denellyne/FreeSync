@@ -6,16 +6,8 @@ use std::fs;
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
-#[cfg(windows)]
-use windows_sys::Win32::Storage::FileSystem::{
-    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
-};
-#[cfg(windows)]
-use windows_sys::core::BOOL;
 
 #[derive(Eq, PartialEq, Clone, Hash)]
 pub struct LeafNode {
