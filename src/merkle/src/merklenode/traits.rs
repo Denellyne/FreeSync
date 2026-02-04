@@ -1,10 +1,9 @@
-
-use std::path::{Path, PathBuf};
-use tempfile::NamedTempFile;
 use crate::diff::diff::Change;
 use crate::merklenode::node::Node;
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::traits::{CompressedData, Hashable, ReadFile};
+use std::path::{Path, PathBuf};
+use tempfile::NamedTempFile;
 
 pub(crate) trait HashableNode: Hashable + TreeIO {
     fn hash_tree(vec: &mut [Node]) -> [u8; 32];
@@ -20,10 +19,10 @@ pub(super) trait EntryData {
 pub(super) type Header = ([u8; 6], String, [u8; 32]);
 
 pub(super) mod internal_traits {
+    use crate::merklenode::traits::Header;
     use std::fs::{File, OpenOptions};
     use std::io::Write;
     use std::path::Path;
-    use crate::merklenode::traits::Header;
 
     pub trait TreeIOInternal {
         fn init(&self) -> Result<(), String>;

@@ -1,6 +1,6 @@
-use std::{env, fs};
 use merkle::merklenode::traits::TreeIO;
 use merkle::merkletree::MerkleTree;
+use std::{env, fs};
 
 fn display_help() {
     println!("FreeSync:");
@@ -63,7 +63,6 @@ fn build_tree() -> Result<(), String> {
         Err(e) => return Err(e.to_string()),
     };
 
-    
     let node = MerkleTree::create(dir).expect("Unable to create tree");
     #[cfg(debug_assertions)]
     println!("{:?}", node);
@@ -82,7 +81,7 @@ pub(crate) fn parse_args(mut args: Vec<String>) {
     dbg!(&args);
 
     match args.len() {
-        0..=1 =>{
+        0..=1 => {
             eprintln!("You must provide at least one directory path");
             display_help();
         }

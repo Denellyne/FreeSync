@@ -1,13 +1,12 @@
-
-use std::fs::write;
-use std::path::PathBuf;
-use tempfile::TempDir;
 use crate::diff::diff::Change;
 use crate::merklenode::node::Node;
 use crate::merklenode::node::Node::Tree;
 use crate::merklenode::traits::LeafData;
 use crate::merkletree::MerkleTree;
 use crate::tests::{generate_file, random_tree_builder};
+use std::fs::write;
+use std::path::PathBuf;
+use tempfile::TempDir;
 
 #[test]
 fn test_diff() {

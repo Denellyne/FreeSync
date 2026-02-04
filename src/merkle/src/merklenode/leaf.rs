@@ -1,13 +1,13 @@
+use crate::diff::diff::Change;
+use crate::merklenode::node::Node;
+use crate::merklenode::traits::{LeafData, LeafIO};
+use crate::traits::{CompressedData, Hashable, ReadFile};
 use std::fs;
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
-use crate::diff::diff::Change;
-use crate::merklenode::node::Node;
-use crate::merklenode::traits::{LeafData, LeafIO};
-use crate::traits::{CompressedData, Hashable, ReadFile};
 
 #[derive(Eq, PartialEq, Clone, Hash)]
 pub struct LeafNode {

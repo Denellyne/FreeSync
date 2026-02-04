@@ -1,12 +1,12 @@
+use crate::merklenode::leaf::LeafNode;
+use crate::merklenode::node::Node;
+use crate::merklenode::traits::LeafData;
+use crate::merkletree::MerkleTree;
 use rand::random;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use tempfile::{NamedTempFile, TempDir, tempdir_in};
-use crate::merklenode::leaf::LeafNode;
-use crate::merklenode::node::Node;
-use crate::merklenode::traits::LeafData;
-use crate::merkletree::MerkleTree;
 
 pub(crate) fn random_tree_builder(
     path: Option<PathBuf>,

@@ -1,11 +1,11 @@
-use std::path::PathBuf;
-use tempfile::TempDir;
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::traits::{LeafData, LeafIO, TreeIO};
 use crate::merkletree::MerkleTree;
 use crate::tests::{generate_random_tree, write_random_to_filepath};
 use crate::traits::Hashable;
+use std::path::PathBuf;
+use tempfile::TempDir;
 
 #[test]
 fn test_read_blob() {

@@ -1,10 +1,10 @@
-use std::fs;
-use std::path::{Path, PathBuf};
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::traits::{LeafData, TreeIO};
 use crate::merklenode::tree::TreeNode;
 use crate::traits::{CompressedData, Hashable, ReadFile};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 pub struct MerkleTree;
 

@@ -1,12 +1,12 @@
-use std::collections::BTreeMap;
-use std::fs::DirEntry;
-use std::path::{Path, PathBuf};
-use std::{collections, fs};
 use crate::diff::diff::Diff;
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::traits::LeafData;
 use crate::merklenode::tree::TreeNode;
 use crate::traits::Hashable;
+use std::collections::BTreeMap;
+use std::fs::DirEntry;
+use std::path::{Path, PathBuf};
+use std::{collections, fs};
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum Node {
