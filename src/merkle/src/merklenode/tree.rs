@@ -1,17 +1,16 @@
-use crate::merkle::diff::diff::{Change, Diff};
-use crate::merkle::merklenode::leaf::LeafNode;
-use crate::merkle::merklenode::node::Node;
-use crate::merkle::merklenode::node::Node::{Leaf, Tree};
-use crate::merkle::merklenode::traits::internal_traits::TreeIOInternal;
-use crate::merkle::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
-use crate::merkle::traits::Hashable;
-use crate::merkle::traits::ReadFile;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use crate::diff::diff::{Change, Diff};
+use crate::merklenode::leaf::LeafNode;
+use crate::merklenode::node::Node;
+use crate::merklenode::node::Node::{Leaf, Tree};
+use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
+use crate::merklenode::traits::internal_traits::TreeIOInternal;
+use crate::traits::{Hashable, ReadFile};
 
 #[derive(Eq, PartialEq, Clone, Hash)]
-pub(crate) struct TreeNode {
+pub struct TreeNode {
     pub(crate) hash: [u8; 32],
     pub(crate) children: Vec<Node>,
     pub(crate) file_path: PathBuf,

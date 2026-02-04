@@ -1,5 +1,5 @@
-use crate::merkle::merklenode::node::Node;
 use std::path::PathBuf;
+use crate::merklenode::node::Node;
 
 #[derive(PartialEq, Debug)]
 pub(crate) enum Diff {

@@ -1,6 +1,6 @@
-use crate::merkle::merklenode::traits::TreeIO;
-use crate::merkle::merkletree::MerkleTree;
 use std::{env, fs};
+use merkle::merklenode::traits::TreeIO;
+use merkle::merkletree::MerkleTree;
 
 fn display_help() {
     println!("FreeSync:");
@@ -63,6 +63,7 @@ fn build_tree() -> Result<(), String> {
         Err(e) => return Err(e.to_string()),
     };
 
+    
     let node = MerkleTree::create(dir).expect("Unable to create tree");
     #[cfg(debug_assertions)]
     println!("{:?}", node);

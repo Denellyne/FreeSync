@@ -1,18 +1,20 @@
-use crate::merkle::diff::diff::Change;
-use crate::merkle::merklenode::node::Node;
-use crate::merkle::merklenode::node::Node::Tree;
-use crate::merkle::merklenode::traits::LeafData;
-use crate::merkle::merkletree::MerkleTree;
+
 use std::fs::write;
 use std::path::PathBuf;
 use tempfile::TempDir;
+use crate::diff::diff::Change;
+use crate::merklenode::node::Node;
+use crate::merklenode::node::Node::Tree;
+use crate::merklenode::traits::LeafData;
+use crate::merkletree::MerkleTree;
+use crate::tests::{generate_file, random_tree_builder};
 
 #[test]
 fn test_diff() {
     let dir = TempDir::new().unwrap();
     let dir_path = dir.path();
-    let f1 = crate::merkle::tests::generate_file("abcdfghjqz", dir_path);
-    let f2 = crate::merkle::tests::generate_file("abcdefgijkrxyz", dir_path);
+    let f1 = generate_file("abcdfghjqz", dir_path);
+    let f2 = generate_file("abcdefgijkrxyz", dir_path);
     let leaf1 = MerkleTree::new_leaf(f1.path().to_path_buf()).expect("Unable to create leaf 1");
     let leaf2 = MerkleTree::new_leaf(f2.path().to_path_buf()).expect("Unable to create leaf 2");
 
@@ -49,7 +51,7 @@ fn test_diff() {
 fn tree_from_diff_simple() {
     let dir = TempDir::new().unwrap();
     let dir_path = dir.path();
-    let f1 = crate::merkle::tests::generate_file("abcdfghjqz", dir_path);
+    let f1 = generate_file("abcdfghjqz", dir_path);
 
     let t1 = Tree(MerkleTree::create(dir_path.to_path_buf()).expect("Unable to create tree 1"));
 
@@ -81,8 +83,8 @@ fn tree_from_diff_simple() {
 }
 #[test]
 fn tree_from_diff() {
-    let (t1, temp_folder) = crate::merkle::tests::random_tree_builder(None::<PathBuf>);
-    let (t2, _) = crate::merkle::tests::random_tree_builder(Some(
+    let (t1, temp_folder) = random_tree_builder(None::<PathBuf>);
+    let (t2, _) = random_tree_builder(Some(
         temp_folder
             .expect("Expected path from temp folder")
             .path()

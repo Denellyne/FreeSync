@@ -6,10 +6,7 @@ version = 4
 name = "FreeSync"
 version = "0.1.0"
 dependencies = [
- "flate2",
- "rand",
- "sha2",
- "tempfile",
+ "merkle",
 ]
 
 [[package]]
@@ -49,6 +46,10 @@ dependencies = [
  "cpufeatures",
  "rand_core",
 ]
+
+[[package]]
+name = "client"
+version = "0.1.0"
 
 [[package]]
 name = "const-oid"
@@ -177,6 +178,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df1d3c3b53da64cf5760482273a98e575c651a67eec7f77df96b5b642de8f039"
 
 [[package]]
+name = "merkle"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "rand",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -227,6 +238,10 @@ dependencies = [
  "linux-raw-sys",
  "windows-sys",
 ]
+
+[[package]]
+name = "server"
+version = "0.1.0"
 
 [[package]]
 name = "sha2"

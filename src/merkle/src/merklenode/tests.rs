@@ -1,16 +1,17 @@
-use crate::merkle::merklenode::leaf::LeafNode;
-use crate::merkle::merklenode::node::Node;
-use crate::merkle::merklenode::traits::{LeafData, LeafIO, TreeIO};
-use crate::merkle::merkletree::MerkleTree;
-use crate::merkle::traits::Hashable;
 use std::path::PathBuf;
 use tempfile::TempDir;
+use crate::merklenode::leaf::LeafNode;
+use crate::merklenode::node::Node;
+use crate::merklenode::traits::{LeafData, LeafIO, TreeIO};
+use crate::merkletree::MerkleTree;
+use crate::tests::{generate_random_tree, write_random_to_filepath};
+use crate::traits::Hashable;
 
 #[test]
 fn test_read_blob() {
     let temp_dir = TempDir::new().expect("Unable to create temporary directory");
     let temp_file = temp_dir.path().to_path_buf().join("blob");
-    let str = crate::merkle::tests::write_random_to_filepath(&temp_file);
+    let str = write_random_to_filepath(&temp_file);
 
     let leaf1 =
         MerkleTree::new_leaf(temp_file.as_path().to_path_buf()).expect("Unable to create tree");
@@ -39,7 +40,7 @@ fn test_read_write_tree() {
     let dir: TempDir = TempDir::new().expect("Unable to create temporary folder");
     let path = PathBuf::from(dir.path());
 
-    match crate::merkle::tests::generate_random_tree(dir.path().to_path_buf()) {
+    match generate_random_tree(dir.path().to_path_buf()) {
         (Ok(Node::Tree(tree)), _files, _dirs) => match tree.save_tree() {
             Ok(_) => {
                 let t2 =

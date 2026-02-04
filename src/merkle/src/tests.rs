@@ -1,13 +1,12 @@
-use crate::merkle::merklenode::leaf::LeafNode;
-use crate::merkle::merklenode::node::Node;
-use crate::merkle::merklenode::traits::LeafData;
-use crate::merkle::merkletree::MerkleTree;
-use core::panic;
 use rand::random;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use tempfile::{NamedTempFile, TempDir, tempdir_in};
+use crate::merklenode::leaf::LeafNode;
+use crate::merklenode::node::Node;
+use crate::merklenode::traits::LeafData;
+use crate::merkletree::MerkleTree;
 
 pub(crate) fn random_tree_builder(
     path: Option<PathBuf>,
@@ -127,7 +126,7 @@ fn test_trees_are_different() {
 
 #[test]
 fn test_new_leaf() {
-    let temp_file = generate_random_file(&PathBuf::from("."));
+    let temp_file = generate_random_file(&PathBuf::from("../../.."));
     let leaf = MerkleTree::new_leaf(temp_file.path().to_path_buf());
     assert!(leaf.is_ok());
 }

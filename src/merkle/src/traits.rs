@@ -39,7 +39,7 @@ pub trait CompressedData {
     }
 }
 
-pub(crate) trait ReadFile {
+pub trait ReadFile {
     fn read_file(path: impl AsRef<Path>) -> Result<Vec<u8>, String> {
         match fs::read(&path) {
             Ok(data) => Ok(data),
