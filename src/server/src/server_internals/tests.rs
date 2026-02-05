@@ -32,8 +32,6 @@ impl MockConnection {
     }
 }
 
-
-
 fn random_data() -> String {
     let mut str: String = String::new();
     let len = random::<u16>() % u16::MAX / 4 + 1;

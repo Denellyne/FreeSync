@@ -12,7 +12,7 @@ pub(crate) trait HashableNode: Hashable + TreeIO {
 pub(super) trait EntryData {
     const REGULAR_FILE: &'static [u8; 6] = b"100000";
     const EXECUTABLE_FILE: &'static [u8; 6] = b"100755";
-    const SYMBOLIC_LINK: &'static [u8; 6] = b"120000";
+    // const SYMBOLIC_LINK: &'static [u8; 6] = b"120000";
     const DIRECTORY: &'static [u8; 6] = b"040000";
 }
 

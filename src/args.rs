@@ -1,6 +1,6 @@
 use merkle::merklenode::traits::TreeIO;
 use merkle::merkletree::MerkleTree;
-use std::{env, fs};
+use std::env;
 
 fn display_help() {
     println!("FreeSync:");
@@ -38,19 +38,16 @@ fn execute_commands(mut args: Vec<String>) -> Vec<String> {
         }
         "--status" => {
             let path = env::current_dir().unwrap();
-            let branch_file = match MerkleTree::get_head_path(&path) {
+            let branch_file = match MerkleTree::get_head_path(path.clone()) {
                 Ok(t) => t,
                 Err(e) => {
                     eprintln!("{}", e);
                     return args;
                 }
             };
-            let mut hash: [u8; 32] = [0; 32];
-            hash.copy_from_slice(&fs::read(&branch_file).unwrap()[..32]);
-            let hash_string = hash
-                .iter()
-                .map(|b| format!("{:02x}", b))
-                .collect::<String>();
+            let hash_string = MerkleTree::get_branch_hash(path)
+                .expect("Unable to get hash for the current branch");
+
             println!("Branch:{}\nHash:{}", branch_file.display(), hash_string);
         }
         _ => eprintln!("You must provide at least one argument"),

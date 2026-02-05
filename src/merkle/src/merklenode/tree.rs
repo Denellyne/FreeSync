@@ -38,7 +38,8 @@ impl TreeNode {
         let paths = paths?;
         let mut vec: Vec<Node> = Vec::new();
 
-        let filter: HashSet<_> = HashSet::from([".freesync"]);
+        let filter: HashSet<_> = HashSet::from([".freesync", ".git"]);
+        println!("Tree Path: {}", path.as_ref().display());
         'pathLoop: for path in paths {
             let path = match path {
                 Ok(path) => path,

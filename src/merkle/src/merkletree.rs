@@ -31,21 +31,34 @@ impl MerkleTree {
         LeafNode::new(file_path)
     }
 
-    pub(super) fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
+    fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
         TreeNode::new(dir_path)
     }
-    pub fn get_head_path(path: impl AsRef<Path>) -> Result<PathBuf, String> {
-        let path = path.as_ref();
 
+    pub fn get_head_path(path: PathBuf) -> Result<PathBuf, String> {
         let head_file = path.join(TreeNode::HEAD_FILE);
-        let head = match fs::read(head_file) {
+        let head = match fs::read(&head_file) {
             Ok(it) => it,
-            Err(_) => return Err(format!("Unable to read file:{}", path.display())),
+            Err(_) => return Err(format!("Unable to read file:{}", head_file.display())),
         };
         Ok(path
             .to_path_buf()
             .join(TreeNode::BRANCH_FOLDER)
             .join(String::from_utf8_lossy(&head).to_string()))
+    }
+
+    pub fn get_branch_hash(path: PathBuf) -> Result<String, String> {
+        let mut hash: [u8; 32] = [0; 32];
+        let data: Vec<u8> = match fs::read(&path) {
+            Ok(data) => data[..32].to_vec(),
+            Err(e) => return Err(e.to_string()),
+        };
+        hash.copy_from_slice(&data);
+
+        Ok(hash
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>())
     }
 
     pub fn get_blob_data(path: impl AsRef<Path>) -> Result<String, String> {
@@ -61,5 +74,6 @@ impl MerkleTree {
         }
     }
 }
+
 impl CompressedData for MerkleTree {}
 impl ReadFile for MerkleTree {}

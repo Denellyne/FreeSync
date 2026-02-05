@@ -1,7 +1,7 @@
 pub(super) mod leaf;
-pub(super) mod node;
+pub mod node;
 pub mod traits;
-pub(super) mod tree;
+pub mod tree;
 
 #[cfg(test)]
 mod tests;

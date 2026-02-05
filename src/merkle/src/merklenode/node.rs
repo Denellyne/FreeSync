@@ -51,7 +51,7 @@ impl Node {
         }
     }
 
-    pub fn apply_diff(&mut self, diffs: Vec<Diff>) -> Result<(), String> {
+    pub(crate) fn apply_diff(&mut self, diffs: Vec<Diff>) -> Result<(), String> {
         if diffs.is_empty() {
             return Ok(());
         }
@@ -118,7 +118,7 @@ impl Node {
         Some((common1, common2, differences))
     }
 
-    pub fn find_differences(&self, other: Node) -> Result<Option<Vec<Diff>>, String> {
+    pub(crate) fn find_differences(&self, other: Node) -> Result<Option<Vec<Diff>>, String> {
         if self.get_hash() == other.get_hash() {
             return Ok(None);
         }
