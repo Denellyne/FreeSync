@@ -30,7 +30,10 @@ impl Server {
         println!("\nServer running\n");
         for stream in self.listener.incoming() {
             match stream {
-                Ok(stream) => handle_connection(stream),
+                Ok(stream) => {
+                    let request = handle_connection(stream);
+                    println!("Request: {:?}", request);
+                }
                 Err(e) => eprintln!("Unable to establish connection, {}", e),
             }
         }
@@ -39,29 +42,30 @@ impl Server {
     }
 
     #[cfg(test)]
-    pub fn mock_server(self) -> String {
+    pub(super) fn mock_server(self) -> Vec<String> {
         println!("\nServer running\n");
-        for stream in self.listener.incoming() {
+        let mut request: Vec<String> = Vec::new();
+        if let Some(stream) = self.listener.incoming().next() {
             match stream {
                 Ok(stream) => {
-                    handle_connection(stream);
-                    break;
+                    request = handle_connection(stream);
+                    self.close_server();
+                    return request;
                 }
-                Err(e) => eprintln!("Unable to establish connection, {}", e),
+                Err(e) => panic!("Unable to establish connection, {}", e),
             }
         }
-
-        self.close_server();
+        request
     }
 }
 
-fn handle_connection(stream: TcpStream) {
+fn handle_connection(stream: TcpStream) -> Vec<String> {
     let buf_reader = BufReader::new(&stream);
-    let http_request: Vec<_> = buf_reader
+
+    let request: Vec<_> = buf_reader
         .lines()
         .map(|result| result.unwrap())
         .take_while(|line| !line.is_empty())
         .collect();
-
-    println!("Request: {http_request:#?}");
+    request
 }
