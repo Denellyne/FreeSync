@@ -23,7 +23,6 @@ impl Server {
 
     fn close_server(self) {
         println!("\nClosing the Server...");
-
         println!("Server closed");
     }
 
@@ -32,8 +31,24 @@ impl Server {
         for stream in self.listener.incoming() {
             match stream {
                 Ok(stream) => handle_connection(stream),
-                Err(e) => eprintln!("Unable to establish connection, {}",e),
-             }
+                Err(e) => eprintln!("Unable to establish connection, {}", e),
+            }
+        }
+
+        self.close_server();
+    }
+
+    #[cfg(test)]
+    pub fn mock_server(self) -> String {
+        println!("\nServer running\n");
+        for stream in self.listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    handle_connection(stream);
+                    break;
+                }
+                Err(e) => eprintln!("Unable to establish connection, {}", e),
+            }
         }
 
         self.close_server();
