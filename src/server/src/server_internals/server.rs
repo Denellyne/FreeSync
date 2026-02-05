@@ -1,9 +1,10 @@
 use std::io::{BufRead, BufReader};
 use std::net::{TcpListener, TcpStream};
-
+// The only uses of expect and unwrap should be at the startup,after that there shall be no unwraps
 pub struct Server {
     listener: TcpListener,
 }
+
 
 impl Server {
     pub fn new(port: String) -> Self {
@@ -16,7 +17,7 @@ impl Server {
         let ip = format!("0.0.0.0:{}", port);
         let listener = TcpListener::bind(ip).expect("Could not bind port!");
 
-        println!("Info:\nFreeSync Server\nPort:{}", port);
+        println!("Info:\nFreeSync Server\nIp:{}", listener.local_addr().expect("Could not get local address"));
         println!("Server started");
         Server { listener }
     }
