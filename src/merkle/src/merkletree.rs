@@ -27,10 +27,6 @@ impl MerkleTree {
         Node::from(path, real_path)
     }
 
-    pub(super) fn new_leaf(file_path: PathBuf) -> Result<LeafNode, String> {
-        LeafNode::new(file_path)
-    }
-
     fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
         TreeNode::new(dir_path)
     }
@@ -72,6 +68,13 @@ impl MerkleTree {
             }
             Err(e) => Err(e),
         }
+    }
+}
+
+#[cfg(test)]
+impl MerkleTree {
+    pub(super) fn new_leaf(file_path: PathBuf) -> Result<LeafNode, String> {
+        LeafNode::new(file_path)
     }
 }
 
