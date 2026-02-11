@@ -1,4 +1,3 @@
-mod diff;
 pub mod merklenode;
 
 pub mod merkletree;

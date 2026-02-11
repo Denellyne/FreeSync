@@ -2,7 +2,7 @@ use crate::merklenode::node::Node;
 use std::path::PathBuf;
 
 #[derive(PartialEq, Debug)]
-pub(crate) enum Diff {
+pub enum Diff {
     Created {
         node: Node,
     },
@@ -15,7 +15,7 @@ pub(crate) enum Diff {
     },
 }
 #[derive(PartialEq, Debug)]
-pub(crate) enum Change {
+pub enum Change {
     Copy { start: u64, end: u64 },
     Delete { start: u64, end: u64 },
     Insert { data: Vec<u8> },

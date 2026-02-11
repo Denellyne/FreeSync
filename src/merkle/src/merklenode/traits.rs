@@ -1,4 +1,4 @@
-use crate::diff::diff::Change;
+use crate::merklenode::diff::Change;
 use crate::merklenode::node::Node;
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::traits::{CompressedData, Hashable, ReadFile};

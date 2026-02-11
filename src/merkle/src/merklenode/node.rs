@@ -1,4 +1,4 @@
-use crate::diff::diff::Diff;
+use crate::merklenode::diff::Diff;
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::traits::LeafData;
 use crate::merklenode::tree::TreeNode;

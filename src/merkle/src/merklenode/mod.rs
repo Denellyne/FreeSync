@@ -1,3 +1,4 @@
+pub mod diff;
 pub(super) mod leaf;
 pub mod node;
 pub mod traits;
