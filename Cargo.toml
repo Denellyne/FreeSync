@@ -10,5 +10,5 @@ merkle = { path = "src/merkle" }
 members = [
     "src/merkle",
     "src/server",
-    "src/client",
+    "src/client", "src/logger",
 ]
