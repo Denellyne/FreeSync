@@ -17,6 +17,7 @@ impl Server {
             "./logs/server.log",
             "Server".parse().expect("Unable to parse string"),
             true,
+            true,
         )
         .expect("Unable to open logger for server");
 
@@ -63,8 +64,8 @@ impl Server {
                     self.logger.log(format!("Request: {:?}", request));
                 }
                 Err(e) => self
-                  .logger
-                  .log(format!("Unable to establish connection, {e}")),
+                    .logger
+                    .log(format!("Unable to establish connection, {e}")),
             }
         }
 

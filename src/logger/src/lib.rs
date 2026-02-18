@@ -9,16 +9,22 @@ use std::{
 pub struct Logger {
     file: File,
     file_name: String,
+    echo: bool,
 }
 
 impl Logger {
-    pub fn new(path: impl AsRef<Path>, mut file_name: String, append: bool) -> Option<Logger> {
+    pub fn new(
+        path: impl AsRef<Path>,
+        mut file_name: String,
+        append: bool,
+        echo: bool,
+    ) -> Option<Logger> {
         if file_name.is_empty() {
             file_name = path.as_ref().file_name()?.to_string_lossy().to_string();
         }
         let exists = append && fs::exists(path.as_ref()).unwrap_or(false);
 
-        let parent =  path.as_ref().parent()?;
+        let parent = path.as_ref().parent()?;
         fs::create_dir_all(parent).ok()?;
         match OpenOptions::new()
             .create(true)
@@ -33,7 +39,11 @@ impl Logger {
                     eprintln!("Couldn't write to file {}: {}", path.as_ref().display(), e);
                     return None;
                 }
-                Some(Logger { file, file_name })
+                Some(Logger {
+                    file,
+                    file_name,
+                    echo,
+                })
             }
             Err(e) => {
                 eprintln!("{}", e);
@@ -55,8 +65,12 @@ impl Logger {
 
         let date = time_format::strftime_utc("%a, %d %b %Y %T %Z", ts).unwrap();
         let data = format!("{date}: {data}\n");
-        if let Err(e) =  self.file.write_all(data.as_bytes()) {
+        if let Err(e) = self.file.write_all(data.as_bytes()) {
             eprintln!("Couldn't write to file {}: {}", self.file_name, e);
+            eprintln!("{date}: {data}");
+            return;
+        }
+        if self.echo {
             eprintln!("{date}: {data}");
         }
     }
