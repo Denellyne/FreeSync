@@ -24,6 +24,6 @@ fn test_logger() {
     assert_eq!(
         data.as_bytes(),
         read_data,
-        "Written data and read data are diffenrent"
+        "Written data and read data are different"
     );
 }

@@ -14,6 +14,8 @@ target
 **/mutants.out*/
 
 .freesync
+.idea
+
 
 
 # RustRover
