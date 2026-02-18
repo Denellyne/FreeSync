@@ -1,4 +1,5 @@
 use std::{
+    fs,
     fs::{File, OpenOptions},
     io::Write,
     path::Path,
@@ -7,17 +8,33 @@ use std::{
 #[derive(Debug)]
 pub struct Logger {
     file: File,
+    file_name: String,
 }
 
 impl Logger {
-    pub fn new(path: impl AsRef<Path>, append: bool) -> Option<Logger> {
+    pub fn new(path: impl AsRef<Path>, mut file_name: String, append: bool) -> Option<Logger> {
+        if file_name.is_empty() {
+            file_name = path.as_ref().file_name()?.to_string_lossy().to_string();
+        }
+        let exists = append && fs::exists(path.as_ref()).unwrap_or(false);
+
+        let parent =  path.as_ref().parent()?;
+        fs::create_dir_all(parent).ok()?;
         match OpenOptions::new()
             .create(true)
             .append(append)
             .write(true)
             .open(&path)
         {
-            Ok(file) => Some(Logger { file }),
+            Ok(mut file) => {
+                if !exists
+                    && let Err(e) = file.write_all(format!("Logging {}\n", file_name).as_bytes())
+                {
+                    eprintln!("Couldn't write to file {}: {}", path.as_ref().display(), e);
+                    return None;
+                }
+                Some(Logger { file, file_name })
+            }
             Err(e) => {
                 eprintln!("{}", e);
                 None
@@ -33,17 +50,14 @@ impl Logger {
         }
     }
     #[cfg(not(test))]
-    pub fn log(&mut self, data: String) -> Result<(), String> {
-        let ts: i64 = match time_format::now() {
-            Ok(ts) => ts,
-            Err(e) => return Err(e.to_string()),
-        };
+    pub fn log(&mut self, data: String) {
+        let ts: i64 = time_format::now().unwrap_or_default();
 
         let date = time_format::strftime_utc("%a, %d %b %Y %T %Z", ts).unwrap();
-        let data = format!("{date}: {data}");
-        match self.file.write_all(data.as_bytes()) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.to_string()),
+        let data = format!("{date}: {data}\n");
+        if let Err(e) =  self.file.write_all(data.as_bytes()) {
+            eprintln!("Couldn't write to file {}: {}", self.file_name, e);
+            eprintln!("{date}: {data}");
         }
     }
 }
