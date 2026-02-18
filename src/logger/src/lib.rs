@@ -60,7 +60,7 @@ impl Logger {
         }
     }
     #[cfg(not(test))]
-    pub fn log(&mut self, data: String) {
+    pub fn log(&mut self, data: &str) {
         let ts: i64 = time_format::now().unwrap_or_default();
 
         let date = time_format::strftime_utc("%a, %d %b %Y %T %Z", ts).unwrap();
@@ -75,5 +75,13 @@ impl Logger {
         }
     }
 }
+
+#[macro_export]
+macro_rules! log_fmt {
+    ($logger:expr, $($arg:tt)*) => {
+        $logger.log(&format!($($arg)*))
+    };
+}
+
 #[cfg(test)]
 mod tests;

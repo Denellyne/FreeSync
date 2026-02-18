@@ -1,4 +1,4 @@
-use logger::Logger;
+use logger::{Logger, log_fmt};
 use merkle::merklenode::node::Node;
 use merkle::merklenode::traits::TreeIO;
 use merkle::merkletree::MerkleTree;
@@ -20,8 +20,7 @@ impl Server {
             true,
         )
         .expect("Unable to open logger for server");
-
-        logger.log("Starting the Server...".to_string());
+        logger.log("Starting the Server...");
 
         if port.parse::<u16>().is_err() {
             panic!("Invalid port number!");
@@ -29,20 +28,20 @@ impl Server {
 
         let ip = format!("0.0.0.0:{}", port);
         let listener = TcpListener::bind(ip).expect("Could not bind port!");
-        logger.log("Port bound".to_string());
+        logger.log("Port bound");
         let tree = MerkleTree::create("./".into())
             .expect("Unable to generate the merkle tree for the current working directory");
         tree.save_tree().expect("Unable to save the tree to disk");
         let tree = Node::Tree(tree);
         let head_path = MerkleTree::get_head_path("./".into()).expect("Unable to get head path");
-
-        logger.log(format!(
+        log_fmt!(
+            logger,
             "Info:\nFreeSync Server\nIp:{}\nCurrent branch:{}\nCurrent hash:{}",
             listener.local_addr().expect("Could not get local address"),
             head_path.clone().display(),
             MerkleTree::get_branch_hash(head_path).expect("Unable go get branch hash")
-        ));
-        logger.log("Server started".to_string());
+        );
+        logger.log("Server started");
         Server {
             listener,
             logger,
@@ -51,21 +50,19 @@ impl Server {
     }
 
     fn close_server(mut self) {
-        self.logger.log("\nClosing the Server...".to_string());
-        self.logger.log("Server closed".to_string());
+        self.logger.log("\nClosing the Server...");
+        self.logger.log("Server closed");
     }
 
     pub fn run_server(mut self) {
-        self.logger.log("\nServer running\n".to_string());
+        self.logger.log("\nServer running\n");
         for stream in self.listener.incoming() {
             match stream {
                 Ok(stream) => {
                     let request = handle_connection(stream);
-                    self.logger.log(format!("Request: {:?}", request));
+                    log_fmt!(self.logger, "Request: {:?}", request);
                 }
-                Err(e) => self
-                    .logger
-                    .log(format!("Unable to establish connection, {e}")),
+                Err(e) => log_fmt!(self.logger, "Unable to establish connection, {e}"),
             }
         }
 
