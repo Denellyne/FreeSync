@@ -43,8 +43,7 @@ fn random_data() -> String {
 
 #[test]
 fn test_connection() {
-    let server = Server::new("25565".parse().unwrap());
-    let th = thread::spawn(|| server.mock_server());
+    let th = thread::spawn(|| Server::new("25565".parse().unwrap()).mock_server());
 
     let mut conn = MockConnection::new();
     conn.write();

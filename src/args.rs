@@ -3,17 +3,20 @@ use merkle::merkletree::MerkleTree;
 use std::env;
 
 fn display_help() {
-    println!("FreeSync:");
-    println!("-h | --help) Prints the help menu");
-    println!("-b | --blob [blob hash]) Decrypts blob and displays its contents");
-    println!("--status) Prints the current status of the tree");
-    println!("--build) Builds the tree");
-    println!("--fetch) Fetches the server for updates");
-    println!("--pull) Pulls the updates to the server");
-    println!("--push) Pushes the diffs to the server");
-    println!(
-        "--branch [-n|-s]) Branch command:\n\t-n [name of branch]) Creates a new branch\n\t-s [name of branch]) Switches to another branch"
-    )
+    let strs = vec![
+        "FreeSync:",
+        "-h | --help) Prints the help menu",
+        "-b | --blob [blob hash]) Decrypts blob and displays its contents",
+        "--status) Prints the current status of the tree",
+        "--build) Builds the tree",
+        "--pull) Pulls the updates to the server",
+        "--push Pushes the diffs to the server",
+        "--branch [-n|-s]) Branch command:\n\t-n [name of branch]) Creates a new branch\n\t-s [name of branch]) Switches to another branch",
+    ];
+
+    for str in strs {
+        println!("{}", str);
+    }
 }
 
 fn execute_commands(mut args: Vec<String>) -> Vec<String> {

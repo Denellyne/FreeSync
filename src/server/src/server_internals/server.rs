@@ -4,22 +4,27 @@ use merkle::merklenode::traits::TreeIO;
 use merkle::merkletree::MerkleTree;
 use std::io::{BufRead, BufReader};
 use std::net::{TcpListener, TcpStream};
+use std::sync::{Arc, Mutex};
+use threadpool::ThreadPool;
 // The only uses of expect and unwrap should be at the startup,after that there shall be no unwraps
 pub struct Server {
     listener: TcpListener,
-    tree: Node,
-    logger: Logger,
+    tree: Arc<Node>,
+    logger: Arc<Logger>,
 }
 
 impl Server {
     pub fn new(port: String) -> Self {
-        let mut logger = Logger::new(
-            "./logs/server.log",
-            "Server".parse().expect("Unable to parse string"),
-            true,
-            true,
-        )
-        .expect("Unable to open logger for server");
+        let logger = Arc::new(
+            Logger::new(
+                "./logs/server.log",
+                "Server".parse().expect("Unable to parse string"),
+                true,
+                true,
+            )
+            .expect("Unable to open logger"),
+        );
+
         logger.log("Starting the Server...");
 
         if port.parse::<u16>().is_err() {
@@ -42,6 +47,7 @@ impl Server {
             MerkleTree::get_branch_hash(head_path).expect("Unable go get branch hash")
         );
         logger.log("Server started");
+        let tree = Arc::from(tree);
         Server {
             listener,
             logger,
@@ -49,18 +55,19 @@ impl Server {
         }
     }
 
-    fn close_server(mut self) {
+    fn close_server(self) {
         self.logger.log("\nClosing the Server...");
         self.logger.log("Server closed");
     }
 
-    pub fn run_server(mut self) {
+    pub fn run_server(self) {
         self.logger.log("\nServer running\n");
+        let pool = ThreadPool::new(4);
+
         for stream in self.listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    let request = handle_connection(stream);
-                    log_fmt!(self.logger, "Request: {:?}", request);
+                    handle_connection(stream, Arc::clone(&self.logger));
                 }
                 Err(e) => log_fmt!(self.logger, "Unable to establish connection, {e}"),
             }
@@ -76,7 +83,7 @@ impl Server {
         if let Some(stream) = self.listener.incoming().next() {
             match stream {
                 Ok(stream) => {
-                    request = handle_connection(stream);
+                    request = mock_handle_connection(stream);
                     self.close_server();
                     return request;
                 }
@@ -87,7 +94,8 @@ impl Server {
     }
 }
 
-fn handle_connection(stream: TcpStream) -> Vec<String> {
+#[cfg(test)]
+fn mock_handle_connection(stream: TcpStream) -> Vec<String> {
     let buf_reader = BufReader::new(&stream);
 
     let request: Vec<_> = buf_reader
@@ -96,4 +104,15 @@ fn handle_connection(stream: TcpStream) -> Vec<String> {
         .take_while(|line| !line.is_empty())
         .collect();
     request
+}
+fn handle_connection(stream: TcpStream, log: Arc<Logger>) {
+    let buf_reader = BufReader::new(&stream);
+
+    let request: Vec<_> = buf_reader
+        .lines()
+        .map(|result| result.unwrap())
+        .take_while(|line| !line.is_empty())
+        .collect();
+
+    log_fmt!(log, "Request: {:?}", request);
 }

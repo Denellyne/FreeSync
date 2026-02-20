@@ -1,13 +1,13 @@
 use std::{
-    fs,
-    fs::{File, OpenOptions},
+    cell::RefCell,
+    fs::{self, File, OpenOptions},
     io::Write,
     path::Path,
 };
 
 #[derive(Debug)]
 pub struct Logger {
-    file: File,
+    file: RefCell<File>,
     file_name: String,
     echo: bool,
 }
@@ -39,6 +39,7 @@ impl Logger {
                     eprintln!("Couldn't write to file {}: {}", path.as_ref().display(), e);
                     return None;
                 }
+                let file = RefCell::from(file);
                 Some(Logger {
                     file,
                     file_name,
@@ -53,34 +54,34 @@ impl Logger {
     }
 
     #[cfg(test)]
-    pub fn log(&mut self, data: String) -> Result<(), String> {
-        match self.file.write_all(data.as_bytes()) {
+    pub fn log(&self, data: &str) -> Result<(), String> {
+        match self.file.borrow_mut().write_all(data.as_bytes()) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.to_string()),
         }
     }
     #[cfg(not(test))]
-    pub fn log(&mut self, data: &str) {
+    pub fn log(&self, data: &str) {
         let ts: i64 = time_format::now().unwrap_or_default();
 
         let date = time_format::strftime_utc("%a, %d %b %Y %T %Z", ts).unwrap();
         let data = format!("{date}: {data}\n");
-        if let Err(e) = self.file.write_all(data.as_bytes()) {
+        if let Err(e) = self.file.borrow_mut().write_all(data.as_bytes()) {
             eprintln!("Couldn't write to file {}: {}", self.file_name, e);
-            eprintln!("{date}: {data}");
+            eprintln!("{data}");
             return;
         }
         if self.echo {
-            eprintln!("{date}: {data}");
+            eprintln!("{data}");
         }
     }
 }
 
 #[macro_export]
 macro_rules! log_fmt {
-    ($logger:expr, $($arg:tt)*) => {
-        $logger.log(&format!($($arg)*))
-    };
+    ($logger:expr, $($arg:tt)*) => {{
+        $logger.log(&format!($($arg)*));
+    }};
 }
 
 #[cfg(test)]
