@@ -7,4 +7,3 @@ edition = "2024"
 rand = "0.10.0-rc.9"
 merkle = { path = "../merkle" }
 logger = {path = "../logger"}
-threadpool = "1.8.1"

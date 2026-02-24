@@ -4,8 +4,9 @@ use merkle::merklenode::traits::TreeIO;
 use merkle::merkletree::MerkleTree;
 use std::io::{BufRead, BufReader};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
-use threadpool::ThreadPool;
+use std::sync::Arc;
+
+use crate::server_internals::threadpool::ThreadPool;
 // The only uses of expect and unwrap should be at the startup,after that there shall be no unwraps
 pub struct Server {
     listener: TcpListener,
@@ -62,16 +63,18 @@ impl Server {
 
     pub fn run_server(self) {
         self.logger.log("\nServer running\n");
-        let pool = ThreadPool::new(4);
+        let mut pool = ThreadPool::new(4);
 
         for stream in self.listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    handle_connection(stream, Arc::clone(&self.logger));
+                    let ref_log = Arc::clone(&self.logger);
+                    pool.execute(move || handle_connection(stream, ref_log));
                 }
                 Err(e) => log_fmt!(self.logger, "Unable to establish connection, {e}"),
             }
         }
+        pool.join_with_timeout(30000);
 
         self.close_server();
     }

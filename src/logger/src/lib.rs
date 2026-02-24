@@ -76,6 +76,7 @@ impl Logger {
         }
     }
 }
+unsafe impl Sync for Logger {}
 
 #[macro_export]
 macro_rules! log_fmt {
