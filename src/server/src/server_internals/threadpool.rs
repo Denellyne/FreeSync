@@ -44,7 +44,11 @@ impl ThreadPool {
     {
         let job = Box::new(f);
 
-        self.sender.as_ref().unwrap().send(job).unwrap();
+        self.sender
+            .as_ref()
+            .expect("Unable to get reference to sender")
+            .send(job)
+            .expect("Unable to send job to worker");
     }
 
     /// Timeout is in milliseconds
@@ -56,7 +60,7 @@ impl ThreadPool {
             println!("Shutting down worker {}", worker.id);
 
             if let Some(thread) = worker.thread.take() {
-                thread.join().unwrap();
+                thread.join().expect("Unable to join thread");
             }
         }
     }
@@ -70,7 +74,7 @@ impl Drop for ThreadPool {
             println!("Shutting down worker {}", worker.id);
 
             if let Some(thread) = worker.thread.take() {
-                thread.join().unwrap();
+                thread.join().expect("Unable to join thread");
             }
         }
     }
@@ -85,13 +89,14 @@ impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
         let thread = thread::spawn(move || {
             loop {
-                let message = receiver.lock().unwrap().recv();
+                let message = receiver.lock().expect("Unable to lock receiver").recv();
 
                 match message {
                     Ok(job) => {
                         println!("Worker {id} got a job; executing.");
 
-                        job();
+                        let th = thread::spawn(job);
+                        let _ = th.join();
                     }
                     Err(_) => {
                         println!("Worker {id} disconnected; shutting down.");
