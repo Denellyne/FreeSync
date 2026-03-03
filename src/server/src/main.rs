@@ -16,7 +16,7 @@ fn main() {
         true,
         true,
     );
-    let server = Server::new(port, tx);
+    let server = Server::new(port, ".", tx);
 
     server.run_server();
 }

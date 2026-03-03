@@ -1,9 +1,11 @@
 use crate::server_internals::server::Server;
 use logger::mock::MockLogger;
 use merkle::merklenode::node::Node;
+use merkle::merkletree::MerkleTree;
 use rand::random;
 use std::io::{BufReader, Read, Write};
 use std::net::{Shutdown, TcpStream};
+use std::path::{Path, PathBuf};
 use std::thread::{self};
 
 struct MockConnection {
@@ -61,11 +63,72 @@ fn random_data() -> String {
     }
     str
 }
+use tempfile::{NamedTempFile, TempDir, tempdir_in};
+fn write_random_to_file(file: NamedTempFile) -> (NamedTempFile, String) {
+    let mut str: String = String::new();
+    let len = random::<u16>() % u16::MAX / 4 + 1;
+    for _i in 0..len {
+        str.push(random::<char>());
+    }
+    write!(&file, "{}", str).expect("Unable to write to file");
+    (file, str)
+}
+
+fn generate_random_file(path: &PathBuf) -> NamedTempFile {
+    let (file, _) =
+        write_random_to_file(NamedTempFile::new_in(path).expect("Unable to create temporary file"));
+    file
+}
+pub(crate) fn generate_random_tree(
+    path: PathBuf,
+) -> (Result<Node, String>, Vec<NamedTempFile>, Vec<TempDir>) {
+    let size = random::<u8>() % 12 + 1;
+    let mut current_path: PathBuf = path.clone();
+    let mut temporary_files: Vec<NamedTempFile> = Vec::new();
+    let mut temporary_folders: Vec<TempDir> = Vec::new();
+
+    let get_relative_path =
+        |str: &Path| -> PathBuf { str.file_name().expect("Unable to get file name").into() };
+
+    for _i in 0..size {
+        let gen_dir = random::<bool>();
+        if gen_dir {
+            let temp_file = tempdir_in(&current_path).expect("Unable to create temporary folder");
+            let relative_path = get_relative_path(temp_file.path());
+            current_path.push(&relative_path);
+
+            temporary_folders.push(temp_file);
+        } else {
+            let temp_file = generate_random_file(&current_path);
+            temporary_files.push(temp_file);
+        }
+    }
+
+    let tree = Node::Tree(MerkleTree::create(path.to_path_buf()).expect("Unable to create tree"));
+    (Ok(tree), temporary_files, temporary_folders)
+}
+
+pub(crate) fn random_tree_builder(
+    path: Option<PathBuf>,
+) -> (Result<Node, String>, Option<TempDir>) {
+    match path {
+        Some(path) => {
+            let (node, _, _) = generate_random_tree(path);
+            (node, None)
+        }
+        None => {
+            let temp_dir = tempfile::tempdir().expect("Unable to create temp dir");
+            let (node, _, _) = generate_random_tree(temp_dir.path().to_path_buf());
+            (node, Some(temp_dir))
+        }
+    }
+}
 
 #[test]
 fn test_connection() {
     let tx = MockLogger::create();
-    let sv = Server::new("25565".parse().unwrap(), tx);
+    let (_tree, folder) = random_tree_builder(None::<PathBuf>);
+    let sv = Server::new("25565".parse().unwrap(), folder.unwrap().path(), tx);
     let th = thread::spawn(move || sv.mock_server());
 
     let mut conn = MockConnection::new();
@@ -82,7 +145,9 @@ fn test_connection() {
 #[test]
 fn test_reply() {
     let tx = MockLogger::create();
-    let sv = Server::new("25567".parse().unwrap(), tx);
+    let (_tree, folder) = random_tree_builder(None::<PathBuf>);
+
+    let sv = Server::new("25567".parse().unwrap(), folder.unwrap().path(), tx);
     let th = thread::spawn(move || sv.mock_server());
 
     let mut conn = MockConnection::from("TEST".to_string(), 25567);
@@ -93,19 +158,22 @@ fn test_reply() {
     let _result = th.join().expect("Failed to join thread");
     println!("{}", String::from_utf8_lossy(&data));
 
-    assert!(data == "OK".as_bytes());
+    assert_eq!(data, "OK".as_bytes());
 }
 
 #[test]
 fn test_clone() {
     let tx = MockLogger::create();
-    let sv = Server::new("25566".parse().unwrap(), tx);
+    let (_tree, folder) = random_tree_builder(None::<PathBuf>);
+
+    let sv = Server::new("25566".parse().unwrap(), folder.unwrap().path(), tx);
     let node1 = sv.tree.clone();
     let th = thread::spawn(move || sv.mock_server());
 
     let mut conn = MockConnection::from("CLONE".to_string(), 25566);
     conn.write();
     let data = conn.read();
+
     let node: Node = bincode::deserialize(&data).unwrap();
     println!("{:?}", node);
     conn.close();

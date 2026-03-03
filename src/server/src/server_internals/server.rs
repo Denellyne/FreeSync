@@ -3,8 +3,9 @@ use merkle::merklenode::traits::TreeIO;
 use merkle::merkletree::MerkleTree;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::Arc;
+use std::path::Path;
 use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 use crate::server_internals::threadpool::ThreadPool;
 // The only uses of expect and unwrap should be at the startup,after that there shall be no unwraps
@@ -15,7 +16,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(port: String, tx: Sender<String>) -> Self {
+    pub fn new(port: String, path: impl AsRef<Path>, tx: Sender<String>) -> Self {
         let _ = tx.send("Starting the Server...".to_string());
 
         if port.parse::<u16>().is_err() {
@@ -25,11 +26,12 @@ impl Server {
         let ip = format!("0.0.0.0:{}", port);
         let listener = TcpListener::bind(ip).expect("Could not bind port!");
         let _ = tx.send("Port bound".to_string());
-        let tree = MerkleTree::create("./".into())
+        let tree = MerkleTree::create(path.as_ref().to_path_buf())
             .expect("Unable to generate the merkle tree for the current working directory");
         tree.save_tree().expect("Unable to save the tree to disk");
         let tree = Node::Tree(tree);
-        let head_path = MerkleTree::get_head_path("./".into()).expect("Unable to get head path");
+        let head_path = MerkleTree::get_head_path(path.as_ref().to_path_buf())
+            .expect("Unable to get head path");
         let _ = tx.send(format!(
             "Info:\nFreeSync Server\nIp:{}\nCurrent branch:{}\nCurrent hash:{}",
             listener.local_addr().expect("Could not get local address"),

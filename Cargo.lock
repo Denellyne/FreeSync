@@ -418,7 +418,7 @@ dependencies = [
  "logger",
  "merkle",
  "rand",
- "serde",
+ "tempfile",
 ]
 
 [[package]]
