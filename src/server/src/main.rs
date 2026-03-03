@@ -1,3 +1,5 @@
+use logger::Logger;
+
 use crate::server_internals::server::Server;
 use std::env;
 mod server_internals;
@@ -8,7 +10,13 @@ fn main() {
 
     let port = args.remove(1);
 
-    let server = Server::new(port);
+    let tx = Logger::create(
+        "./logs/server.log",
+        "Server".parse().expect("Unable to parse string"),
+        true,
+        true,
+    );
+    let server = Server::new(port, tx);
 
     server.run_server();
 }

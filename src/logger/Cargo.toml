@@ -7,3 +7,6 @@ edition = "2024"
 rand = "0.10.0"
 tempfile = "3.25.0"
 time-format = "1.2.2"
+
+[features]
+mock = []

@@ -1,4 +1,5 @@
 use std::{
+    panic::{self, AssertUnwindSafe},
     sync::{Arc, Mutex, mpsc},
     thread::{self, sleep},
     time::Duration,
@@ -94,9 +95,10 @@ impl Worker {
                 match message {
                     Ok(job) => {
                         println!("Worker {id} got a job; executing.");
-
-                        let th = thread::spawn(job);
-                        let _ = th.join();
+                        let result = panic::catch_unwind(AssertUnwindSafe(job));
+                        if result.is_err() {
+                            println!("Worker {id}: job panicked but thread survived.");
+                        }
                     }
                     Err(_) => {
                         println!("Worker {id} disconnected; shutting down.");

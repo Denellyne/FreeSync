@@ -2,6 +2,7 @@ use crate::merklenode::diff::Change;
 use crate::merklenode::node::Node;
 use crate::merklenode::traits::{LeafData, LeafIO};
 use crate::traits::{CompressedData, Hashable, ReadFile};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 #[cfg(unix)]
@@ -9,7 +10,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
-#[derive(Eq, PartialEq, Clone, Hash)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Hash)]
 pub struct LeafNode {
     pub hash: [u8; 32],
     pub compressed_data: Vec<u8>,

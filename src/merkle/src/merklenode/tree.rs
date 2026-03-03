@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::merklenode::diff::{Change, Diff};
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
@@ -9,7 +11,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Eq, PartialEq, Clone, Hash)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Hash)]
 pub struct TreeNode {
     pub(crate) hash: [u8; 32],
     pub(crate) children: Vec<Node>,

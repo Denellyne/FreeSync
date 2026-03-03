@@ -6,4 +6,6 @@ edition = "2024"
 [dependencies]
 rand = "0.10.0-rc.9"
 merkle = { path = "../merkle" }
-logger = {path = "../logger"}
+logger = {path = "../logger",features=["mock"]}
+serde = {version = "1.0.228",features=["derive"]}
+bincode = "1.3"

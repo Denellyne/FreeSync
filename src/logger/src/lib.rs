@@ -1,3 +1,4 @@
+use crate::traits::Log;
 use std::{
     fs::{self, File, OpenOptions},
     io::Write,
@@ -74,6 +75,9 @@ impl Logger {
             }
         }
     }
+}
+
+impl Log for Logger {
     fn log_rcv(&mut self) {
         loop {
             let data = match self.rx.recv() {
@@ -112,15 +116,11 @@ impl Logger {
             eprintln!("{data}");
         }
     }
-
-    #[cfg(test)]
-    pub fn log(&mut self, data: &str) -> Result<(), String> {
-        match self.file.write_all(data.as_bytes()) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.to_string()),
-        }
-    }
 }
+
+#[cfg(feature = "mock")]
+pub mod mock;
 
 #[cfg(test)]
 mod tests;
+pub(crate) mod traits;
