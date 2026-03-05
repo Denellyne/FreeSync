@@ -8,6 +8,7 @@ use crate::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
 use crate::traits::{Hashable, ReadFile};
 use std::collections::HashSet;
+use std::fmt::format;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -315,6 +316,13 @@ impl TreeIO for TreeNode {
         if !self.write_tree(&self.file_path) {
              return Err("Unable to write tree file".to_string());
         }
+        if let Err(e) =  self.save_head(){
+            return Err(format!("Unable to save head file {e}"));
+        }
+        if let Err(e) =  self.save_upstream(){
+            return Err(format!("Unable to save upstream file {e}"));
+        }
+
         Ok(())
     //    self.save_tree()
 
