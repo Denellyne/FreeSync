@@ -313,9 +313,14 @@ impl TreeIO for TreeNode {
     fn save_tree(&self) -> Result<(), String> {
         self.init()?;
         if !self.write_tree(&self.file_path) {
-            return Err("Unable to write tree file".to_string());
+             return Err("Unable to write tree file".to_string());
         }
+        Ok(())
+    //    self.save_tree()
 
+
+    }
+    fn save_head(&self) -> Result<(), String> {
         let path = self.file_path.join(Self::HEAD_FILE);
         let branch = match path.exists() {
             true => match fs::read(path) {
@@ -339,6 +344,32 @@ impl TreeIO for TreeNode {
 
             false => Err("Unable to write hash to branch file".to_string()),
         }
+    }
+
+    fn save_upstream(&self) -> Result<(), String> {
+            let path = self.file_path.join(Self::UPSTREAM_FILE);
+            let branch = match path.exists() {
+                true => match fs::read(&path) {
+                    Ok(head) => match String::from_utf8(head) {
+                        Ok(str) => str,
+                        Err(_) => return Err("Unable to convert string from utf8".to_string()),
+                    },
+                    Err(_) => return Err("Unable to read contents of head file".to_string()),
+                },
+                false => "localhost:0".to_string(),
+            };
+
+            match self.write_file(&path, &branch) {
+                true => match self.write_file(
+                    path.join(branch),
+                    self.hash,
+                ) {
+                    true => Ok(()),
+                    false => Err("Unable to write selected branch to head file".to_string()),
+                },
+
+                false => Err("Unable to write hash to branch file".to_string()),
+            }
     }
 }
 

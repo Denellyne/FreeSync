@@ -5,11 +5,12 @@ use std::env;
 fn display_help() {
     let strs = vec![
         "FreeSync:",
-        "-h | --help) Prints the help menu",
-        "-b | --blob [blob hash]) Decrypts blob and displays its contents",
-        "--status) Prints the current status of the tree",
-        "--build) Builds the tree",
-        "--pull) Pulls the updates to the server",
+        "-h | --help Prints the help menu",
+        "-b | --blob [blob hash] Decrypts blob and displays its contents",
+        "--status Prints the current status of the tree",
+        "--set [IP : Port] Set IP address and port",
+        "--build Builds the tree",
+        "--pull Pulls the updates to the server",
         "--push Pushes the diffs to the server",
         "--branch [-n|-s]) Branch command:\n\t-n [name of branch]) Creates a new branch\n\t-s [name of branch]) Switches to another branch",
     ];

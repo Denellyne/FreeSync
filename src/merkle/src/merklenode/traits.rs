@@ -66,6 +66,8 @@ pub trait TreeIO: TreeIOInternal + ReadFile {
     const BRANCH_FOLDER: &'static str = ".freesync/branch";
     const DEFAULT_BRANCH: &'static str = "main";
     const HEAD_FILE: &'static str = ".freesync/HEAD";
+    const UPSTREAM_FILE: &'static str = ".freesync/UPSTREAM";
+
     fn save_tree(&self) -> Result<(), String>;
     fn get_head_path(path: impl AsRef<Path>) -> Result<PathBuf, String> {
         let path = path.as_ref();
@@ -91,6 +93,8 @@ pub trait TreeIO: TreeIOInternal + ReadFile {
         let child_file = Path::new(&header[2..]);
         path.join(child_folder).join(child_file)
     }
+    fn save_head(&self) -> Result<(), String>;
+    fn save_upstream(&self) -> Result<(), String>;
 }
 
 pub(crate) trait LeafIO: LeafData {
