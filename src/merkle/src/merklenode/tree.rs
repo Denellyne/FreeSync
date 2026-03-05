@@ -314,24 +314,17 @@ impl TreeIO for TreeNode {
     fn save_tree(&self) -> Result<(), String> {
         self.init()?;
         if !self.write_tree(&self.file_path) {
-             return Err("Unable to write tree file".to_string());
+            return Err("Unable to write tree file".to_string());
         }
-        if let Err(e) =  self.save_head(){
-            return Err(format!("Unable to save head file {e}"));
-        }
-        if let Err(e) =  self.save_upstream(){
-            return Err(format!("Unable to save upstream file {e}"));
-        }
+        self.save_head()?;
+        self.save_upstream()
 
-        Ok(())
-    //    self.save_tree()
-
-
+        //    self.save_tree()
     }
     fn save_head(&self) -> Result<(), String> {
         let path = self.file_path.join(Self::HEAD_FILE);
         let branch = match path.exists() {
-            true => match fs::read(path) {
+            true => match fs::read(&path) {
                 Ok(head) => match String::from_utf8(head) {
                     Ok(str) => str,
                     Err(_) => return Err("Unable to convert string from utf8".to_string()),
@@ -341,13 +334,17 @@ impl TreeIO for TreeNode {
             false => Self::DEFAULT_BRANCH.to_string(),
         };
 
-        match self.write_file(self.file_path.join(Self::HEAD_FILE), &branch) {
+        match self.write_file(&path, &branch) {
             true => match self.write_file(
-                self.file_path.join(Self::BRANCH_FOLDER).join(branch),
+                self.file_path.join(Self::BRANCH_FOLDER).join(&branch),
                 self.hash,
             ) {
                 true => Ok(()),
-                false => Err("Unable to write selected branch to head file".to_string()),
+                false => Err(format!(
+                    "Unable to write selected branch to head file, path:{}",
+                    path.join(branch).display()
+                )
+                .to_string()),
             },
 
             false => Err("Unable to write hash to branch file".to_string()),
@@ -355,29 +352,22 @@ impl TreeIO for TreeNode {
     }
 
     fn save_upstream(&self) -> Result<(), String> {
-            let path = self.file_path.join(Self::UPSTREAM_FILE);
-            let branch = match path.exists() {
-                true => match fs::read(&path) {
-                    Ok(head) => match String::from_utf8(head) {
-                        Ok(str) => str,
-                        Err(_) => return Err("Unable to convert string from utf8".to_string()),
-                    },
-                    Err(_) => return Err("Unable to read contents of head file".to_string()),
+        let path = self.file_path.join(Self::UPSTREAM_FILE);
+        let upstream = match path.exists() {
+            true => match fs::read(&path) {
+                Ok(head) => match String::from_utf8(head) {
+                    Ok(str) => str,
+                    Err(_) => return Err("Unable to convert string from utf8".to_string()),
                 },
-                false => "localhost:0".to_string(),
-            };
+                Err(_) => return Err("Unable to read contents of head file".to_string()),
+            },
+            false => "localhost:0".to_string(),
+        };
 
-            match self.write_file(&path, &branch) {
-                true => match self.write_file(
-                    path.join(branch),
-                    self.hash,
-                ) {
-                    true => Ok(()),
-                    false => Err("Unable to write selected branch to head file".to_string()),
-                },
-
-                false => Err("Unable to write hash to branch file".to_string()),
-            }
+        match self.write_file(&path, &upstream) {
+            true => Ok(()),
+            false => Err("Unable to write upstream to file".to_string()),
+        }
     }
 }
 
