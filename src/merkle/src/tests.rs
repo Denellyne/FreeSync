@@ -1,6 +1,6 @@
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
-use crate::merklenode::traits::LeafIO;
+use crate::merklenode::traits::{LeafIO};
 use crate::merkletree::MerkleTree;
 use rand::random;
 use std::fs::{File, OpenOptions};

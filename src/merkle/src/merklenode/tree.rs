@@ -5,7 +5,7 @@ use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::node::Node::{Leaf, Tree};
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
-use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
+use crate::merklenode::traits::{EntryData, HashableNode, Header,  LeafIO, TreeIO};
 use crate::traits::{Hashable, IO, ReadFile};
 use std::collections::HashSet;
 use std::fs;

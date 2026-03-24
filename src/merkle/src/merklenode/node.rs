@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::merklenode::diff::Diff;
 use crate::merklenode::leaf::LeafNode;
-use crate::merklenode::traits::LeafIO;
+use crate::merklenode::traits::{LeafIO};
 use crate::merklenode::tree::TreeNode;
 use crate::traits::Hashable;
 use std::collections::BTreeMap;
