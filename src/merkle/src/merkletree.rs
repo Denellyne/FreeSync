@@ -1,10 +1,9 @@
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
-use crate::merklenode::traits::{LeafData, TreeIO};
+use crate::merklenode::traits::{LeafIO, TreeIO};
 use crate::merklenode::tree::TreeNode;
 use crate::traits::{CompressedData, Hashable, IO, ReadFile};
 use std::fs;
-use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 
 pub struct MerkleTree;
@@ -34,6 +33,7 @@ impl MerkleTree {
     fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
         TreeNode::new(dir_path)
     }
+
     pub fn get_upstream(dir_path: PathBuf) -> Result<String, String> {
         let path = dir_path.join(TreeNode::UPSTREAM_FILE);
         match MerkleTree::read_file(path) {

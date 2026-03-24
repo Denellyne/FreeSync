@@ -1,6 +1,6 @@
 use crate::merklenode::diff::Change;
 use crate::merklenode::node::Node;
-use crate::merklenode::traits::{LeafData, LeafIO};
+use crate::merklenode::traits::LeafIO;
 use crate::traits::{CompressedData, Hashable, ReadFile};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -134,7 +134,98 @@ impl Hashable for LeafNode {
         self.hash
     }
 }
-impl LeafData for LeafNode {
+
+impl LeafIO for LeafNode {
+    fn write_blob(&self, path: &Path) -> Result<(), String> {
+        let dir_path = path.join(&LeafNode::hash_to_hex_string(&self.hash)[..2]);
+        if !dir_path.exists() {
+            match fs::create_dir_all(&dir_path) {
+                Ok(_) => (),
+                Err(_) => {
+                    return Err(format!(
+                        "Unable to create the directory {}",
+                        dir_path.display()
+                    ));
+                }
+            }
+        }
+        let file_path = dir_path.join(&LeafNode::hash_to_hex_string(&self.hash)[2..]);
+
+        match self.atomic_write_file(&file_path, self.data()) {
+            Ok(file) => {
+                let temp_path = file.into_temp_path();
+                match self.atomic_rename(&temp_path, &file_path) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(format!(
+                        "Unable to persist the file {} Error:{e}",
+                        temp_path.display()
+                    )),
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn is_executable(&self) -> Result<bool, String> {
+        #[cfg(unix)]
+        {
+            let metadata = fs::metadata(&self.file_path);
+            match metadata {
+                Ok(file_mode) => {
+                    let mode = file_mode.permissions().mode();
+                    if mode & 0o111 != 0 {
+                        return Ok(true);
+                    }
+                    Ok(false)
+                }
+                Err(_) => Err(format!(
+                    "Unable to get metadata for file {}",
+                    self.file_path.display()
+                )),
+            }
+        }
+        #[cfg(windows)]
+        Ok(matches!(
+            self.file_path.extension().and_then(|ext| ext.to_str()),
+            Some("exe") | Some("bat") | Some("cmd") | Some("sh")
+        ))
+    }
+
+    fn atomic_write_file(&self, path: &Path, data: &[u8]) -> Result<NamedTempFile, String> {
+        let parent_dir = match path.parent() {
+            Some(dir) => dir,
+            None => {
+                return Err(format!(
+                    "Unable to get parent directory of file of path:{}",
+                    path.display()
+                ));
+            }
+        };
+        let mut file = match NamedTempFile::new_in(parent_dir) {
+            Ok(file) => file,
+            Err(_) => return Err(format!("Unable to create the file {}", path.display())),
+        };
+        match file.write_all(data) {
+            Ok(_) => (),
+            Err(_) => return Err(format!("Unable to write to the file {}", path.display())),
+        }
+        match file.flush() {
+            Ok(_) => Ok(file),
+            Err(_) => Err(format!("Unable to write to the file {}", path.display())),
+        }
+    }
+
+    fn atomic_rename(&self, old_path: &Path, new_path: &Path) -> Result<(), String> {
+        match fs::rename(old_path, new_path) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(format!(
+                "Unable to rename file from {} to {}",
+                old_path.display(),
+                new_path.display()
+            )),
+        }
+    }
+
     fn data(&self) -> &Vec<u8> {
         &self.compressed_data
     }
@@ -306,97 +397,5 @@ impl LeafData for LeafNode {
         }
 
         Ok(raw_data)
-    }
-}
-
-impl LeafIO for LeafNode {
-    fn write_blob(&self, path: &Path) -> Result<(), String> {
-        let dir_path = path.join(&LeafNode::hash_to_hex_string(&self.hash)[..2]);
-        if !dir_path.exists() {
-            match fs::create_dir_all(&dir_path) {
-                Ok(_) => (),
-                Err(_) => {
-                    return Err(format!(
-                        "Unable to create the directory {}",
-                        dir_path.display()
-                    ));
-                }
-            }
-        }
-        let file_path = dir_path.join(&LeafNode::hash_to_hex_string(&self.hash)[2..]);
-
-        match self.atomic_write_file(&file_path, self.data()) {
-            Ok(file) => {
-                let temp_path = file.into_temp_path();
-                match self.atomic_rename(&temp_path, &file_path) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(format!(
-                        "Unable to persist the file {} Error:{e}",
-                        temp_path.display()
-                    )),
-                }
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    fn is_executable(&self) -> Result<bool, String> {
-        #[cfg(unix)]
-        {
-            let metadata = fs::metadata(&self.file_path);
-            match metadata {
-                Ok(file_mode) => {
-                    let mode = file_mode.permissions().mode();
-                    if mode & 0o111 != 0 {
-                        return Ok(true);
-                    }
-                    Ok(false)
-                }
-                Err(_) => Err(format!(
-                    "Unable to get metadata for file {}",
-                    self.file_path.display()
-                )),
-            }
-        }
-        #[cfg(windows)]
-        Ok(matches!(
-            self.file_path.extension().and_then(|ext| ext.to_str()),
-            Some("exe") | Some("bat") | Some("cmd") | Some("sh")
-        ))
-    }
-
-    fn atomic_write_file(&self, path: &Path, data: &[u8]) -> Result<NamedTempFile, String> {
-        let parent_dir = match path.parent() {
-            Some(dir) => dir,
-            None => {
-                return Err(format!(
-                    "Unable to get parent directory of file of path:{}",
-                    path.display()
-                ));
-            }
-        };
-        let mut file = match NamedTempFile::new_in(parent_dir) {
-            Ok(file) => file,
-            Err(_) => return Err(format!("Unable to create the file {}", path.display())),
-        };
-        match file.write_all(data) {
-            Ok(_) => (),
-            Err(_) => return Err(format!("Unable to write to the file {}", path.display())),
-        }
-        match file.flush() {
-            Ok(_) => Ok(file),
-            Err(_) => Err(format!("Unable to write to the file {}", path.display())),
-        }
-    }
-
-    fn atomic_rename(&self, old_path: &Path, new_path: &Path) -> Result<(), String> {
-        match fs::rename(old_path, new_path) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(format!(
-                "Unable to rename file from {} to {}",
-                old_path.display(),
-                new_path.display()
-            )),
-        }
     }
 }

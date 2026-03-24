@@ -5,7 +5,7 @@ use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::node::Node::{Leaf, Tree};
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
-use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafData, LeafIO, TreeIO};
+use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
 use crate::traits::{Hashable, IO, ReadFile};
 use std::collections::HashSet;
 use std::fs;
@@ -317,8 +317,6 @@ impl TreeIO for TreeNode {
         }
         self.save_head()?;
         self.save_upstream()
-
-        //    self.save_tree()
     }
     fn save_head(&self) -> Result<(), String> {
         let path = self.file_path.join(Self::HEAD_FILE);
@@ -350,25 +348,6 @@ impl TreeIO for TreeNode {
         }
     }
 
-    fn save_upstream(&self) -> Result<(), String> {
-        let path = self.file_path.join(Self::UPSTREAM_FILE);
-        let upstream = match path.exists() {
-            true => match fs::read(&path) {
-                Ok(head) => match String::from_utf8(head) {
-                    Ok(str) => str,
-                    Err(_) => return Err("Unable to convert string from utf8".to_string()),
-                },
-                Err(_) => return Err("Unable to read contents of head file".to_string()),
-            },
-            false => "localhost:0".to_string(),
-        };
-
-        match self.write_file(&path, &upstream) {
-            true => Ok(()),
-            false => Err("Unable to write upstream to file".to_string()),
-        }
-    }
-
     fn deserialize(&self) -> Result<(), String> {
         if let Err(e) = fs::create_dir_all(&self.file_path) {
             return Err(e.to_string());
@@ -389,6 +368,25 @@ impl TreeIO for TreeNode {
             }?
         }
         Ok(())
+    }
+
+    fn save_upstream(&self) -> Result<(), String> {
+        let path = self.file_path.join(Self::UPSTREAM_FILE);
+        let upstream = match path.exists() {
+            true => match Self::read_file(&path) {
+                Ok(head) => match String::from_utf8(head) {
+                    Ok(str) => str,
+                    Err(_) => return Err("Unable to convert string from utf8".to_string()),
+                },
+                Err(_) => return Err("Unable to read contents of head file".to_string()),
+            },
+            false => "localhost:0".to_string(),
+        };
+
+        match self.write_file(&path, &upstream) {
+            true => Ok(()),
+            false => Err("Unable to write upstream to file".to_string()),
+        }
     }
 }
 

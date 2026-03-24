@@ -31,17 +31,21 @@ impl Server {
         let tree = MerkleTree::create(path.as_ref().to_path_buf())
             .expect("Unable to generate the merkle tree for the current working directory");
         tree.save_tree().expect("Unable to save the tree to disk");
+
         let tree = Node::Tree(tree);
         let head_path = MerkleTree::get_head_path(path.as_ref().to_path_buf())
             .expect("Unable to get head path");
+
         let _ = tx.send(format!(
             "Info:\nFreeSync Server\nIp:{}\nCurrent branch:{}\nCurrent hash:{}",
             listener.local_addr().expect("Could not get local address"),
             head_path.clone().display(),
             MerkleTree::get_branch_hash(head_path).expect("Unable go get branch hash")
         ));
+
         let _ = tx.send("Server started".to_string());
         let tree = Arc::from(tree);
+
         Server { listener, tree, tx }
     }
 
@@ -60,7 +64,7 @@ impl Server {
                 Ok(stream) => {
                     let tx_clone = self.tx.clone();
                     let node = Arc::clone(&self.tree);
-                    pool.execute(move || handle_connection(stream, node, tx_clone));
+                    pool.execute(move || Self::handle_connection(stream, node, tx_clone));
                 }
                 Err(e) => match self.tx.send(format!("Unable to establish connection, {e}")) {
                     Ok(_) => (),
@@ -75,7 +79,34 @@ impl Server {
         self.close_server();
     }
 
-    #[cfg(test)]
+    fn handle_connection(mut stream: TcpStream, node: Arc<Node>, tx: Sender<String>) {
+        let buf_reader = BufReader::new(&stream);
+
+        let request: Vec<_> = buf_reader
+            .lines()
+            .map(|result| result.unwrap())
+            .take_while(|line| !line.is_empty())
+            .collect();
+
+        let _ = tx.send(format!("Request: {:?}", request));
+
+        if request[0] == "CLONE" {
+            let buf = bincode::serialize(&*node).unwrap();
+            if let Err(e) = stream.write_all(&buf) {
+                let _ = tx.send(format!("Error while sending {e}"));
+            }
+        } else if request[0] == "GET UPSTREAM" {
+            let hash = TreeNode::hash_to_hex_string(&node.get_hash());
+            let hash = hash + "\n";
+            if let Err(e) = stream.write_all(hash.as_bytes()) {
+                let _ = tx.send(format!("Error while sending {e}"));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+impl Server {
     pub(super) fn mock_server(self) -> Vec<String> {
         println!("\nServer running\n");
         let mut request: Vec<String> = Vec::new();
@@ -83,7 +114,7 @@ impl Server {
             match stream {
                 Ok(stream) => {
                     let node = Arc::clone(&self.tree);
-                    request = mock_handle_connection(stream, node);
+                    request = Self::mock_handle_connection(stream, node);
                     return request;
                 }
                 Err(e) => panic!("Unable to establish connection, {}", e),
@@ -91,64 +122,36 @@ impl Server {
         }
         request
     }
-}
+    fn mock_handle_connection(mut stream: TcpStream, node: Arc<Node>) -> Vec<String> {
+        println!("Received connection");
+        let buf_reader = BufReader::new(&stream);
+        println!("Created bufreader");
 
-#[cfg(test)]
-fn mock_handle_connection(mut stream: TcpStream, node: Arc<Node>) -> Vec<String> {
-    println!("Received connection");
-    let buf_reader = BufReader::new(&stream);
-    println!("Created bufreader");
+        let request: Vec<_> = buf_reader
+            .lines()
+            .map(|result| result.unwrap())
+            .take_while(|line| !line.is_empty())
+            .collect();
+        println!("Request: {:?}", request);
+        if request[0] == "CLONE" {
+            use merkle::traits::Hashable;
 
-    let request: Vec<_> = buf_reader
-        .lines()
-        .map(|result| result.unwrap())
-        .take_while(|line| !line.is_empty())
-        .collect();
-    println!("Request: {:?}", request);
-    if request[0] == "CLONE" {
-        use merkle::traits::Hashable;
-
-        let buf = bincode::serialize(&*node).unwrap();
-        println!("{:?}", buf);
-        if let Err(e) = stream.write_all(&buf) {
-            panic!("{e}");
+            let buf = bincode::serialize(&*node).unwrap();
+            println!("{:?}", buf);
+            if let Err(e) = stream.write_all(&buf) {
+                panic!("{e}");
+            }
+            let hash = Node::hash_to_hex_string(&node.get_hash());
+            println!("Hash:{hash}");
+            return vec![hash];
+        } else if request[0] == "TEST" {
+            if let Err(e) = stream.write_all(b"OK") {
+                panic!("{e}");
+            }
+        } else {
+            println!("ERROR");
+            let _ = stream.write_all(b"ERROR\n");
         }
-        let hash = Node::hash_to_hex_string(&node.get_hash());
-        println!("Hash:{hash}");
-        return vec![hash];
-    } else if request[0] == "TEST" {
-        if let Err(e) = stream.write_all(b"OK") {
-            panic!("{e}");
-        }
-    } else {
-        println!("ERROR");
-        let _ = stream.write_all(b"ERROR\n");
+        request
     }
-    request
-}
-fn handle_connection(mut stream: TcpStream, node: Arc<Node>, tx: Sender<String>) {
-    let buf_reader = BufReader::new(&stream);
-
-    let request: Vec<_> = buf_reader
-        .lines()
-        .map(|result| result.unwrap())
-        .take_while(|line| !line.is_empty())
-        .collect();
-
-    let _ = tx.send(format!("Request: {:?}", request));
-
-    if request[0] == "CLONE" {
-        let buf = bincode::serialize(&*node).unwrap();
-        if let Err(e) = stream.write_all(&buf) {
-            let _ = tx.send(format!("Error while sending {e}"));
-        }
-    } else if request[0] == "GET UPSTREAM" {
-        let hash = TreeNode::hash_to_hex_string(&node.get_hash());
-        let hash = hash + "\n";
-        if let Err(e) = stream.write_all(hash.as_bytes()) {
-            let _ = tx.send(format!("Error while sending {e}"));
-        }
-    }
-
-    // log_fmt!(log, "Request: {:?}", request);
 }
