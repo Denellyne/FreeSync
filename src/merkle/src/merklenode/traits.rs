@@ -19,42 +19,13 @@ pub(super) trait EntryData {
 pub(super) type Header = ([u8; 6], String, [u8; 32]);
 
 pub(super) mod internal_traits {
-    use crate::merklenode::traits::Header;
-    use std::fs::{File, OpenOptions};
-    use std::io::Write;
+    use crate::{merklenode::traits::Header, traits::IO};
     use std::path::Path;
 
-    pub trait TreeIOInternal {
+    pub trait TreeIOInternal: IO {
         fn init(&self) -> Result<(), String>;
 
         fn write_tree(&self, cwd: impl AsRef<Path>) -> bool;
-
-        fn write_file(&self, path: impl AsRef<Path>, data: impl AsRef<[u8]>) -> bool {
-            let mut file: File;
-            file = match OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .append(false)
-                .open(&path)
-            {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!("Failed to open file: {}", e);
-                    return false;
-                }
-            };
-
-            if let Err(e) = file.write_all(data.as_ref()) {
-                eprintln!("Unable to write file, {}", e);
-                return false;
-            }
-            if let Err(e) = file.flush() {
-                eprintln!("Unable to flush file, {}", e);
-                return false;
-            }
-            true
-        }
 
         fn parse_header(data: Vec<u8>) -> Result<(Vec<u8>, Header), String>;
     }

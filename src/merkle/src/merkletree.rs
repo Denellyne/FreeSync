@@ -2,13 +2,16 @@ use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::traits::{LeafData, TreeIO};
 use crate::merklenode::tree::TreeNode;
-use crate::traits::{CompressedData, Hashable, ReadFile};
+use crate::traits::{CompressedData, Hashable, IO, ReadFile};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 pub struct MerkleTree;
 
 impl MerkleTree {
+    fn create_setter() -> MerkleTree {
+        MerkleTree
+    }
     pub fn create(path: PathBuf) -> Result<TreeNode, String> {
         match fs::read_dir(&path) {
             Ok(_) => match path {
@@ -31,9 +34,26 @@ impl MerkleTree {
         TreeNode::new(dir_path)
     }
 
+    pub fn set_upstream(dir_path: PathBuf, ip: String) -> Result<(), String> {
+        let setter = MerkleTree::create_setter();
+        let path = dir_path.join(TreeNode::MAIN_FOLDER);
+        if !path.exists() {
+            match fs::create_dir_all(&path) {
+                Ok(_) => (),
+                Err(_) => return Err("Unable to create object folder".to_owned()),
+            }
+        }
+        let path = dir_path.join(TreeNode::UPSTREAM_FILE);
+
+        match setter.write_file(path, ip) {
+            true => Ok(()),
+            false => Err("Unable to set upstream".to_owned()),
+        }
+    }
+
     pub fn get_head_path(path: PathBuf) -> Result<PathBuf, String> {
         let head_file = path.join(TreeNode::HEAD_FILE);
-        let head = match fs::read(&head_file) {
+        let head = match MerkleTree::read_file(&head_file) {
             Ok(it) => it,
             Err(_) => return Err(format!("Unable to read file:{}", head_file.display())),
         };
@@ -45,7 +65,7 @@ impl MerkleTree {
 
     pub fn get_branch_hash(path: PathBuf) -> Result<String, String> {
         let mut hash: [u8; 32] = [0; 32];
-        let data: Vec<u8> = match fs::read(&path) {
+        let data: Vec<u8> = match MerkleTree::read_file(path) {
             Ok(data) => data[..32].to_vec(),
             Err(e) => return Err(e.to_string()),
         };
@@ -80,3 +100,4 @@ impl MerkleTree {
 
 impl CompressedData for MerkleTree {}
 impl ReadFile for MerkleTree {}
+impl IO for MerkleTree {}

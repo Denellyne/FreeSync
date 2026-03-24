@@ -1,6 +1,7 @@
 use merkle::merklenode::traits::TreeIO;
 use merkle::merkletree::MerkleTree;
 use std::env;
+use std::net::{Ipv4Addr, TcpStream};
 
 fn display_help() {
     let strs = vec![
@@ -21,13 +22,13 @@ fn display_help() {
 }
 
 fn execute_commands(mut args: Vec<String>) -> Vec<String> {
-    debug_assert!(!args.is_empty());
+    assert!(!args.is_empty());
     let opt = args.remove(0);
 
     match opt.as_str() {
         "-h" | "--help" => display_help(),
         "-b" | "--blob" => {
-            debug_assert!(!args.is_empty());
+            assert!(!args.is_empty());
             let path = args.remove(0);
             let node = MerkleTree::get_blob_data(&path);
             match node {
@@ -38,6 +39,27 @@ fn execute_commands(mut args: Vec<String>) -> Vec<String> {
         "--build" => {
             if let Err(e) = build_tree() {
                 eprintln!("{}", e);
+            }
+        }
+
+        "--set" => {
+            assert!(args.len() >= 2);
+            let ip = args.remove(0);
+            if let Err(e) = ip.parse::<Ipv4Addr>() {
+                eprintln!("{e}");
+                return args;
+            }
+            let port = args.remove(0);
+            let port = match port.parse::<u16>() {
+                Ok(port) => port.to_string(),
+                Err(e) => {
+                    eprintln!("{e}");
+                    return args;
+                }
+            };
+            let ip = format!("{ip}:{port}");
+            if let Err(e) = MerkleTree::set_upstream(".".into(), ip.to_string()) {
+                eprintln!("{e}");
             }
         }
         "--status" => {

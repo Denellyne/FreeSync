@@ -1,6 +1,7 @@
 use flate2::read::ZlibDecoder;
-use std::fs;
 use std::fs::ReadDir;
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
 use std::path::Path;
 
 pub trait Hashable {
@@ -62,5 +63,34 @@ pub trait ReadFile {
             return Ok((head, data));
         }
         Err("Unable to read until null-byte".to_owned())
+    }
+}
+
+pub trait IO {
+    fn write_file(&self, path: impl AsRef<Path>, data: impl AsRef<[u8]>) -> bool {
+        let mut file: File;
+        file = match OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .append(false)
+            .open(&path)
+        {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Failed to open file: {}", e);
+                return false;
+            }
+        };
+
+        if let Err(e) = file.write_all(data.as_ref()) {
+            eprintln!("Unable to write file, {}", e);
+            return false;
+        }
+        if let Err(e) = file.flush() {
+            eprintln!("Unable to flush file, {}", e);
+            return false;
+        }
+        true
     }
 }

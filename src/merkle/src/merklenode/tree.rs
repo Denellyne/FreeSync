@@ -6,9 +6,8 @@ use crate::merklenode::node::Node;
 use crate::merklenode::node::Node::{Leaf, Tree};
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
-use crate::traits::{Hashable, ReadFile};
+use crate::traits::{Hashable, IO, ReadFile};
 use std::collections::HashSet;
-use std::fmt::format;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -324,7 +323,7 @@ impl TreeIO for TreeNode {
     fn save_head(&self) -> Result<(), String> {
         let path = self.file_path.join(Self::HEAD_FILE);
         let branch = match path.exists() {
-            true => match fs::read(&path) {
+            true => match Self::read_file(&path) {
                 Ok(head) => match String::from_utf8(head) {
                     Ok(str) => str,
                     Err(_) => return Err("Unable to convert string from utf8".to_string()),
@@ -477,3 +476,4 @@ impl TreeIOInternal for TreeNode {
     }
 }
 impl ReadFile for TreeNode {}
+impl IO for TreeNode {}
