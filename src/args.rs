@@ -1,11 +1,8 @@
-use merkle::merklenode::node::Node;
+use crate::client::Client;
 use merkle::merklenode::traits::TreeIO;
-use merkle::merklenode::tree::TreeNode;
 use merkle::merkletree::MerkleTree;
-use merkle::traits::{Hashable, ReadFile};
 use std::env;
-use std::io::{Read, Write};
-use std::net::{Ipv4Addr, TcpStream};
+use std::net::Ipv4Addr;
 
 fn display_help() {
     let strs = vec![
@@ -42,7 +39,7 @@ fn execute_commands(mut args: Vec<String>) -> Vec<String> {
             }
         }
         "--pull" => {
-            if let Err(e) = pull() {
+            if let Err(e) = Client::pull() {
                 eprintln!("{}", e);
             }
         }
@@ -52,46 +49,22 @@ fn execute_commands(mut args: Vec<String>) -> Vec<String> {
             }
         }
         "--clone" => {
-            if let Err(e) = clone() {
+            if let Err(e) = Client::clone() {
                 eprintln!("{e}")
             }
         }
 
         "--set" => {
-            assert!(args.len() >= 2);
-            let ip = args.remove(0);
-            if let Err(e) = ip.parse::<Ipv4Addr>() {
-                eprintln!("{e}");
-                return args;
-            }
-            let port = args.remove(0);
-            let port = match port.parse::<u16>() {
-                Ok(port) => port.to_string(),
-                Err(e) => {
-                    eprintln!("{e}");
-                    return args;
-                }
-            };
-            let ip = format!("{ip}:{port}");
-            if let Err(e) = MerkleTree::set_upstream(".".into(), ip.to_string()) {
-                eprintln!("{e}");
+            if let Err(e) = set_upstream(&mut args) {
+                eprintln!("{e}")
             }
         }
         "--status" => {
-            let path = env::current_dir().unwrap();
-            let branch_file = match MerkleTree::get_head_path(path.clone()) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("{}", e);
-                    return args;
-                }
-            };
-            let hash_string = MerkleTree::get_branch_hash(path)
-                .expect("Unable to get hash for the current branch");
-
-            println!("Branch:{}\nHash:{}", branch_file.display(), hash_string);
+            if let Err(e) = status() {
+                eprintln!("{e}")
+            }
         }
-        _ => eprintln!("You must provide at least one argument"),
+        _ => eprintln!("You must provide at least 1 argument"),
     }
     args
 }
@@ -114,60 +87,37 @@ fn build_tree() -> Result<(), String> {
     Ok(())
 }
 
-fn clone() -> Result<(), String> {
-    let dir = match env::current_dir() {
-        Ok(dir) => dir,
-        Err(e) => return Err(e.to_string()),
-    };
-
-    let addr = match MerkleTree::get_upstream(".".into()) {
-        Ok(addr) => addr,
-        Err(e) => panic!("{e}"),
-    };
-    let mut conn = TcpStream::connect(addr).unwrap();
-    println!("Connected");
-
-    let command = "CLONE\n\n";
-
-    conn.write_all(command.as_bytes()).unwrap();
-    println!("Wrote");
-
-    let mut buf: Vec<u8> = Vec::new();
-    conn.read_to_end(&mut buf).unwrap();
-    let node = bincode::deserialize::<Node>(&buf).expect("Unable to deserialize node");
-    match node {
-        Node::Tree(tree_node) => {
-            tree_node.deserialize().unwrap();
-            tree_node.save_tree()
-        }
-        Node::Leaf(_) => Err("It was a leaf node".to_owned()),
+fn set_upstream(args: &mut Vec<String>) -> Result<(), String> {
+    assert!(args.len() >= 2);
+    let ip = args.remove(0);
+    if let Err(e) = ip.parse::<Ipv4Addr>() {
+        eprintln!("{e}");
+        return Ok(());
     }
+    let port = args.remove(0);
+    let port = match port.parse::<u16>() {
+        Ok(port) => port.to_string(),
+        Err(e) => {
+            eprintln!("{e}");
+            return Ok(());
+        }
+    };
+    let ip = format!("{ip}:{port}");
+    MerkleTree::set_upstream(".".into(), ip.to_string())?;
+
+    Ok(())
 }
-fn pull() -> Result<(), String> {
-    let dir = match env::current_dir() {
-        Ok(dir) => dir,
+
+fn status() -> Result<(), String> {
+    let path = env::current_dir().unwrap();
+    let branch_file = match MerkleTree::get_head_path(path.clone()) {
+        Ok(t) => t,
         Err(e) => return Err(e.to_string()),
     };
+    let hash_string =
+        MerkleTree::get_branch_hash(path).expect("Unable to get hash for the current branch");
 
-    let node = MerkleTree::create(dir).expect("Unable to create tree");
-    println!("Tree created");
-    let hash = TreeNode::hash_to_hex_string(&node.get_hash());
-    let addr = match MerkleTree::get_upstream(".".into()) {
-        Ok(addr) => addr,
-        Err(e) => panic!("{e}"),
-    };
-    let mut conn = TcpStream::connect(addr).unwrap();
-    println!("Connected");
-
-    let command = "GET UPSTREAM\n\n";
-
-    conn.write_all(command.as_bytes()).unwrap();
-    println!("Wrote");
-
-    let mut upstream_hash: String = String::new();
-    conn.read_to_string(&mut upstream_hash).unwrap();
-    println!("{upstream_hash}");
-
+    println!("Branch:{}\nHash:{}", branch_file.display(), hash_string);
     Ok(())
 }
 
