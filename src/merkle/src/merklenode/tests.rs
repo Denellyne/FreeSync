@@ -2,7 +2,7 @@ use crate::merklenode::diff::Change;
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::node::Node::Tree;
-use crate::merklenode::traits::{LeafData, LeafIO, TreeIO};
+use crate::merklenode::traits::{ LeafIO, TreeIO};
 use crate::merkletree::MerkleTree;
 use crate::tests::{generate_file, random_tree_builder};
 use crate::tests::{generate_random_tree, write_random_to_filepath};
@@ -45,11 +45,11 @@ fn test_read_write_tree() {
     let path = PathBuf::from(dir.path());
 
     match generate_random_tree(dir.path().to_path_buf()) {
-        (Ok(Node::Tree(tree)), _files, _dirs) => match tree.save_tree() {
+        (Ok(Tree(tree)), _files, _dirs) => match tree.save_tree() {
             Ok(_) => {
                 let t2 =
                     MerkleTree::from(&path, path.clone()).expect("Unable to create second tree");
-                assert_eq!(Node::Tree(tree), t2);
+                assert_eq!(Tree(tree), t2);
             }
             Err(e) => panic!("{}", e),
         },

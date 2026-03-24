@@ -69,15 +69,13 @@ pub trait TreeIO: TreeIOInternal + ReadFile {
     fn save_upstream(&self) -> Result<(), String>;
 }
 
-pub(crate) trait LeafIO: LeafData {
+pub(crate) trait LeafIO: CompressedData + ReadFile {
     fn write_blob(&self, path: &Path) -> Result<(), String>;
     fn is_executable(&self) -> Result<bool, String>;
     fn atomic_write_file(&self, path: &Path, data: &[u8]) -> Result<NamedTempFile, String>;
     fn atomic_rename(&self, file: &Path, path: &Path) -> Result<(), String>;
-}
-
-pub(crate) trait LeafData: CompressedData + ReadFile {
     fn data(&self) -> &Vec<u8>;
+
     fn diff_file(&self, other: &Self) -> Result<Vec<Change>, String>;
 
     fn decompress_data(data: &[u8]) -> Result<Vec<u8>, String>;
@@ -92,4 +90,6 @@ pub(crate) trait LeafData: CompressedData + ReadFile {
             _ => Err(format!("Unable to read file {}", path.as_ref().display())),
         }
     }
+    
 }
+
