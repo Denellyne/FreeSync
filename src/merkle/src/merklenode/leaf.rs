@@ -1,6 +1,6 @@
 use crate::merklenode::diff::Change;
 use crate::merklenode::node::Node;
-use crate::merklenode::traits::{ LeafIO};
+use crate::merklenode::traits::LeafIO;
 use crate::traits::{CompressedData, Hashable, ReadFile};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -134,7 +134,6 @@ impl Hashable for LeafNode {
         self.hash
     }
 }
-
 
 impl LeafIO for LeafNode {
     fn write_blob(&self, path: &Path) -> Result<(), String> {

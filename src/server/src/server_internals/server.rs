@@ -18,7 +18,6 @@ pub struct Server {
 }
 
 impl Server {
-    
     pub fn new(port: String, path: impl AsRef<Path>, tx: Sender<String>) -> Self {
         let _ = tx.send("Starting the Server...".to_string());
 
@@ -32,21 +31,21 @@ impl Server {
         let tree = MerkleTree::create(path.as_ref().to_path_buf())
             .expect("Unable to generate the merkle tree for the current working directory");
         tree.save_tree().expect("Unable to save the tree to disk");
-        
+
         let tree = Node::Tree(tree);
         let head_path = MerkleTree::get_head_path(path.as_ref().to_path_buf())
             .expect("Unable to get head path");
-        
+
         let _ = tx.send(format!(
             "Info:\nFreeSync Server\nIp:{}\nCurrent branch:{}\nCurrent hash:{}",
             listener.local_addr().expect("Could not get local address"),
             head_path.clone().display(),
             MerkleTree::get_branch_hash(head_path).expect("Unable go get branch hash")
         ));
-        
+
         let _ = tx.send("Server started".to_string());
         let tree = Arc::from(tree);
-        
+
         Server { listener, tree, tx }
     }
 
@@ -84,10 +83,10 @@ impl Server {
         let buf_reader = BufReader::new(&stream);
 
         let request: Vec<_> = buf_reader
-          .lines()
-          .map(|result| result.unwrap())
-          .take_while(|line| !line.is_empty())
-          .collect();
+            .lines()
+            .map(|result| result.unwrap())
+            .take_while(|line| !line.is_empty())
+            .collect();
 
         let _ = tx.send(format!("Request: {:?}", request));
 
@@ -104,11 +103,10 @@ impl Server {
             }
         }
     }
-    
 }
 
 #[cfg(test)]
-impl Server{
+impl Server {
     pub(super) fn mock_server(self) -> Vec<String> {
         println!("\nServer running\n");
         let mut request: Vec<String> = Vec::new();
@@ -130,10 +128,10 @@ impl Server{
         println!("Created bufreader");
 
         let request: Vec<_> = buf_reader
-          .lines()
-          .map(|result| result.unwrap())
-          .take_while(|line| !line.is_empty())
-          .collect();
+            .lines()
+            .map(|result| result.unwrap())
+            .take_while(|line| !line.is_empty())
+            .collect();
         println!("Request: {:?}", request);
         if request[0] == "CLONE" {
             use merkle::traits::Hashable;
@@ -157,5 +155,3 @@ impl Server{
         request
     }
 }
-
-

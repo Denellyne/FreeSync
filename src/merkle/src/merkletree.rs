@@ -1,6 +1,6 @@
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
-use crate::merklenode::traits::{ LeafIO, TreeIO};
+use crate::merklenode::traits::{LeafIO, TreeIO};
 use crate::merklenode::tree::TreeNode;
 use crate::traits::{CompressedData, Hashable, IO, ReadFile};
 use std::fs;

@@ -2,7 +2,7 @@ use crate::merklenode::diff::Change;
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::node::Node::Tree;
-use crate::merklenode::traits::{ LeafIO, TreeIO};
+use crate::merklenode::traits::{LeafIO, TreeIO};
 use crate::merkletree::MerkleTree;
 use crate::tests::{generate_file, random_tree_builder};
 use crate::tests::{generate_random_tree, write_random_to_filepath};
