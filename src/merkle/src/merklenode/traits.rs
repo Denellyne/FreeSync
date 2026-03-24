@@ -65,6 +65,7 @@ pub trait TreeIO: TreeIOInternal + ReadFile {
         path.join(child_folder).join(child_file)
     }
     fn save_head(&self) -> Result<(), String>;
+    fn deserialize(&self) -> Result<(), String>;
     fn save_upstream(&self) -> Result<(), String>;
 }
 

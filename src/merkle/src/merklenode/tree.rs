@@ -5,7 +5,7 @@ use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::node::Node::{Leaf, Tree};
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
-use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
+use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafData, LeafIO, TreeIO};
 use crate::traits::{Hashable, IO, ReadFile};
 use std::collections::HashSet;
 use std::fs;
@@ -40,7 +40,7 @@ impl TreeNode {
         let paths = paths?;
         let mut vec: Vec<Node> = Vec::new();
 
-        let filter: HashSet<_> = HashSet::from([".freesync", ".git"]);
+        let filter: HashSet<_> = HashSet::from([".freesync", ".git", "logs"]);
         println!("Tree Path: {}", path.as_ref().display());
         'pathLoop: for path in paths {
             let path = match path {
@@ -367,6 +367,28 @@ impl TreeIO for TreeNode {
             true => Ok(()),
             false => Err("Unable to write upstream to file".to_string()),
         }
+    }
+
+    fn deserialize(&self) -> Result<(), String> {
+        if let Err(e) = fs::create_dir_all(&self.file_path) {
+            return Err(e.to_string());
+        }
+        for child in &self.children {
+            match child {
+                Tree(tree_node) => tree_node.deserialize(),
+                Leaf(leaf_node) => {
+                    let tempfile = leaf_node.atomic_write_file(
+                        &leaf_node.file_path,
+                        &LeafNode::decompress_data(leaf_node.data())?,
+                    )?;
+                    if let Err(e) = tempfile.persist(&leaf_node.file_path) {
+                        return Err(e.to_string());
+                    }
+                    Ok(())
+                }
+            }?
+        }
+        Ok(())
     }
 }
 

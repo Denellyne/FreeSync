@@ -1,6 +1,10 @@
+use merkle::merklenode::node::Node;
 use merkle::merklenode::traits::TreeIO;
+use merkle::merklenode::tree::TreeNode;
 use merkle::merkletree::MerkleTree;
+use merkle::traits::{Hashable, ReadFile};
 use std::env;
+use std::io::{Read, Write};
 use std::net::{Ipv4Addr, TcpStream};
 
 fn display_help() {
@@ -11,6 +15,7 @@ fn display_help() {
         "--status Prints the current status of the tree",
         "--set [IP : Port] Set IP address and port",
         "--build Builds the tree",
+        "--clone Clones from the IP and Port defined in the UPSTREAM_FILE",
         "--pull Pulls the updates to the server",
         "--push Pushes the diffs to the server",
         "--branch [-n|-s]) Branch command:\n\t-n [name of branch]) Creates a new branch\n\t-s [name of branch]) Switches to another branch",
@@ -36,9 +41,19 @@ fn execute_commands(mut args: Vec<String>) -> Vec<String> {
                 Err(msg) => println!("{}", msg),
             }
         }
+        "--pull" => {
+            if let Err(e) = pull() {
+                eprintln!("{}", e);
+            }
+        }
         "--build" => {
             if let Err(e) = build_tree() {
                 eprintln!("{}", e);
+            }
+        }
+        "--clone" => {
+            if let Err(e) = clone() {
+                eprintln!("{e}")
             }
         }
 
@@ -96,6 +111,63 @@ fn build_tree() -> Result<(), String> {
         Ok(_) => println!("Initialized tree and saved it successfully!"),
         Err(e) => eprintln!("{}", e),
     }
+    Ok(())
+}
+
+fn clone() -> Result<(), String> {
+    let dir = match env::current_dir() {
+        Ok(dir) => dir,
+        Err(e) => return Err(e.to_string()),
+    };
+
+    let addr = match MerkleTree::get_upstream(".".into()) {
+        Ok(addr) => addr,
+        Err(e) => panic!("{e}"),
+    };
+    let mut conn = TcpStream::connect(addr).unwrap();
+    println!("Connected");
+
+    let command = "CLONE\n\n";
+
+    conn.write_all(command.as_bytes()).unwrap();
+    println!("Wrote");
+
+    let mut buf: Vec<u8> = Vec::new();
+    conn.read_to_end(&mut buf).unwrap();
+    let node = bincode::deserialize::<Node>(&buf).expect("Unable to deserialize node");
+    match node {
+        Node::Tree(tree_node) => {
+            tree_node.deserialize().unwrap();
+            tree_node.save_tree()
+        }
+        Node::Leaf(_) => Err("It was a leaf node".to_owned()),
+    }
+}
+fn pull() -> Result<(), String> {
+    let dir = match env::current_dir() {
+        Ok(dir) => dir,
+        Err(e) => return Err(e.to_string()),
+    };
+
+    let node = MerkleTree::create(dir).expect("Unable to create tree");
+    println!("Tree created");
+    let hash = TreeNode::hash_to_hex_string(&node.get_hash());
+    let addr = match MerkleTree::get_upstream(".".into()) {
+        Ok(addr) => addr,
+        Err(e) => panic!("{e}"),
+    };
+    let mut conn = TcpStream::connect(addr).unwrap();
+    println!("Connected");
+
+    let command = "GET UPSTREAM\n\n";
+
+    conn.write_all(command.as_bytes()).unwrap();
+    println!("Wrote");
+
+    let mut upstream_hash: String = String::new();
+    conn.read_to_string(&mut upstream_hash).unwrap();
+    println!("{upstream_hash}");
+
     Ok(())
 }
 

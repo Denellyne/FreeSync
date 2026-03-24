@@ -1,11 +1,13 @@
 use merkle::merklenode::node::Node;
 use merkle::merklenode::traits::TreeIO;
+use merkle::merklenode::tree::TreeNode;
 use merkle::merkletree::MerkleTree;
+use merkle::traits::Hashable;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
+use std::sync::mpsc::Sender;
 
 use crate::server_internals::threadpool::ThreadPool;
 // The only uses of expect and unwrap should be at the startup,after that there shall be no unwraps
@@ -137,8 +139,13 @@ fn handle_connection(mut stream: TcpStream, node: Arc<Node>, tx: Sender<String>)
 
     if request[0] == "CLONE" {
         let buf = bincode::serialize(&*node).unwrap();
-        println!("{:?}", buf);
         if let Err(e) = stream.write_all(&buf) {
+            let _ = tx.send(format!("Error while sending {e}"));
+        }
+    } else if request[0] == "GET UPSTREAM" {
+        let hash = TreeNode::hash_to_hex_string(&node.get_hash());
+        let hash = hash + "\n";
+        if let Err(e) = stream.write_all(hash.as_bytes()) {
             let _ = tx.send(format!("Error while sending {e}"));
         }
     }
