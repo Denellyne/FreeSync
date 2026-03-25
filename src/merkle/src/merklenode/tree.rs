@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 use crate::merklenode::diff::{Change, Diff};
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
@@ -11,7 +9,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Hash)]
+#[derive(Eq, PartialEq, Clone, Hash)]
 pub struct TreeNode {
     pub(crate) hash: [u8; 32],
     pub(crate) children: Vec<Node>,
@@ -346,28 +344,6 @@ impl TreeIO for TreeNode {
 
             false => Err("Unable to write hash to branch file".to_string()),
         }
-    }
-
-    fn deserialize(&self) -> Result<(), String> {
-        if let Err(e) = fs::create_dir_all(&self.file_path) {
-            return Err(e.to_string());
-        }
-        for child in &self.children {
-            match child {
-                Tree(tree_node) => tree_node.deserialize(),
-                Leaf(leaf_node) => {
-                    let tempfile = leaf_node.atomic_write_file(
-                        &leaf_node.file_path,
-                        &LeafNode::decompress_data(leaf_node.data())?,
-                    )?;
-                    if let Err(e) = tempfile.persist(&leaf_node.file_path) {
-                        return Err(e.to_string());
-                    }
-                    Ok(())
-                }
-            }?
-        }
-        Ok(())
     }
 
     fn save_upstream(&self) -> Result<(), String> {

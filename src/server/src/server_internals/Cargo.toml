@@ -1,0 +1,11 @@
+[package]
+name = "server_internals"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rand = "0.10.0-rc.9"
+merkle = { path = "../../../merkle" }
+logger = {path = "../../../logger",features=["mock"]}
+bincode = "1.3.3"
+tempfile = "3.25.0"

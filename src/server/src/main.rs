@@ -1,8 +1,6 @@
 use logger::Logger;
-
-use crate::server_internals::server::Server;
+use server_internals::server::Server;
 use std::env;
-mod server_internals;
 
 fn main() {
     let mut args: Vec<String> = env::args().collect();

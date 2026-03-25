@@ -1,3 +1,4 @@
+use crate::data::Packet;
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::traits::{LeafIO, TreeIO};
@@ -61,6 +62,65 @@ impl MerkleTree {
             false => Err("Unable to set upstream".to_owned()),
         }
     }
+    pub fn write_packet(dir_path: PathBuf, packet: Packet) -> Result<(), String> {
+        match packet {
+            Packet::ObjectFile(data, hash) => {
+                let path = dir_path
+                    .join(TreeNode::OBJ_FOLDER)
+                    .join(&hash[..2])
+                    .join(&hash[2..]);
+                match MerkleTree.write_file(&path, &data) {
+                    true => Ok(()),
+                    false => Err("Unable to write object file".to_owned()),
+                }
+            }
+            Packet::HeadFile(data) => {
+                let path = dir_path.join(TreeNode::HEAD_FILE);
+                match MerkleTree.write_file(&path, &data) {
+                    true => Ok(()),
+                    false => Err("Unable to write head file".to_owned()),
+                }
+            }
+            Packet::BranchFile(hash, name) => {
+                let path = dir_path.join(TreeNode::BRANCH_FOLDER).join(name);
+                match MerkleTree.write_file(&path, &hash) {
+                    true => Ok(()),
+                    false => Err("Unable to write branch file".to_owned()),
+                }
+            }
+        }
+    }
+
+    pub fn get_objects(dir_path: PathBuf) -> Result<Vec<Packet>, String> {
+        let dirs = match fs::read_dir(dir_path) {
+            Ok(dirs) => dirs,
+            Err(_) => return Err("Unable to read directory".to_owned()),
+        };
+        let mut vec: Vec<Packet> = Vec::with_capacity(dirs.size_hint().0);
+        for dir in dirs {
+            let dir = match dir {
+                Ok(dir) => dir,
+                Err(_) => return Err("Unable to read directory".to_owned()),
+            };
+
+            let files = match fs::read_dir(dir.path()) {
+                Ok(files) => files,
+                Err(_) => return Err("Unable to read directory".to_owned()),
+            };
+
+            for file in files {
+                let file = match file {
+                    Ok(file) => file,
+                    Err(_) => return Err("Unable to read directory".to_owned()),
+                };
+                let data = MerkleTree::read_file(file.path())?;
+                let path = dir.path().join(file.path());
+                vec.push(Packet::ObjectFile(data, path.display().to_string()));
+            }
+        }
+
+        Ok(vec)
+    }
 
     pub fn get_head_path(path: PathBuf) -> Result<PathBuf, String> {
         let head_file = path.join(TreeNode::HEAD_FILE);
@@ -86,6 +146,16 @@ impl MerkleTree {
             .iter()
             .map(|b| format!("{:02x}", b))
             .collect::<String>())
+    }
+
+    pub fn get_branch_hash_str(path: PathBuf) -> Result<String, String> {
+        let mut hash: [u8; 32] = [0; 32];
+        let data: Vec<u8> = match MerkleTree::read_file(path) {
+            Ok(data) => data[..32].to_vec(),
+            Err(e) => return Err(e.to_string()),
+        };
+        hash.copy_from_slice(&data);
+        Ok(TreeNode::hash_to_hex_string(&hash))
     }
 
     pub fn get_blob_data(path: impl AsRef<Path>) -> Result<String, String> {

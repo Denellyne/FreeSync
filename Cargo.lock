@@ -396,6 +396,14 @@ dependencies = [
 name = "server"
 version = "0.1.0"
 dependencies = [
+ "logger",
+ "server_internals",
+]
+
+[[package]]
+name = "server_internals"
+version = "0.1.0"
+dependencies = [
  "bincode",
  "logger",
  "merkle",

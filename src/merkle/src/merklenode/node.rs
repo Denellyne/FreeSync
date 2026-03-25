@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 use crate::merklenode::diff::Diff;
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::traits::LeafIO;
@@ -10,7 +8,7 @@ use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 use std::{collections, fs};
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum Node {
     Tree(TreeNode),
     Leaf(LeafNode),
