@@ -277,6 +277,32 @@ impl TreeNode {
 
         self.hash = TreeNode::hash_tree(&mut self.children);
     }
+
+    pub(crate) fn apply_branch(&self) -> Result<(), String> {
+        for child in &self.children {
+            match child {
+                Tree(tree) => tree.apply_branch()?,
+                Leaf(leaf) => {
+                    let data = leaf.data();
+                    let decompress = LeafNode::decompress_data(data)?;
+
+                    match leaf.atomic_write_file(&leaf.file_path, &decompress) {
+                        Ok(file) => {
+                            let temp_path = file.into_temp_path();
+                            if let Err(e) = leaf.atomic_rename(&temp_path, &leaf.file_path) {
+                                return Err(format!(
+                                    "Unable to persist the file {} Error:{e}",
+                                    temp_path.display()
+                                ));
+                            }
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl EntryData for TreeNode {}

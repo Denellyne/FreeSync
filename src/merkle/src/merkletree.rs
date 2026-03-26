@@ -34,6 +34,40 @@ impl MerkleTree {
     fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
         TreeNode::new(dir_path)
     }
+    pub fn apply_branch(node: Node) -> Result<(), String> {
+        let node = match node {
+            Node::Tree(tree_node) => tree_node,
+            Node::Leaf(_) => return Err("Can't apply a branch from a leaf node".to_string()),
+        };
+        let paths = match fs::read_dir(&node.file_path) {
+            Ok(paths) => paths,
+            Err(e) => return Err(e.to_string()),
+        };
+        for path in paths {
+            let path = match path {
+                Ok(path) => path,
+                Err(e) => return Err(e.to_string()),
+            };
+            if path.file_name() == ".freesync" || path.file_name() == "FreeSync" {
+                continue;
+            }
+            match fs::metadata(path.path()) {
+                Ok(metadata) => {
+                    if metadata.is_dir()
+                        && let Err(e) = fs::remove_dir(path.path())
+                    {
+                        return Err(e.to_string());
+                    } else if metadata.is_file()
+                        && let Err(e) = fs::remove_file(path.path())
+                    {
+                        return Err(e.to_string());
+                    };
+                }
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        node.apply_branch()
+    }
 
     pub fn get_upstream(dir_path: PathBuf) -> Result<String, String> {
         let path = dir_path.join(TreeNode::UPSTREAM_FILE);
@@ -65,16 +99,28 @@ impl MerkleTree {
     pub fn write_packet(dir_path: PathBuf, packet: Packet) -> Result<(), String> {
         match packet {
             Packet::ObjectFile(data, hash) => {
-                let path = dir_path
-                    .join(TreeNode::OBJ_FOLDER)
-                    .join(&hash[..2])
-                    .join(&hash[2..]);
+                let path = dir_path.join(TreeNode::OBJ_FOLDER).join(&hash[..2]);
+                if let Err(e) = fs::create_dir_all(&path) {
+                    return Err(
+                        format!("Unable to create directories for object file, {e}").to_string()
+                    );
+                }
+                let path = path.join(&hash[2..]);
+
                 match MerkleTree.write_file(&path, &data) {
                     true => Ok(()),
-                    false => Err("Unable to write object file".to_owned()),
+                    false => Err(
+                        format!("Unable to write object file,path:{}", path.display()).to_string(),
+                    ),
                 }
             }
             Packet::HeadFile(data) => {
+                let path = dir_path.join(TreeNode::MAIN_FOLDER);
+                if let Err(e) = fs::create_dir_all(&path) {
+                    return Err(
+                        format!("Unable to create directories for object file, {e}").to_string()
+                    );
+                }
                 let path = dir_path.join(TreeNode::HEAD_FILE);
                 match MerkleTree.write_file(&path, &data) {
                     true => Ok(()),
@@ -82,7 +128,13 @@ impl MerkleTree {
                 }
             }
             Packet::BranchFile(hash, name) => {
-                let path = dir_path.join(TreeNode::BRANCH_FOLDER).join(name);
+                let path = dir_path.join(TreeNode::BRANCH_FOLDER);
+                if let Err(e) = fs::create_dir_all(&path) {
+                    return Err(
+                        format!("Unable to create directories for object file, {e}").to_string()
+                    );
+                }
+                let path = path.join(name);
                 match MerkleTree.write_file(&path, &hash) {
                     true => Ok(()),
                     false => Err("Unable to write branch file".to_owned()),
@@ -92,6 +144,7 @@ impl MerkleTree {
     }
 
     pub fn get_objects(dir_path: PathBuf) -> Result<Vec<Packet>, String> {
+        let dir_path = dir_path.join(TreeNode::OBJ_FOLDER);
         let dirs = match fs::read_dir(dir_path) {
             Ok(dirs) => dirs,
             Err(_) => return Err("Unable to read directory".to_owned()),
@@ -114,8 +167,12 @@ impl MerkleTree {
                     Err(_) => return Err("Unable to read directory".to_owned()),
                 };
                 let data = MerkleTree::read_file(file.path())?;
-                let path = dir.path().join(file.path());
-                vec.push(Packet::ObjectFile(data, path.display().to_string()));
+                let path: String = format!(
+                    "{}{}",
+                    dir.file_name().display(),
+                    file.file_name().display()
+                );
+                vec.push(Packet::ObjectFile(data, path));
             }
         }
 

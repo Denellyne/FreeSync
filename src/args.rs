@@ -1,5 +1,4 @@
 use crate::client::Client;
-use merkle::merklenode::traits::TreeIO;
 use merkle::merkletree::MerkleTree;
 use std::env;
 use std::net::Ipv4Addr;
@@ -74,14 +73,11 @@ fn build_tree() -> Result<(), String> {
         Err(e) => return Err(e.to_string()),
     };
 
-    let node = MerkleTree::create(dir).expect("Unable to create tree");
-    #[cfg(debug_assertions)]
-    println!("{:?}", node);
-
+    let node = MerkleTree::from(dir, ".".into()).expect("Unable to create tree");
     println!("Tree built successfully!");
 
-    match node.save_tree() {
-        Ok(_) => println!("Initialized tree and saved it successfully!"),
+    match MerkleTree::apply_branch(node) {
+        Ok(_) => println!("Wrote all files to disk successfully"),
         Err(e) => eprintln!("{}", e),
     }
     Ok(())

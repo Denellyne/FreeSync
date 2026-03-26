@@ -1,9 +1,9 @@
-use merkle::data::Packet;
+use merkle::data::deserialize_from_stream;
 use merkle::merklenode::tree::TreeNode;
 use merkle::merkletree::MerkleTree;
 use merkle::traits::Hashable;
 use std::env;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 
 pub struct Client {
@@ -29,21 +29,26 @@ impl Client {
         let mut conn = Client::new()?;
         let command = "CLONE\n\n";
 
-        conn.stream.write_all(command.as_bytes()).unwrap();
+        conn.stream
+            .write_all(command.as_bytes())
+            .expect("Unable to write command to stream");
 
         let mut packets: String = String::new();
-        conn.stream
-            .read_to_string(&mut packets)
-            .expect("Could not read from stream");
+        let mut reader = BufReader::new(&conn.stream);
+        reader.read_line(&mut packets).unwrap();
+        let _ = packets.pop();
+        drop(reader);
         let packets = packets
             .parse::<i32>()
             .expect("Could not parse packets into a number");
+        println!("Objects {packets}");
 
         for _ in 0..packets {
-            let mut buf: Vec<u8> = Vec::new();
-            conn.stream.read_to_end(&mut buf).unwrap();
-            let packet =
-                bincode::deserialize::<Packet>(&buf).expect("Unable to deserialize packet");
+            let packet = match deserialize_from_stream(&mut conn.stream) {
+                Ok(data) => data,
+                Err(e) => return Err(e.to_string()),
+            };
+
             MerkleTree::write_packet(".".into(), packet).expect("Unable to write packet");
         }
 
@@ -56,8 +61,8 @@ impl Client {
         };
 
         let node = MerkleTree::create(dir).expect("Unable to create tree");
-        let hash = TreeNode::hash_to_hex_string(&node.get_hash());
-        let addr = match MerkleTree::get_upstream(".".into()) {
+        let _hash = TreeNode::hash_to_hex_string(&node.get_hash());
+        let _addr = match MerkleTree::get_upstream(".".into()) {
             Ok(addr) => addr,
             Err(e) => panic!("{e}"),
         };

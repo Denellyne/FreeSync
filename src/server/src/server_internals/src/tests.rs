@@ -1,7 +1,9 @@
 use logger::mock::MockLogger;
 use merkle::merklenode::node::Node;
+use merkle::merklenode::traits::TreeIO;
 use merkle::merkletree::MerkleTree;
 use rand::random;
+use std::fs;
 use std::io::{BufReader, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::path::{Path, PathBuf};
@@ -105,8 +107,9 @@ pub(crate) fn generate_random_tree(
         }
     }
 
-    let tree = Node::Tree(MerkleTree::create(path.to_path_buf()).expect("Unable to create tree"));
-    (Ok(tree), temporary_files, temporary_folders)
+    let tree = MerkleTree::create(path.to_path_buf()).expect("Unable to create tree");
+    tree.save_tree().unwrap();
+    (Ok(Node::Tree(tree)), temporary_files, temporary_folders)
 }
 
 pub(crate) fn random_tree_builder(

@@ -1,5 +1,5 @@
 use crate::threadpool::ThreadPool;
-use merkle::data::Packet;
+use merkle::data::{Packet, serialize};
 use merkle::merklenode::traits::TreeIO;
 use merkle::merklenode::tree::TreeNode;
 use merkle::merkletree::MerkleTree;
@@ -112,54 +112,71 @@ impl Server {
         let objects: Vec<Packet> = MerkleTree::get_objects(".".into()).unwrap();
         let packets = objects.len() + 2;
         if let Err(e) = stream.write_all(format!("{packets}\n").as_bytes()) {
-            let _ = tx.send(format!("Error while sending {e}"));
+            let _ = tx.send(format!("Error while sending number of packets {e}"));
             return;
         }
+        println!("Sending objects");
         for object in objects {
-            let buf = bincode::serialize(&object).expect("Could not serialize object");
-            if let Err(e) = stream.write_all(&buf) {
-                let _ = tx.send(format!("Error while sending {e}"));
+            for data in serialize(object) {
+                if let Err(e) = stream.write_all(&data) {
+                    let _ = tx.send(format!("Error while sending packet {e}"));
+                    return;
+                }
             }
         }
-        Server::send_head(&stream, &tx);
-        Server::send_branch(&stream, &tx);
-    }
-
-    fn send_branch(mut stream: &TcpStream, tx: &Sender<String>) {
-        let branch = match MerkleTree::get_branch_hash_str(".".into()) {
-            Ok(it) => it,
-            Err(e) => {
-                let _ = tx.send(format!("Error while sending {e}"));
-                return;
-            }
+        if let Err(e) = Server::send_head(&stream, &tx) {
+            eprintln!("{e}");
+            return;
         };
-        let object = Packet::HeadFile(branch);
-        let buf = bincode::serialize(&object).expect("Could not serialize object");
-        if let Err(e) = stream.write_all(&buf) {
-            let _ = tx.send(format!("Error while sending {e}"));
-        }
+        if let Err(e) = Server::send_branch(&stream, &tx) {
+            eprintln!("{e}");
+        };
     }
 
-    fn send_head(mut stream: &TcpStream, tx: &Sender<String>) {
+    fn send_branch(mut stream: &TcpStream, tx: &Sender<String>) -> Result<(), String> {
+        println!("Sending branch file");
+        let path = Path::new(".")
+            .join(TreeNode::BRANCH_FOLDER)
+            .join(TreeNode::DEFAULT_BRANCH);
+
+        let branch: Vec<u8> = match MerkleTree::read_file(path) {
+            Ok(data) => data[..32].to_vec(),
+            Err(e) => return Err(e.to_string()),
+        };
+        let object: Packet = Packet::BranchFile(branch, "main".to_string());
+        for buf in serialize(object) {
+            if let Err(e) = stream.write_all(&buf) {
+                let _ = tx.send(format!("Error while sending branch file {e}"));
+                return Err(format!("Error while sending branch file {e}"));
+            }
+        }
+        Ok(())
+    }
+
+    fn send_head(mut stream: &TcpStream, tx: &Sender<String>) -> Result<(), String> {
+        println!("Sending head file");
         let head_file = Path::new(".").join(TreeNode::HEAD_FILE);
         let head = match MerkleTree::read_file(&head_file) {
             Ok(it) => match String::from_utf8(it) {
                 Ok(it) => it,
                 Err(e) => {
                     let _ = tx.send(format!("Error while sending {e}"));
-                    return;
+                    return Err(format!("Error while sending {e}"));
                 }
             },
             Err(_) => {
                 let _ = tx.send(format!("Unable to read file:{}", head_file.display()));
-                return;
+                return Err(format!("Unable to read file:{}", head_file.display()));
             }
         };
-        let object = Packet::HeadFile(head);
-        let buf = bincode::serialize(&object).expect("Could not serialize object");
-        if let Err(e) = stream.write_all(&buf) {
-            let _ = tx.send(format!("Error while sending {e}"));
+        let object: Packet = Packet::HeadFile(head);
+        for buf in serialize(object) {
+            if let Err(e) = stream.write_all(&buf) {
+                let _ = tx.send(format!("Error while sending head file{e}"));
+                return Err(format!("Error while sending head file{e}"));
+            }
         }
+        Ok(())
     }
 }
 
@@ -172,7 +189,7 @@ impl Server {
             match stream {
                 Ok(stream) => {
                     let mutex = Arc::clone(&self.mutex);
-                    request = Self::mock_handle_connection(stream, mutex);
+                    request = Self::mock_handle_connection(stream, mutex, self.tx);
                     return request;
                 }
                 Err(e) => panic!("Unable to establish connection, {}", e),
@@ -180,7 +197,11 @@ impl Server {
         }
         request
     }
-    fn mock_handle_connection(mut stream: TcpStream, mutex: Arc<Mutex<()>>) -> Vec<String> {
+    fn mock_handle_connection(
+        mut stream: TcpStream,
+        mutex: Arc<Mutex<()>>,
+        tx: Sender<String>,
+    ) -> Vec<String> {
         println!("Received connection");
         let buf_reader = BufReader::new(&stream);
         println!("Created bufreader");
@@ -192,15 +213,7 @@ impl Server {
             .collect();
         println!("Request: {:?}", request);
         if request[0] == "CLONE" {
-            let _lock = mutex.lock().expect("Could not lock mutex");
-            // let buf = bincode::serialize(&*node).unwrap();
-            // println!("{:?}", buf);
-            // if let Err(e) = stream.write_all(&buf) {
-            //     panic!("{e}");
-            // }
-            // let hash = MerkleTree::get_branch_hash_str(".".into()).unwrap();
-            // println!("Hash:{hash}");
-            // return vec![hash];
+            Server::clone_command(stream, mutex, tx);
         } else if request[0] == "TEST" {
             if let Err(e) = stream.write_all(b"OK") {
                 panic!("{e}");
