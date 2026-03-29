@@ -117,11 +117,9 @@ impl Server {
         }
         println!("Sending objects");
         for object in objects {
-            for data in serialize(object) {
-                if let Err(e) = stream.write_all(&data) {
-                    let _ = tx.send(format!("Error while sending packet {e}"));
-                    return;
-                }
+            if let Err(e) = stream.write_all(&serialize(object)) {
+                let _ = tx.send(format!("Error while sending packet {e}"));
+                return;
             }
         }
         if let Err(e) = Server::send_head(&stream, &tx) {
@@ -144,11 +142,9 @@ impl Server {
             Err(e) => return Err(e.to_string()),
         };
         let object: Packet = Packet::BranchFile(branch, "main".to_string());
-        for buf in serialize(object) {
-            if let Err(e) = stream.write_all(&buf) {
-                let _ = tx.send(format!("Error while sending branch file {e}"));
-                return Err(format!("Error while sending branch file {e}"));
-            }
+        if let Err(e) = stream.write_all(&serialize(object)) {
+            let _ = tx.send(format!("Error while sending branch file {e}"));
+            return Err(format!("Error while sending branch file {e}"));
         }
         Ok(())
     }
@@ -170,11 +166,9 @@ impl Server {
             }
         };
         let object: Packet = Packet::HeadFile(head);
-        for buf in serialize(object) {
-            if let Err(e) = stream.write_all(&buf) {
-                let _ = tx.send(format!("Error while sending head file{e}"));
-                return Err(format!("Error while sending head file{e}"));
-            }
+        if let Err(e) = stream.write_all(&serialize(object)) {
+            let _ = tx.send(format!("Error while sending head file{e}"));
+            return Err(format!("Error while sending head file{e}"));
         }
         Ok(())
     }

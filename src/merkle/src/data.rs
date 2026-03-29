@@ -6,47 +6,36 @@ pub enum Packet {
     BranchFile(Vec<u8>, String),
 }
 
-pub fn serialize(packet: Packet) -> Vec<Vec<u8>> {
-    let str: String;
-    let data: Vec<u8>;
-    let result: Vec<Vec<u8>>;
+pub fn serialize(packet: Packet) -> Vec<u8> {
+    let mut result = Vec::new();
+
     match packet {
-        Packet::ObjectFile(obj_data, hash) => {
-            data = obj_data;
-            str = hash;
-            result = vec![
-                0.to_string().as_bytes().to_vec(),
-                format!("{:08}", data.len()).to_string().as_bytes().to_vec(),
-                data,
-                format!("{:08}", str.len()).to_string().as_bytes().to_vec(),
-                str.as_bytes().to_vec(),
-            ];
+        Packet::ObjectFile(data, hash) => {
+            result.extend_from_slice(b"0");
+            result.extend_from_slice(format!("{:08}", data.len()).as_bytes());
+            result.extend_from_slice(&data);
+            result.extend_from_slice(format!("{:08}", hash.len()).as_bytes());
+            result.extend_from_slice(hash.as_bytes());
         }
         Packet::HeadFile(name) => {
-            result = vec![
-                1.to_string().as_bytes().to_vec(),
-                format!("{:08}", name.len()).to_string().as_bytes().to_vec(),
-                name.as_bytes().to_vec(),
-            ];
+            result.extend_from_slice(b"1");
+            result.extend_from_slice(format!("{:08}", name.len()).as_bytes());
+            result.extend_from_slice(name.as_bytes());
         }
         Packet::BranchFile(hash, name) => {
-            data = hash;
-            str = name;
-
-            result = vec![
-                2.to_string().as_bytes().to_vec(),
-                format!("{:08}", data.len()).to_string().as_bytes().to_vec(),
-                data,
-                format!("{:08}", str.len()).to_string().as_bytes().to_vec(),
-                str.as_bytes().to_vec(),
-            ];
+            result.extend_from_slice(b"2");
+            result.extend_from_slice(format!("{:08}", hash.len()).as_bytes());
+            result.extend_from_slice(&hash);
+            result.extend_from_slice(format!("{:08}", name.len()).as_bytes());
+            result.extend_from_slice(name.as_bytes());
         }
     }
+
     result
 }
 pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String> {
-    let mut buf: Vec<u8> = Vec::new();
-    buf.resize(1, 5);
+    let mut buf = vec![0; 1];
+
     if let Err(e) = stream.read_exact(&mut buf) {
         return Err(format!("Unable to read stream properly, - Packet type {e}").to_string());
     };
@@ -56,8 +45,8 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
     };
 
     match packet_type {
-        0 => {
-            buf.resize(8, 0);
+        0 | 2 => {
+            let mut buf = vec![0; 8];
             if let Err(e) = stream.read_exact(&mut buf) {
                 return Err(
                     format!("Unable to read stream properly - Object data length, {e}").to_string(),
@@ -76,16 +65,16 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
                 Ok(int) => int,
                 Err(e) => return Err(format!("Invalid length, {e}").to_string()),
             };
-            buf.clear();
-            buf.resize(length, 0);
+            let mut buf = vec![0; length];
 
             if let Err(e) = stream.read_exact(&mut buf) {
                 return Err(
                     format!("Unable to read stream properly - Object data, {e}").to_string()
                 );
             };
-            let data = buf.clone();
-            buf.resize(8, 0);
+            let data = buf;
+            let mut buf = vec![0; 8];
+
             if let Err(e) = stream.read_exact(&mut buf) {
                 return Err(
                     format!("Unable to read stream properly - Object data length, {e}").to_string(),
@@ -104,8 +93,7 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
                 Ok(int) => int,
                 Err(e) => return Err(format!("Invalid length, {e}").to_string()),
             };
-            buf.clear();
-            buf.resize(length, 0);
+            let mut buf = vec![0; length];
             if let Err(e) = stream.read_exact(&mut buf) {
                 return Err(
                     format!("Unable to read stream properly, - Object hash {e}").to_string()
@@ -122,11 +110,14 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
                 }
             };
             let hash = str;
-
-            Ok(Packet::ObjectFile(data, hash))
+            if packet_type == 0 {
+                Ok(Packet::ObjectFile(data, hash))
+            } else {
+                Ok(Packet::BranchFile(data, hash))
+            }
         }
         1 => {
-            buf.resize(8, 0);
+            let mut buf = vec![0; 8];
             if let Err(e) = stream.read_exact(&mut buf) {
                 return Err(
                     format!("Unable to read stream properly - Object data length, {e}").to_string(),
@@ -145,8 +136,7 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
                 Ok(int) => int,
                 Err(e) => return Err(format!("Invalid length, {e}").to_string()),
             };
-            buf.clear();
-            buf.resize(length, 0);
+            let mut buf = vec![0; length];
             if let Err(e) = stream.read_exact(&mut buf) {
                 return Err(
                     format!("Unable to read stream properly, - Object hash {e}").to_string()
@@ -163,74 +153,6 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
             };
             let name = str;
             Ok(Packet::HeadFile(name))
-        }
-        2 => {
-            buf.resize(8, 0);
-            if let Err(e) = stream.read_exact(&mut buf) {
-                return Err(
-                    format!("Unable to read stream properly - Branch hash length, {e}").to_string(),
-                );
-            };
-            let str = match String::from_utf8(buf.as_slice().to_vec()) {
-                Ok(val) => val,
-                Err(e) => {
-                    return Err(format!(
-                        "Unable to convert data inside vector to string, Branch hash {e}, {:?}",
-                        buf
-                    ));
-                }
-            };
-            let length: usize = match str.parse::<usize>() {
-                Ok(int) => int,
-                Err(e) => return Err(format!("Invalid length, {e}").to_string()),
-            };
-            buf.clear();
-            buf.resize(length, 0);
-
-            if let Err(e) = stream.read_exact(&mut buf) {
-                return Err(
-                    format!("Unable to read stream properly - Branch hash data, {e}").to_string(),
-                );
-            };
-            let hash = buf.clone();
-
-            buf.resize(8, 0);
-            if let Err(e) = stream.read_exact(&mut buf) {
-                return Err(
-                    format!("Unable to read stream properly - Object data length, {e}").to_string(),
-                );
-            };
-            let str = match String::from_utf8(buf.as_slice().to_vec()) {
-                Ok(val) => val,
-                Err(e) => {
-                    return Err(format!(
-                        "Unable to convert data inside vector to string, Branch hash {e}, {:?}",
-                        buf
-                    ));
-                }
-            };
-            let length: usize = match str.parse::<usize>() {
-                Ok(int) => int,
-                Err(e) => return Err(format!("Invalid length, {e}").to_string()),
-            };
-            buf.clear();
-            buf.resize(length, 0);
-            if let Err(e) = stream.read_exact(&mut buf) {
-                return Err(
-                    format!("Unable to read stream properly, - Object hash {e}").to_string()
-                );
-            };
-            let str = match String::from_utf8(buf.as_slice().to_vec()) {
-                Ok(val) => val,
-                Err(e) => {
-                    return Err(format!(
-                        "Unable to convert data inside vector to string, - Branch file {e}, {:?}",
-                        buf
-                    ));
-                }
-            };
-            let name = str;
-            Ok(Packet::BranchFile(hash, name))
         }
         _ => Err("Invalid packet type received".to_string()),
     }
