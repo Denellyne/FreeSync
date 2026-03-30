@@ -64,9 +64,9 @@ fn random_data() -> String {
     str
 }
 use crate::server::Server;
-use tempfile::{NamedTempFile, TempDir, tempdir_in};
 use merkle::data::deserialize_from_stream;
 use merkle::traits::Hashable;
+use tempfile::{NamedTempFile, TempDir, tempdir_in};
 
 fn write_random_to_file(file: NamedTempFile) -> (NamedTempFile, String) {
     let mut str: String = String::new();
@@ -133,7 +133,11 @@ pub(crate) fn random_tree_builder(
 fn test_connection() {
     let tx = MockLogger::create();
     let (_tree, folder) = random_tree_builder(None::<PathBuf>);
-    let sv = Server::new("25565".parse().unwrap(), folder.unwrap().path().to_path_buf(), tx);
+    let sv = Server::new(
+        "25565".parse().unwrap(),
+        folder.unwrap().path().to_path_buf(),
+        tx,
+    );
     let th = thread::spawn(move || sv.mock_server());
 
     let mut conn = MockConnection::new();
@@ -152,7 +156,11 @@ fn test_reply() {
     let tx = MockLogger::create();
     let (_tree, folder) = random_tree_builder(None::<PathBuf>);
 
-    let sv = Server::new("25567".parse().unwrap(), folder.unwrap().path().to_path_buf(), tx);
+    let sv = Server::new(
+        "25567".parse().unwrap(),
+        folder.unwrap().path().to_path_buf(),
+        tx,
+    );
     let th = thread::spawn(move || sv.mock_server());
 
     let mut conn = MockConnection::from("TEST".to_string(), 25567);
@@ -170,19 +178,17 @@ fn test_reply() {
 fn test_clone() {
     let tx = MockLogger::create();
     let (tree, folder) = random_tree_builder(None::<PathBuf>);
-    let tree = match tree{
-        Ok(tree) => match tree{
+    let tree = match tree {
+        Ok(tree) => match tree {
             Node::Tree(tree) => tree,
             Node::Leaf(_) => panic!("Not a tree"),
         },
         Err(e) => panic!("Unable to create tree: {:?}", e),
     };
-    let folder = match folder{
+    let folder = match folder {
         Some(folder) => folder,
         None => panic!("Unable to create folder"),
     };
-
-
 
     let sv = Server::new("25566".parse().unwrap(), folder.path().to_path_buf(), tx);
     let th = thread::spawn(move || sv.mock_server());
@@ -192,11 +198,13 @@ fn test_clone() {
 
     let mut packets: String = String::new();
     let mut reader = BufReader::new(&mut conn.stream);
-    reader.read_line(&mut packets).expect("Unable to read from stream");
+    reader
+        .read_line(&mut packets)
+        .expect("Unable to read from stream");
     let _ = packets.pop();
     let packets = packets
-      .parse::<i32>()
-      .expect("Could not parse packets into a number");
+        .parse::<i32>()
+        .expect("Could not parse packets into a number");
     println!("Objects {packets}");
     let temp_dir = tempfile::tempdir().expect("Unable to create temp dir");
     let temp_dir2 = tempfile::tempdir().expect("Unable to create temp dir");
@@ -211,11 +219,12 @@ fn test_clone() {
     }
 
     th.join().expect("Failed to join thread");
-    let node = MerkleTree::from(temp_dir,temp_dir2.path().to_path_buf()).expect("Unable to create tree");
+    let node =
+        MerkleTree::from(temp_dir, temp_dir2.path().to_path_buf()).expect("Unable to create tree");
     let node = match node {
         Node::Tree(tree) => tree,
         Node::Leaf(_) => panic!("Not a tree"),
     };
 
-    assert_eq!(node.get_hash(),tree.get_hash());
+    assert_eq!(node.get_hash(), tree.get_hash());
 }

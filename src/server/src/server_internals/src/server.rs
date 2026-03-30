@@ -30,8 +30,8 @@ impl Server {
         let listener = TcpListener::bind(ip).expect("Could not bind port!");
         let _ = tx.send("Port bound".to_string());
 
-        let head_path = MerkleTree::get_head_path(path.to_path_buf())
-            .expect("Unable to get head path");
+        let head_path =
+            MerkleTree::get_head_path(path.to_path_buf()).expect("Unable to get head path");
 
         let _ = tx.send(format!(
             "Info:\nFreeSync Server\nIp:{}\nCurrent branch:{}\nCurrent hash:{}",
@@ -67,7 +67,9 @@ impl Server {
                     let tx_clone = self.tx.clone();
                     let mutex = Arc::clone(&self.mutex);
                     let path_clone = self.path.clone();
-                    pool.execute(move || Self::handle_connection(stream, mutex, tx_clone,&path_clone));
+                    pool.execute(move || {
+                        Self::handle_connection(stream, mutex, tx_clone, &path_clone)
+                    });
                 }
                 Err(e) => {
                     if let Err(e) = self.tx.send(format!("Unable to establish connection, {e}")) {
@@ -81,7 +83,12 @@ impl Server {
         self.close_server();
     }
 
-    fn handle_connection(stream: TcpStream, mutex: Arc<Mutex<()>>, tx: Sender<String>,path: &PathBuf) {
+    fn handle_connection(
+        stream: TcpStream,
+        mutex: Arc<Mutex<()>>,
+        tx: Sender<String>,
+        path: &PathBuf,
+    ) {
         let buf_reader = BufReader::new(&stream);
 
         let request: Vec<_> = buf_reader
@@ -93,12 +100,12 @@ impl Server {
         let _ = tx.send(format!("Request: {:?}", request));
 
         if request[0] == "CLONE" {
-            Server::clone_command(stream, mutex, tx,path)
+            Server::clone_command(stream, mutex, tx, path)
         } else if request[0] == "GET UPSTREAM" {
-            Server::upstream_command(stream, tx,path)
+            Server::upstream_command(stream, tx, path)
         }
     }
-    fn upstream_command(mut stream: TcpStream, tx: Sender<String>,path:&Path) {
+    fn upstream_command(mut stream: TcpStream, tx: Sender<String>, path: &Path) {
         let hash: String = match MerkleTree::get_branch_hash_str(path.to_path_buf()) {
             Ok(data) => data + "\n",
             Err(e) => {
@@ -110,9 +117,14 @@ impl Server {
             let _ = tx.send(format!("Error while sending {e}"));
         }
     }
-    fn clone_command(mut stream: TcpStream, mutex: Arc<Mutex<()>>, tx: Sender<String>,path: impl AsRef<Path>) {
+    fn clone_command(
+        mut stream: TcpStream,
+        mutex: Arc<Mutex<()>>,
+        tx: Sender<String>,
+        path: impl AsRef<Path>,
+    ) {
         let lock = mutex.lock().expect("Could not lock mutex");
-        let objects: Vec<Packet> = match MerkleTree::get_objects(path.as_ref().to_path_buf()){
+        let objects: Vec<Packet> = match MerkleTree::get_objects(path.as_ref().to_path_buf()) {
             Ok(data) => data,
             Err(e) => {
                 let _ = tx.send(format!("Error while getting objects {e}"));
@@ -133,16 +145,16 @@ impl Server {
                 return;
             }
         }
-        if let Err(e) = Server::send_head(&stream, &tx,path.as_ref()) {
+        if let Err(e) = Server::send_head(&stream, &tx, path.as_ref()) {
             eprintln!("{e}");
             return;
         };
-        if let Err(e) = Server::send_branch(&stream, &tx,path.as_ref()) {
+        if let Err(e) = Server::send_branch(&stream, &tx, path.as_ref()) {
             eprintln!("{e}");
         };
     }
 
-    fn send_branch(mut stream: &TcpStream, tx: &Sender<String>,path: &Path) -> Result<(), String> {
+    fn send_branch(mut stream: &TcpStream, tx: &Sender<String>, path: &Path) -> Result<(), String> {
         println!("Sending branch file");
         let path = path
             .join(TreeNode::BRANCH_FOLDER)
@@ -160,7 +172,7 @@ impl Server {
         Ok(())
     }
 
-    fn send_head(mut stream: &TcpStream, tx: &Sender<String>,path:&Path) -> Result<(), String> {
+    fn send_head(mut stream: &TcpStream, tx: &Sender<String>, path: &Path) -> Result<(), String> {
         println!("Sending head file");
         let head_file = path.join(TreeNode::HEAD_FILE);
         let head = match MerkleTree::read_file(&head_file) {
@@ -194,7 +206,7 @@ impl Server {
             match stream {
                 Ok(stream) => {
                     let mutex = Arc::clone(&self.mutex);
-                    request = Self::mock_handle_connection(stream, mutex, self.tx,self.path);
+                    request = Self::mock_handle_connection(stream, mutex, self.tx, self.path);
                     return request;
                 }
                 Err(e) => panic!("Unable to establish connection, {}", e),
@@ -206,7 +218,7 @@ impl Server {
         mut stream: TcpStream,
         mutex: Arc<Mutex<()>>,
         tx: Sender<String>,
-        path : PathBuf
+        path: PathBuf,
     ) -> Vec<String> {
         println!("Received connection");
         let buf_reader = BufReader::new(&stream);
@@ -219,7 +231,7 @@ impl Server {
             .collect();
         println!("Request: {:?}", request);
         if request[0] == "CLONE" {
-            Server::clone_command(stream, mutex, tx,path);
+            Server::clone_command(stream, mutex, tx, path);
         } else if request[0] == "TEST" {
             if let Err(e) = stream.write_all(b"OK") {
                 panic!("{e}");
