@@ -148,9 +148,9 @@ impl MerkleTree {
 
     pub fn get_objects(dir_path: PathBuf) -> Result<Vec<Packet>, String> {
         let dir_path = dir_path.join(TreeNode::OBJ_FOLDER);
-        let dirs = match fs::read_dir(dir_path) {
+        let dirs = match fs::read_dir(&dir_path) {
             Ok(dirs) => dirs,
-            Err(_) => return Err("Unable to read directory".to_owned()),
+            Err(e) => return Err(format!("Unable to read directory : {}, {e}", dir_path.display())),
         };
         let mut vec: Vec<Packet> = Vec::with_capacity(dirs.size_hint().0);
         for dir in dirs {

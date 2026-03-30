@@ -3,15 +3,14 @@ use merkle::merklenode::node::Node;
 use merkle::merklenode::traits::TreeIO;
 use merkle::merkletree::MerkleTree;
 use rand::random;
-use std::fs;
-use std::io::{BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::path::{Path, PathBuf};
 use std::thread::{self};
 
 struct MockConnection {
-    stream: TcpStream,
-    data: String,
+    pub stream: TcpStream,
+    pub data: String,
 }
 
 impl MockConnection {
@@ -66,6 +65,8 @@ fn random_data() -> String {
 }
 use crate::server::Server;
 use tempfile::{NamedTempFile, TempDir, tempdir_in};
+use merkle::data::deserialize_from_stream;
+use merkle::traits::Hashable;
 
 fn write_random_to_file(file: NamedTempFile) -> (NamedTempFile, String) {
     let mut str: String = String::new();
@@ -85,7 +86,7 @@ fn generate_random_file(path: &PathBuf) -> NamedTempFile {
 pub(crate) fn generate_random_tree(
     path: PathBuf,
 ) -> (Result<Node, String>, Vec<NamedTempFile>, Vec<TempDir>) {
-    let size = random::<u8>() % 12 + 1;
+    let size = random::<u8>() % 128 + 1;
     let mut current_path: PathBuf = path.clone();
     let mut temporary_files: Vec<NamedTempFile> = Vec::new();
     let mut temporary_folders: Vec<TempDir> = Vec::new();
@@ -132,7 +133,7 @@ pub(crate) fn random_tree_builder(
 fn test_connection() {
     let tx = MockLogger::create();
     let (_tree, folder) = random_tree_builder(None::<PathBuf>);
-    let sv = Server::new("25565".parse().unwrap(), folder.unwrap().path(), tx);
+    let sv = Server::new("25565".parse().unwrap(), folder.unwrap().path().to_path_buf(), tx);
     let th = thread::spawn(move || sv.mock_server());
 
     let mut conn = MockConnection::new();
@@ -151,7 +152,7 @@ fn test_reply() {
     let tx = MockLogger::create();
     let (_tree, folder) = random_tree_builder(None::<PathBuf>);
 
-    let sv = Server::new("25567".parse().unwrap(), folder.unwrap().path(), tx);
+    let sv = Server::new("25567".parse().unwrap(), folder.unwrap().path().to_path_buf(), tx);
     let th = thread::spawn(move || sv.mock_server());
 
     let mut conn = MockConnection::from("TEST".to_string(), 25567);
@@ -165,24 +166,56 @@ fn test_reply() {
     assert_eq!(data, "OK".as_bytes());
 }
 
-// #[test]
-// fn test_clone() {
-//     let tx = MockLogger::create();
-//     let (_tree, folder) = random_tree_builder(None::<PathBuf>);
-//
-//     let sv = Server::new("25566".parse().unwrap(), folder.unwrap().path(), tx);
-//     let node1 = sv.tree.clone();
-//     let th = thread::spawn(move || sv.mock_server());
-//
-//     let mut conn = MockConnection::from("CLONE".to_string(), 25566);
-//     conn.write();
-//     let data = conn.read();
-//
-//     let node: Node = bincode::deserialize(&data).unwrap();
-//     println!("{:?}", node);
-//     conn.close();
-//
-//     th.join().expect("Failed to join thread");
-//
-//     assert!(node.eq(&node1));
-// }
+#[test]
+fn test_clone() {
+    let tx = MockLogger::create();
+    let (tree, folder) = random_tree_builder(None::<PathBuf>);
+    let tree = match tree{
+        Ok(tree) => match tree{
+            Node::Tree(tree) => tree,
+            Node::Leaf(_) => panic!("Not a tree"),
+        },
+        Err(e) => panic!("Unable to create tree: {:?}", e),
+    };
+    let folder = match folder{
+        Some(folder) => folder,
+        None => panic!("Unable to create folder"),
+    };
+
+
+
+    let sv = Server::new("25566".parse().unwrap(), folder.path().to_path_buf(), tx);
+    let th = thread::spawn(move || sv.mock_server());
+
+    let mut conn = MockConnection::from("CLONE".to_string(), 25566);
+    conn.write();
+
+    let mut packets: String = String::new();
+    let mut reader = BufReader::new(&mut conn.stream);
+    reader.read_line(&mut packets).expect("Unable to read from stream");
+    let _ = packets.pop();
+    let packets = packets
+      .parse::<i32>()
+      .expect("Could not parse packets into a number");
+    println!("Objects {packets}");
+    let temp_dir = tempfile::tempdir().expect("Unable to create temp dir");
+    let temp_dir2 = tempfile::tempdir().expect("Unable to create temp dir");
+
+    for _ in 0..packets {
+        let packet = match deserialize_from_stream(&mut conn.stream) {
+            Ok(data) => data,
+            Err(e) => panic!("{e}"),
+        };
+
+        MerkleTree::write_packet(temp_dir.path().into(), packet).expect("Unable to write packet");
+    }
+
+    th.join().expect("Failed to join thread");
+    let node = MerkleTree::from(temp_dir,temp_dir2.path().to_path_buf()).expect("Unable to create tree");
+    let node = match node {
+        Node::Tree(tree) => tree,
+        Node::Leaf(_) => panic!("Not a tree"),
+    };
+
+    assert_eq!(node.get_hash(),tree.get_hash());
+}

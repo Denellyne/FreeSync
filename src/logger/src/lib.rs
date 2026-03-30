@@ -78,16 +78,6 @@ impl Logger {
 }
 
 impl Log for Logger {
-    fn log_rcv(&mut self) {
-        loop {
-            let data = match self.rx.recv() {
-                Ok(data) => data,
-                Err(e) => e.to_string(),
-            };
-            self.write(data);
-        }
-    }
-
     fn write(&mut self, data: String) {
         let ts: i64 = time_format::now().unwrap_or_default();
 
@@ -114,6 +104,13 @@ impl Log for Logger {
         }
         if self.echo {
             eprintln!("{data}");
+        }
+    }
+
+    fn log_rcv(&mut self) {
+        loop {
+            let data = self.rx.recv().unwrap_or_else(|e| e.to_string());
+            self.write(data);
         }
     }
 }

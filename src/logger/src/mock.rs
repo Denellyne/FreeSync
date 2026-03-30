@@ -22,7 +22,7 @@ impl Log for MockLogger {
         loop {
             let data = match self.rx.recv() {
                 Ok(data) => data,
-                Err(e) => e.to_string(),
+                Err(_) =>continue,
             };
             self.write(data);
         }

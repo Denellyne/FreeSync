@@ -1,7 +1,6 @@
 use std::fs;
 
 use rand::random;
-use tempfile::NamedTempFile;
 
 use crate::mock::MockLogger;
 
