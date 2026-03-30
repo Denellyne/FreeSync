@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 merkle = { path = "src/merkle" }
+url = "2.5.8"
 
 [workspace]
 members = [

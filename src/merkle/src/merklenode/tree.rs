@@ -45,20 +45,30 @@ impl TreeNode {
                 Ok(path) => path,
                 Err(_) => return Err(format!("Unable to read directory entry, path: {:?}", path)),
             };
-
-            for str in filter.iter().collect::<Vec<_>>() {
-                match path.file_name().to_str() {
-                    Some(file_name) => {
-                        if file_name.contains(str) {
-                            continue 'pathLoop;
-                        }
+            match path.file_name().to_str() {
+                Some(file_name) => {
+                    if filter.contains(file_name) {
+                        continue 'pathLoop;
                     }
-                    None => return Err(format!("Unable to read file name: {:?}", &path)),
-                };
-            }
+                }
+                None => return Err(format!("Unable to read file name: {:?}", &path)),
+            };
 
             match Node::new(path) {
-                Ok(node) => vec.push(node),
+                Ok(node) => match node {
+                    Tree(tree) => {
+                        if tree.children.is_empty() {
+                            continue 'pathLoop;
+                        }
+                        vec.push(Tree(tree));
+                    }
+                    Leaf(leaf) => {
+                        if leaf.compressed_data.is_empty() {
+                            continue 'pathLoop;
+                        }
+                        vec.push(Leaf(leaf));
+                    }
+                },
                 Err(e) => return Err(format!("{} at {}", e, dir_path.display())),
             }
         }
@@ -288,11 +298,10 @@ impl TreeNode {
 
                     match leaf.atomic_write_file(&leaf.file_path, &decompress) {
                         Ok(file) => {
-                            let temp_path = file.into_temp_path();
-                            if let Err(e) = leaf.atomic_rename(&temp_path, &leaf.file_path) {
+                            if let Err(e) = file.persist(&leaf.file_path) {
                                 return Err(format!(
                                     "Unable to persist the file {} Error:{e}",
-                                    temp_path.display()
+                                    leaf.file_path.display(),
                                 ));
                             }
                         }
@@ -301,6 +310,7 @@ impl TreeNode {
                 }
             }
         }
+
         Ok(())
     }
 }
@@ -414,7 +424,10 @@ impl TreeIOInternal for TreeNode {
         if !path.exists() {
             match fs::create_dir_all(&path) {
                 Ok(_) => (),
-                Err(_) => eprintln!("Unable to create object folder"),
+                Err(_) => {
+                    eprintln!("Unable to create object folder");
+                    return false;
+                }
             }
         }
 
@@ -463,19 +476,25 @@ impl TreeIOInternal for TreeNode {
             data.push(0);
             data.extend_from_slice(&child.get_hash());
         }
-        self.write_file(&parent_file, data);
-        true
+        self.write_file(&parent_file, &data)
     }
 
     fn parse_header(mut data: Vec<u8>) -> Result<(Vec<u8>, Header), String> {
         if data.is_empty() {
             return Err("Buffer is empty".to_string());
         }
-
+        let c = data.clone();
+        assert!(data.len() >= 6, "Data is too short,{:?}", c);
         let entry_type: [u8; 6] = match data.drain(0..6).collect::<Vec<u8>>().try_into() {
             Ok(entry) => entry,
             Err(_) => return Err("Unable to parse header".to_string()),
         };
+        if !Self::DIRECTORY.eq(&entry_type)
+            && !Self::EXECUTABLE_FILE.eq(&entry_type)
+            && !Self::REGULAR_FILE.eq(&entry_type)
+        {
+            return Err(format!("Invalid entry type,{:?}", entry_type));
+        }
 
         data.remove(0);
         let file_name: Vec<u8>;
@@ -484,6 +503,12 @@ impl TreeIOInternal for TreeNode {
             Err(_) => return Err("Unable to parse header".to_string()),
         };
 
+        assert!(
+            data.len() >= 32,
+            "Data is too short. File name:{},{:?}",
+            String::from_utf8(file_name).unwrap(),
+            c
+        );
         let hash: [u8; 32] = match data.drain(0..32).collect::<Vec<u8>>().try_into() {
             Ok(entry) => entry,
             Err(_) => return Err("Unable to parse header".to_string()),

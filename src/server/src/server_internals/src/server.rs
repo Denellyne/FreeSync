@@ -108,8 +108,10 @@ impl Server {
         }
     }
     fn clone_command(mut stream: TcpStream, mutex: Arc<Mutex<()>>, tx: Sender<String>) {
-        let _lock = mutex.lock().expect("Could not lock mutex");
+        let lock = mutex.lock().expect("Could not lock mutex");
         let objects: Vec<Packet> = MerkleTree::get_objects(".".into()).unwrap();
+        drop(lock);
+
         let packets = objects.len() + 2;
         if let Err(e) = stream.write_all(format!("{packets}\n").as_bytes()) {
             let _ = tx.send(format!("Error while sending number of packets {e}"));

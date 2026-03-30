@@ -34,6 +34,14 @@ impl LeafNode {
         let file_path = path.as_ref();
         match Self::hash_file(file_path) {
             Ok((hash, data_raw)) => {
+                if data_raw.is_empty() {
+                    return Ok(LeafNode {
+                        hash,
+                        compressed_data: Vec::with_capacity(0),
+                        file_path: file_path.to_path_buf(),
+                    });
+                }
+
                 let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();
                 data.extend_from_slice(&data_raw);
 
@@ -200,6 +208,14 @@ impl LeafIO for LeafNode {
                 ));
             }
         };
+        if let Err(err) = fs::create_dir_all(parent_dir) {
+            return Err(format!(
+                "Unable to create parent directory of file:{}:{}",
+                path.display(),
+                err
+            ));
+        }
+
         let mut file = match NamedTempFile::new_in(parent_dir) {
             Ok(file) => file,
             Err(_) => return Err(format!("Unable to create the file {}", path.display())),

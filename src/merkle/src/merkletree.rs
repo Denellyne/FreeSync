@@ -41,14 +41,17 @@ impl MerkleTree {
         };
         let paths = match fs::read_dir(&node.file_path) {
             Ok(paths) => paths,
-            Err(e) => return Err(e.to_string()),
+            Err(e) => return Err(format!("Unable to read directory : {e}")),
         };
         for path in paths {
             let path = match path {
                 Ok(path) => path,
-                Err(e) => return Err(e.to_string()),
+                Err(e) => return Err(format!("Unable to unwrap path: {}", e)),
             };
-            if path.file_name() == ".freesync" || path.file_name() == "FreeSync" {
+            if path.file_name() == ".freesync"
+                || path.file_name() == "FreeSync"
+                || path.file_name() == "FreeSync.exe"
+            {
                 continue;
             }
             match fs::metadata(path.path()) {
@@ -56,14 +59,14 @@ impl MerkleTree {
                     if metadata.is_dir()
                         && let Err(e) = fs::remove_dir(path.path())
                     {
-                        return Err(e.to_string());
+                        return Err(format!("Unable to remove directory {:?},{e}", path.path()));
                     } else if metadata.is_file()
                         && let Err(e) = fs::remove_file(path.path())
                     {
-                        return Err(e.to_string());
+                        return Err(format!("Unable to remove file {:?},{e}", path.path()));
                     };
                 }
-                Err(e) => return Err(e.to_string()),
+                Err(e) => return Err(format!("Unable to read file metadata : {e}")),
             }
         }
         node.apply_branch()

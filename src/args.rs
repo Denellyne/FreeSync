@@ -1,8 +1,7 @@
 use crate::client::Client;
 use merkle::merkletree::MerkleTree;
 use std::env;
-use std::net::Ipv4Addr;
-
+use url::Url;
 fn display_help() {
     let strs = vec![
         "FreeSync:",
@@ -82,22 +81,27 @@ fn build_tree() -> Result<(), String> {
     }
     Ok(())
 }
+fn is_valid_ip(input: String) -> Result<String, String> {
+    let url = match Url::parse(&input) {
+        Ok(u) => u,
+        Err(e) => return Err(format!("Invalid URL: {}", e)),
+    };
+    match url.host_str() {
+        Some(ip) => Ok(ip.to_string()),
+        None => Err(format!("Invalid IP address. {}", url)),
+    }
+}
 
 fn set_upstream(args: &mut Vec<String>) -> Result<(), String> {
     assert!(args.len() >= 2);
-    let ip = args.remove(0);
-    if let Err(e) = ip.parse::<Ipv4Addr>() {
-        eprintln!("{e}");
-        return Ok(());
-    }
+    let ip = is_valid_ip(args.remove(0))?;
+
     let port = args.remove(0);
     let port = match port.parse::<u16>() {
         Ok(port) => port.to_string(),
-        Err(e) => {
-            eprintln!("{e}");
-            return Ok(());
-        }
+        Err(e) => return Err(format!("Invalid port number. {}, {}", port, e)),
     };
+
     let ip = format!("{ip}:{port}");
     MerkleTree::set_upstream(".".into(), ip.to_string())?;
 

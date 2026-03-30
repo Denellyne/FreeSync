@@ -19,9 +19,10 @@ impl Client {
 
         let addr = match MerkleTree::get_upstream(dir) {
             Ok(addr) => addr,
-            Err(e) => panic!("{e}"),
+            Err(e) => return Err(e.to_string()),
         };
-        let stream = TcpStream::connect(addr).unwrap();
+        let stream = TcpStream::connect(&addr)
+            .unwrap_or_else(|_| panic!("Failed to connect to server,Upstream : {addr}"));
         Ok(Client { stream })
     }
 
