@@ -1,5 +1,5 @@
 use crate::threadpool::ThreadPool;
-use merkle::data::{Packet, serialize};
+use merkle::data::{serialize, Packet};
 use merkle::merklenode::traits::TreeIO;
 use merkle::merklenode::tree::TreeNode;
 use merkle::merkletree::MerkleTree;

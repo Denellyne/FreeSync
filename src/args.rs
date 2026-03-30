@@ -1,6 +1,7 @@
 use crate::client::Client;
 use merkle::merkletree::MerkleTree;
 use std::env;
+use std::net::IpAddr;
 use url::Url;
 fn display_help() {
     let strs = vec![
@@ -72,16 +73,17 @@ fn build_tree() -> Result<(), String> {
         Err(e) => return Err(e.to_string()),
     };
 
-    let node = MerkleTree::from(dir, ".".into()).expect("Unable to create tree");
-    println!("Tree built successfully!");
-
-    match MerkleTree::apply_branch(node) {
-        Ok(_) => println!("Wrote all files to disk successfully"),
-        Err(e) => eprintln!("{}", e),
-    }
-    Ok(())
+    MerkleTree::apply_branch(dir, ".".into())
 }
 fn is_valid_ip(input: String) -> Result<String, String> {
+    if input == "localhost" {
+        return Ok(input);
+    }
+
+    if input.parse::<IpAddr>().is_ok() {
+        return Ok(input);
+    }
+
     let url = match Url::parse(&input) {
         Ok(u) => u,
         Err(e) => return Err(format!("Invalid URL: {}", e)),

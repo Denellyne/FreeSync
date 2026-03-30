@@ -1,10 +1,10 @@
 use crate::traits::Log;
 use std::{
-    fs::{self, File, OpenOptions},
-    io::Write,
-    path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver, Sender},
-    thread,
+  fs::{self, File, OpenOptions},
+  io::Write,
+  path::{Path, PathBuf},
+  sync::mpsc::{self, Receiver, Sender},
+  thread,
 };
 
 #[derive(Debug)]

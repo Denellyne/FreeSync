@@ -3,7 +3,7 @@ use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::traits::{LeafIO, TreeIO};
 use crate::merklenode::tree::TreeNode;
-use crate::traits::{CompressedData, Hashable, IO, ReadFile};
+use crate::traits::{CompressedData, Hashable, ReadFile, IO};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -27,6 +27,20 @@ impl MerkleTree {
             ))?,
         }
     }
+    pub fn init(path: PathBuf, binary_name: String) -> Result<(), String> {
+        match fs::read_dir(&path) {
+            Ok(_) => match path {
+                path if path.is_dir() => TreeNode::init(path, binary_name),
+                path if path.is_file() => Err(format!("Path is of a file: {}", path.display())),
+                path if path.is_symlink() => Err(format!("Path is a symlink: {}", path.display())),
+                _ => Err(String::from("Unable to generate merkle tree")),
+            },
+            _ => Err(format!(
+                "Could not read directory {:?}, is it a path to a directory?",
+                &path
+            ))?,
+        }
+    }
     pub fn from(path: impl AsRef<Path>, real_path: PathBuf) -> Result<Node, String> {
         Node::from(path, real_path)
     }
@@ -34,12 +48,9 @@ impl MerkleTree {
     fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
         TreeNode::new(dir_path)
     }
-    pub fn apply_branch(node: Node) -> Result<(), String> {
-        let node = match node {
-            Node::Tree(tree_node) => tree_node,
-            Node::Leaf(_) => return Err("Can't apply a branch from a leaf node".to_string()),
-        };
-        let paths = match fs::read_dir(&node.file_path) {
+
+    pub fn apply_branch(path: impl AsRef<Path>, real_path: PathBuf) -> Result<(), String> {
+        let paths = match fs::read_dir(&path) {
             Ok(paths) => paths,
             Err(e) => return Err(format!("Unable to read directory : {e}")),
         };
@@ -69,7 +80,7 @@ impl MerkleTree {
                 Err(e) => return Err(format!("Unable to read file metadata : {e}")),
             }
         }
-        node.apply_branch()
+        TreeNode::from_branch(path, real_path)
     }
 
     pub fn get_upstream(dir_path: PathBuf) -> Result<String, String> {

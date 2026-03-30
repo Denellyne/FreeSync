@@ -19,7 +19,7 @@ pub trait CompressedData {
         use flate2::write::ZlibEncoder;
         use std::io::prelude::*;
 
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+        let mut encoder = ZlibEncoder::new(Vec::with_capacity(data.len()), Compression::best());
         match encoder.write_all(data) {
             Ok(_) => match encoder.finish() {
                 Ok(data) => Ok(data),
@@ -32,7 +32,7 @@ pub trait CompressedData {
         use std::io::prelude::*;
 
         let mut decoder = ZlibDecoder::new(data);
-        let mut decompressed: Vec<u8> = Vec::new();
+        let mut decompressed: Vec<u8> = Vec::with_capacity(data.len());
         match decoder.read_to_end(&mut decompressed) {
             Ok(_) => Ok(decompressed),
             Err(_) => Err(String::from("Failed to decompress")),

@@ -36,6 +36,21 @@ impl Node {
             )),
         }
     }
+    pub fn new_object(
+        path: DirEntry,
+        obj_dir: impl AsRef<Path>,
+    ) -> Result<Option<([u8; 32], Vec<u8>)>, String> {
+        match path.path() {
+            path if path.is_dir() => {
+                Ok(TreeNode::new_object(path, obj_dir.as_ref().to_path_buf())?)
+            }
+            path if path.is_file() => Ok(LeafNode::new_object(path, obj_dir)?),
+            _ => Err(format!(
+                "Unable to generate new node, {}",
+                path.path().display()
+            )),
+        }
+    }
 
     pub fn from(path: impl AsRef<Path>, real_path: PathBuf) -> Result<Node, String> {
         let path = path.as_ref();

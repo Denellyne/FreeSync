@@ -1,8 +1,8 @@
 use std::{
-    panic::{self, AssertUnwindSafe},
-    sync::{Arc, Mutex, mpsc},
-    thread::{self, sleep},
-    time::Duration,
+  panic::{self, AssertUnwindSafe},
+  sync::{mpsc, Arc, Mutex},
+  thread::{self, sleep},
+  time::Duration,
 };
 
 pub struct ThreadPool {

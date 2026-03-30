@@ -4,7 +4,7 @@ use crate::merklenode::node::Node;
 use crate::merklenode::node::Node::{Leaf, Tree};
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
-use crate::traits::{Hashable, IO, ReadFile};
+use crate::traits::{Hashable, ReadFile, IO};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -79,12 +79,202 @@ impl TreeNode {
             children: vec,
         })
     }
+    pub(crate) fn new_object(
+        path: impl AsRef<Path>,
+        obj_folder: PathBuf,
+    ) -> Result<Option<([u8; 32], Vec<u8>)>, String> {
+        assert!(
+            path.as_ref().exists(),
+            "There isn't any folder in the path {}",
+            path.as_ref().display()
+        );
+
+        let dir_path = path.as_ref();
+        let file_path = match dir_path.to_str() {
+            Some(dir_path) => dir_path,
+            None => return Err(format!("Unable to convert dir_path to str: {:?}", dir_path)),
+        };
+        let paths = Self::read_dir(dir_path);
+        let paths = paths?;
+        let mut hashes: Vec<u8> = Vec::new();
+        let mut object: Vec<u8> = Vec::new();
+        println!("Tree Path: {}", path.as_ref().display());
+
+        for path in paths {
+            let path = match path {
+                Ok(path) => path,
+                Err(_) => return Err(format!("Unable to read directory entry, path: {:?}", path)),
+            };
+            let path_str = path.path();
+
+            match Node::new_object(path, &obj_folder) {
+                Ok(obj) => match obj {
+                    Some((hash, data)) => {
+                        hashes.extend(hash);
+                        object.extend(data);
+                    }
+                    None => continue,
+                },
+
+                Err(e) => {
+                    return Err(format!(
+                        "Unable to read object at {:?},{e}",
+                        path_str.display()
+                    ));
+                }
+            }
+        }
+
+        let mut object_data: Vec<u8> = Vec::with_capacity(7 + file_path.len() + 33);
+        let hash = TreeNode::hash(&hashes);
+        drop(hashes);
+        let hash_str = Self::hash_to_hex_string(&hash);
+
+        object_data.extend(Self::DIRECTORY);
+        object_data.push(b' ');
+        object_data.extend(file_path.as_bytes());
+        object_data.push(0);
+        object_data.extend(&hash);
+        let path = obj_folder.join(&hash_str[..2]).join(&hash_str[2..]);
+
+        match LeafNode::atomic_write_file(&path, &object) {
+            Ok(file) => match file.persist(path) {
+                Ok(_) => Ok(Some((hash, object_data))),
+                Err(e) => Err(format!("{} at {}", e, dir_path.display())),
+            },
+            Err(e) => Err(e),
+        }
+    }
+
+    pub(crate) fn init(path: impl AsRef<Path>, binary_name: String) -> Result<(), String> {
+        assert!(
+            path.as_ref().exists(),
+            "There isn't any folder in the path {}",
+            path.as_ref().display()
+        );
+
+        let dir_path = path.as_ref();
+        let obj_dir = dir_path.to_path_buf().join(Self::OBJ_FOLDER);
+        let paths = Self::read_dir(dir_path);
+        let paths = paths?;
+        let mut hashes: Vec<u8> = Vec::new();
+        let mut object: Vec<u8> = Vec::new();
+
+        let filter: HashSet<_> = HashSet::from([".freesync", ".git", "logs", &binary_name]);
+        println!("Tree Path: {}", path.as_ref().display());
+        'pathLoop: for path in paths {
+            let path = match path {
+                Ok(path) => path,
+                Err(_) => return Err(format!("Unable to read directory entry, path: {:?}", path)),
+            };
+            match path.file_name().to_str() {
+                Some(file_name) => {
+                    if filter.contains(file_name) {
+                        continue 'pathLoop;
+                    }
+                }
+                None => return Err(format!("Unable to read file name: {:?}", &path)),
+            };
+            let path_str = path.path();
+            match Node::new_object(path, &obj_dir) {
+                Ok(obj) => match obj {
+                    Some((hash, data)) => {
+                        hashes.extend(hash);
+                        object.extend(data);
+                    }
+                    None => continue,
+                },
+
+                Err(e) => {
+                    return Err(format!(
+                        "Unable to read object at {:?},{e}",
+                        path_str.display()
+                    ));
+                }
+            }
+        }
+        let hash = TreeNode::hash(&hashes);
+        drop(hashes);
+        let hash_str = Self::hash_to_hex_string(&hash);
+        let path = dir_path
+            .join(Self::OBJ_FOLDER)
+            .join(&hash_str[..2])
+            .join(&hash_str[2..]);
+        match LeafNode::atomic_write_file(&path, &object) {
+            Ok(file) => match file.persist(path) {
+                Ok(_) => {
+                    Self::save_upstream(dir_path)?;
+                    Ok(Self::save_head(dir_path, hash)?)
+                }
+                Err(e) => Err(format!("{} at {}", e, dir_path.display())),
+            },
+            Err(e) => Err(e),
+        }
+    }
 
     pub(crate) fn from(path: impl AsRef<Path>, real_path: PathBuf) -> Result<TreeNode, String> {
         let path = path.as_ref();
         let head_path = Self::get_head_path(path)?;
 
         Self::from_tree(&path.to_path_buf(), head_path, real_path)
+    }
+    pub(crate) fn from_branch(path: impl AsRef<Path>, real_path: PathBuf) -> Result<(), String> {
+        let path = path.as_ref();
+        let head_path = Self::get_head_path(path)?;
+
+        Self::apply_branch(&path.to_path_buf(), head_path, real_path)
+    }
+
+    fn apply_branch(
+        working_directory: &PathBuf,
+        path: impl AsRef<Path>,
+        real_path: PathBuf,
+    ) -> Result<(), String> {
+        let path = path.as_ref();
+        let mut data = Self::read_file(path)?;
+
+        while !data.is_empty() {
+            let entry_type: [u8; 6];
+            let file_name: String;
+            let hash: [u8; 32];
+            (data, (entry_type, file_name, hash)) = Self::parse_header(data)?;
+
+            let child_real_path = real_path.join(file_name);
+
+            let child_path = Self::hash_to_path(working_directory, &hash);
+
+            match &entry_type {
+                Self::EXECUTABLE_FILE | Self::REGULAR_FILE => {
+                    match LeafNode::from(child_path, child_real_path) {
+                        Ok(leaf) => {
+                            let decompress = LeafNode::decompress_data(leaf.data())?;
+                            let leaf_path = leaf.file_path.to_owned();
+                            drop(leaf);
+
+                            match LeafNode::atomic_write_file(&leaf_path, &decompress) {
+                                Ok(file) => {
+                                    if let Err(e) = file.persist(&leaf_path) {
+                                        return Err(format!(
+                                            "Unable to persist the file {} Error:{e}",
+                                            leaf_path.display(),
+                                        ));
+                                    }
+                                }
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        Err(e) => return Err(format!("{} at {}", e, real_path.display())),
+                    }
+                }
+                Self::DIRECTORY => {
+                    TreeNode::apply_branch(working_directory, child_path, child_real_path)?
+                }
+
+                _ => Err("Invalid entry type")?,
+            }
+        }
+
+        Ok(())
     }
 
     fn from_tree(
@@ -287,31 +477,72 @@ impl TreeNode {
 
         self.hash = TreeNode::hash_tree(&mut self.children);
     }
+    fn save_head(path: impl AsRef<Path>, hash: [u8; 32]) -> Result<(), String> {
+        let path = path.as_ref();
 
-    pub(crate) fn apply_branch(&self) -> Result<(), String> {
-        for child in &self.children {
-            match child {
-                Tree(tree) => tree.apply_branch()?,
-                Leaf(leaf) => {
-                    let data = leaf.data();
-                    let decompress = LeafNode::decompress_data(data)?;
+        let head_path = path.join(Self::HEAD_FILE);
+        let branch = match path.exists() {
+            true => match Self::read_file(&head_path) {
+                Ok(head) => match String::from_utf8(head) {
+                    Ok(str) => str,
+                    Err(_) => return Err("Unable to convert string from utf8".to_string()),
+                },
+                Err(_) => return Err("Unable to read contents of head file".to_string()),
+            },
+            false => Self::DEFAULT_BRANCH.to_string(),
+        };
 
-                    match leaf.atomic_write_file(&leaf.file_path, &decompress) {
+        match LeafNode::atomic_write_file(&head_path, branch.as_bytes()) {
+            Ok(file) => match file.persist(head_path) {
+                Ok(_) => {
+                    match LeafNode::atomic_write_file(
+                        &path.join(Self::BRANCH_FOLDER).join(&branch),
+                        &hash,
+                    ) {
                         Ok(file) => {
-                            if let Err(e) = file.persist(&leaf.file_path) {
-                                return Err(format!(
-                                    "Unable to persist the file {} Error:{e}",
-                                    leaf.file_path.display(),
-                                ));
+                            match file.persist(path.join(Self::BRANCH_FOLDER).join(&branch)) {
+                                Ok(_) => Ok(()),
+                                Err(_) => Err("Unable to persist file".to_string()),
                             }
                         }
-                        Err(e) => return Err(e),
+                        Err(_) => Err(format!(
+                            "Unable to write selected branch to head file, path:{}",
+                            path.join(branch).display()
+                        )
+                        .to_string()),
                     }
                 }
-            }
-        }
+                Err(_) => Err("Unable to save head file".to_string()),
+            },
 
-        Ok(())
+            Err(_) => Err("Unable to write hash to branch file".to_string()),
+        }
+    }
+
+    fn save_upstream(path: impl AsRef<Path>) -> Result<(), String> {
+        let path = path.as_ref();
+        let path = path.join(Self::UPSTREAM_FILE);
+        let upstream = match path.exists() {
+            true => match Self::read_file(&path) {
+                Ok(head) => match String::from_utf8(head) {
+                    Ok(str) => str,
+                    Err(_) => return Err("Unable to convert string from utf8".to_string()),
+                },
+                Err(_) => return Err("Unable to read contents of head file".to_string()),
+            },
+            false => "localhost:0".to_string(),
+        };
+
+        match LeafNode::atomic_write_file(&path, upstream.as_bytes()) {
+            Ok(file) => match file.persist(&path) {
+                Ok(_) => Ok(()),
+                Err(_) => Err(format!(
+                    "Unable to write upstream file to path:{}",
+                    path.display()
+                )),
+            },
+            Err(_) => Err("Unable to write upstream to file".to_string()),
+        }
     }
 }
 
@@ -336,7 +567,7 @@ impl HashableNode for TreeNode {
 
         for child in children.iter() {
             let children_hash = child.get_hash();
-            data.extend_from_slice(&children_hash);
+            data.extend(&children_hash);
         }
 
         Self::hash(data.as_slice())
@@ -470,11 +701,11 @@ impl TreeIOInternal for TreeNode {
                 }
             };
 
-            data.extend_from_slice(entry);
+            data.extend(entry);
             data.push(b' ');
-            data.extend_from_slice(filename.as_bytes());
+            data.extend(filename.as_bytes());
             data.push(0);
-            data.extend_from_slice(&child.get_hash());
+            data.extend(&child.get_hash());
         }
         self.write_file(&parent_file, &data)
     }
@@ -483,8 +714,7 @@ impl TreeIOInternal for TreeNode {
         if data.is_empty() {
             return Err("Buffer is empty".to_string());
         }
-        let c = data.clone();
-        assert!(data.len() >= 6, "Data is too short,{:?}", c);
+        assert!(data.len() >= 6, "Data is too short");
         let entry_type: [u8; 6] = match data.drain(0..6).collect::<Vec<u8>>().try_into() {
             Ok(entry) => entry,
             Err(_) => return Err("Unable to parse header".to_string()),
@@ -505,9 +735,8 @@ impl TreeIOInternal for TreeNode {
 
         assert!(
             data.len() >= 32,
-            "Data is too short. File name:{},{:?}",
-            String::from_utf8(file_name).unwrap(),
-            c
+            "Data is too short. File name:{}",
+            String::from_utf8(file_name).unwrap()
         );
         let hash: [u8; 32] = match data.drain(0..32).collect::<Vec<u8>>().try_into() {
             Ok(entry) => entry,

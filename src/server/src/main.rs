@@ -1,5 +1,5 @@
 use logger::Logger;
-use merkle::{merklenode::traits::TreeIO, merkletree::MerkleTree};
+use merkle::merkletree::MerkleTree;
 use server_internals::server::Server;
 use std::env;
 use std::path::PathBuf;
@@ -49,9 +49,8 @@ fn main() {
     }
 
     if init {
-        let tree = MerkleTree::create(path.to_path_buf())
+        MerkleTree::init(path.to_path_buf(), args[0].to_string())
             .expect("Unable to create a repo from current directory");
-        tree.save_tree().expect("Unable to write tree to disk");
     }
 
     let tx = Logger::create(

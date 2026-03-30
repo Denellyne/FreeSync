@@ -1,6 +1,7 @@
 use crate::merklenode::diff::Change;
 use crate::merklenode::node::Node;
-use crate::merklenode::traits::LeafIO;
+use crate::merklenode::traits::{EntryData, LeafIO};
+use crate::merklenode::tree::TreeNode;
 use crate::traits::{CompressedData, Hashable, ReadFile};
 use std::fs;
 use std::io::Write;
@@ -43,13 +44,71 @@ impl LeafNode {
                 }
 
                 let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();
-                data.extend_from_slice(&data_raw);
+                data.extend(data_raw);
 
                 Ok(LeafNode {
                     hash,
                     compressed_data: Self::compress(&data)?,
                     file_path: file_path.to_path_buf(),
                 })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    pub(crate) fn new_object(
+        path: impl AsRef<Path>,
+        obj_folder: impl AsRef<Path>,
+    ) -> Result<Option<([u8; 32], Vec<u8>)>, String> {
+        assert!(
+            path.as_ref().exists(),
+            "There isn't any file in the path {}",
+            path.as_ref().display()
+        );
+        let file_path = path.as_ref();
+
+        match Self::hash_file(file_path) {
+            Ok((hash, data_raw)) => {
+                if data_raw.is_empty() {
+                    return Ok(None);
+                }
+                if data_raw.len() >= 10000000 {
+                    println!("File Path: {}", path.as_ref().display());
+                }
+
+                let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();
+                data.extend(data_raw);
+
+                let leaf = LeafNode {
+                    hash,
+                    compressed_data: Self::compress(&data)?,
+                    file_path: file_path.to_path_buf(),
+                };
+                drop(data);
+
+                leaf.write_blob(obj_folder.as_ref())?;
+                let entry = match leaf.is_executable()? {
+                    true => TreeNode::EXECUTABLE_FILE,
+                    false => TreeNode::REGULAR_FILE,
+                };
+                drop(leaf);
+                let file_path = match file_path.to_str() {
+                    Some(path) => path.to_owned(),
+                    None => {
+                        return Err(format!(
+                            "Unable to convert path to str {}",
+                            file_path.display()
+                        ));
+                    }
+                };
+
+                let mut object_data: Vec<u8> = Vec::with_capacity(7 + file_path.len() + 33);
+                object_data.extend(entry);
+                object_data.push(b' ');
+                object_data.extend(file_path.as_bytes());
+                object_data.push(0);
+                object_data.extend(hash);
+                Ok(Some((hash, object_data)))
             }
             Err(e) => Err(e),
         }
@@ -93,7 +152,7 @@ impl LeafNode {
                     let slice = uncompressed_data
                         .drain(..=(end - start) as usize)
                         .collect::<Vec<u8>>();
-                    data_raw.extend_from_slice(slice.as_slice())
+                    data_raw.extend(slice)
                 }
                 Change::Delete { start, end } => {
                     let _ = uncompressed_data
@@ -102,7 +161,7 @@ impl LeafNode {
                 }
                 Change::Insert { data } => {
                     let slice = Self::decompress(&data)?;
-                    data_raw.extend_from_slice(&slice);
+                    data_raw.extend(slice);
                 }
 
                 Change::End { final_hash } => {
@@ -110,7 +169,7 @@ impl LeafNode {
                     self.hash = Self::hash(&data_raw);
 
                     let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();
-                    data.extend_from_slice(&data_raw);
+                    data.extend(&data_raw);
 
                     self.compressed_data = Self::compress(&data)?;
 
@@ -158,17 +217,15 @@ impl LeafIO for LeafNode {
         }
         let file_path = dir_path.join(&LeafNode::hash_to_hex_string(&self.hash)[2..]);
 
-        match self.atomic_write_file(&file_path, self.data()) {
-            Ok(file) => {
-                let temp_path = file.into_temp_path();
-                match self.atomic_rename(&temp_path, &file_path) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(format!(
-                        "Unable to persist the file {} Error:{e}",
-                        temp_path.display()
-                    )),
-                }
-            }
+        match LeafNode::atomic_write_file(&file_path, self.data()) {
+            Ok(file) => match file.persist(&file_path) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(format!(
+                    "Unable to persist file {} Error:{:?}",
+                    file_path.display(),
+                    e
+                )),
+            },
             Err(e) => Err(e),
         }
     }
@@ -198,7 +255,7 @@ impl LeafIO for LeafNode {
         ))
     }
 
-    fn atomic_write_file(&self, path: &Path, data: &[u8]) -> Result<NamedTempFile, String> {
+    fn atomic_write_file(path: &Path, data: &[u8]) -> Result<NamedTempFile, String> {
         let parent_dir = match path.parent() {
             Some(dir) => dir,
             None => {
@@ -227,17 +284,6 @@ impl LeafIO for LeafNode {
         match file.flush() {
             Ok(_) => Ok(file),
             Err(_) => Err(format!("Unable to write to the file {}", path.display())),
-        }
-    }
-
-    fn atomic_rename(&self, old_path: &Path, new_path: &Path) -> Result<(), String> {
-        match fs::rename(old_path, new_path) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(format!(
-                "Unable to rename file from {} to {}",
-                old_path.display(),
-                new_path.display()
-            )),
         }
     }
 

@@ -8,3 +8,15 @@ logger = {path = "../logger"}
 merkle = {path = "../merkle"}
 server_internals = {path = "./src/server_internals"}
 
+[profile.release]
+opt-level = 3
+debug = false
+split-debuginfo = '...'
+strip = "none"
+debug-assertions = false
+overflow-checks = false
+lto = true
+panic = 'unwind'
+incremental = false
+codegen-units = 16
+rpath = false

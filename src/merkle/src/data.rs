@@ -12,21 +12,21 @@ pub fn serialize(packet: Packet) -> Vec<u8> {
     match packet {
         Packet::ObjectFile(data, hash) => {
             result.extend_from_slice(b"0");
-            result.extend_from_slice(format!("{:08}", data.len()).as_bytes());
+            result.extend_from_slice(format!("{:032}", data.len()).as_bytes());
             result.extend_from_slice(&data);
-            result.extend_from_slice(format!("{:08}", hash.len()).as_bytes());
+            result.extend_from_slice(format!("{:032}", hash.len()).as_bytes());
             result.extend_from_slice(hash.as_bytes());
         }
         Packet::HeadFile(name) => {
             result.extend_from_slice(b"1");
-            result.extend_from_slice(format!("{:08}", name.len()).as_bytes());
+            result.extend_from_slice(format!("{:032}", name.len()).as_bytes());
             result.extend_from_slice(name.as_bytes());
         }
         Packet::BranchFile(hash, name) => {
             result.extend_from_slice(b"2");
-            result.extend_from_slice(format!("{:08}", hash.len()).as_bytes());
+            result.extend_from_slice(format!("{:032}", hash.len()).as_bytes());
             result.extend_from_slice(&hash);
-            result.extend_from_slice(format!("{:08}", name.len()).as_bytes());
+            result.extend_from_slice(format!("{:032}", name.len()).as_bytes());
             result.extend_from_slice(name.as_bytes());
         }
     }
@@ -46,7 +46,7 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
 
     match packet_type {
         0 | 2 => {
-            let mut buf = vec![0; 8];
+            let mut buf = vec![0; 32];
             if let Err(e) = stream.read_exact(&mut buf) {
                 return Err(
                     format!("Unable to read stream properly - Object data length, {e}").to_string(),
@@ -73,7 +73,7 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
                 );
             };
             let data = buf;
-            let mut buf = vec![0; 8];
+            let mut buf = vec![0; 32];
 
             if let Err(e) = stream.read_exact(&mut buf) {
                 return Err(
@@ -84,7 +84,7 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
                 Ok(val) => val,
                 Err(e) => {
                     return Err(format!(
-                        "Unable to convert data inside vector to string, Branch hash {e}, {:?}",
+                        "Unable to convert data inside vector to string, lenth {e}, {:?}",
                         buf
                     ));
                 }
@@ -117,7 +117,7 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
             }
         }
         1 => {
-            let mut buf = vec![0; 8];
+            let mut buf = vec![0; 32];
             if let Err(e) = stream.read_exact(&mut buf) {
                 return Err(
                     format!("Unable to read stream properly - Object data length, {e}").to_string(),

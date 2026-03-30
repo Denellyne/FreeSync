@@ -66,7 +66,7 @@ fn random_data() -> String {
 use crate::server::Server;
 use merkle::data::deserialize_from_stream;
 use merkle::traits::Hashable;
-use tempfile::{NamedTempFile, TempDir, tempdir_in};
+use tempfile::{tempdir_in, NamedTempFile, TempDir};
 
 fn write_random_to_file(file: NamedTempFile) -> (NamedTempFile, String) {
     let mut str: String = String::new();
