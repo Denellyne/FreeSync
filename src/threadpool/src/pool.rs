@@ -1,13 +1,15 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{
-  panic::{self, AssertUnwindSafe},
-  sync::{mpsc, Arc, Mutex},
-  thread::{self, sleep},
-  time::Duration,
+    panic::{self, AssertUnwindSafe},
+    sync::{Arc, Mutex, mpsc},
+    thread::{self, sleep},
+    time::Duration,
 };
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
     sender: Option<mpsc::Sender<Job>>,
+    active_jobs: Arc<AtomicUsize>,
 }
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
@@ -26,8 +28,9 @@ impl ThreadPool {
         let (sender, receiver) = mpsc::channel();
 
         let receiver = Arc::new(Mutex::new(receiver));
+        let active_jobs = Arc::new(AtomicUsize::new(0));
 
-        let mut workers = Vec::with_capacity(size);
+        let mut workers = Vec::with_capacity(size + 2);
 
         for id in 0..size {
             workers.push(Worker::new(id, Arc::clone(&receiver)));
@@ -36,6 +39,7 @@ impl ThreadPool {
         ThreadPool {
             workers,
             sender: Some(sender),
+            active_jobs,
         }
     }
 
@@ -43,13 +47,21 @@ impl ThreadPool {
     where
         F: FnOnce() + Send + 'static,
     {
-        let job = Box::new(f);
+        let active_jobs = Arc::clone(&self.active_jobs);
+        let job = Box::new(move || {
+            f();
+            active_jobs.fetch_sub(1, Ordering::SeqCst);
+        });
+        let active_jobs = Arc::clone(&self.active_jobs);
+        active_jobs.fetch_add(1, Ordering::SeqCst);
 
-        self.sender
-            .as_ref()
-            .expect("Unable to get reference to sender")
-            .send(job)
-            .expect("Unable to send job to worker");
+        if let Some(sender) = self.sender.as_ref() {
+            if sender.send(job).is_err() {
+                active_jobs.fetch_sub(1, Ordering::SeqCst);
+            }
+        } else if self.sender.as_ref().is_none() {
+            active_jobs.fetch_sub(1, Ordering::SeqCst);
+        }
     }
 
     /// Timeout is in milliseconds
@@ -61,8 +73,13 @@ impl ThreadPool {
             println!("Shutting down worker {}", worker.id);
 
             if let Some(thread) = worker.thread.take() {
-                thread.join().expect("Unable to join thread");
+                drop(thread);
             }
+        }
+    }
+    pub fn join_all(&self) {
+        while self.active_jobs.load(Ordering::SeqCst) > 0 {
+            sleep(Duration::from_millis(1000));
         }
     }
 }
@@ -94,7 +111,9 @@ impl Worker {
 
                 match message {
                     Ok(job) => {
+                        #[cfg(debug_assertions)]
                         println!("Worker {id} got a job; executing.");
+
                         let result = panic::catch_unwind(AssertUnwindSafe(job));
                         if result.is_err() {
                             println!("Worker {id}: job panicked but thread survived.");

@@ -8,3 +8,5 @@ rand = "0.10.0-rc.9"
 merkle = { path = "../../../merkle" }
 logger = {path = "../../../logger",features=["mock"]}
 tempfile = "3.25.0"
+threadpool = {path = "../../../threadpool"}
+

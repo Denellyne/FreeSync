@@ -1,5 +1,4 @@
-use crate::threadpool::ThreadPool;
-use merkle::data::{serialize, Packet};
+use merkle::data::{Packet, serialize};
 use merkle::merklenode::traits::TreeIO;
 use merkle::merklenode::tree::TreeNode;
 use merkle::merkletree::MerkleTree;
@@ -9,6 +8,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
+use threadpool::pool::ThreadPool;
 
 // The only uses of expect and unwrap should be at the startup,after that there shall be no unwraps
 pub struct Server {
@@ -58,7 +58,6 @@ impl Server {
 
     pub fn run_server(self) {
         let _ = self.tx.send("\nServer running\n".to_string());
-
         let mut pool = ThreadPool::new(4);
 
         for stream in self.listener.incoming() {

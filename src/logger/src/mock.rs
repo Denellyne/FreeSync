@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::{
-  sync::mpsc::{self, Receiver, Sender},
-  thread,
+    sync::mpsc::{self, Receiver, Sender},
+    thread,
 };
 
 use crate::traits::Log;

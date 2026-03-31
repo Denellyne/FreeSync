@@ -4,10 +4,13 @@ use crate::merklenode::node::Node;
 use crate::merklenode::node::Node::{Leaf, Tree};
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
-use crate::traits::{Hashable, ReadFile, IO};
+use crate::traits::{Hashable, IO, ReadFile};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use threadpool::pool::ThreadPool;
 
 #[derive(Eq, PartialEq, Clone, Hash)]
 pub struct TreeNode {
@@ -98,6 +101,7 @@ impl TreeNode {
         let paths = paths?;
         let mut hashes: Vec<u8> = Vec::new();
         let mut object: Vec<u8> = Vec::new();
+
         println!("Tree Path: {}", path.as_ref().display());
 
         for path in paths {
@@ -106,16 +110,13 @@ impl TreeNode {
                 Err(_) => return Err(format!("Unable to read directory entry, path: {:?}", path)),
             };
             let path_str = path.path();
-
             match Node::new_object(path, &obj_folder) {
-                Ok(obj) => match obj {
-                    Some((hash, data)) => {
+                Ok(obj) => {
+                    if let Some((hash, data)) = obj {
                         hashes.extend(hash);
                         object.extend(data);
                     }
-                    None => continue,
-                },
-
+                }
                 Err(e) => {
                     return Err(format!(
                         "Unable to read object at {:?},{e}",
@@ -157,42 +158,66 @@ impl TreeNode {
         let obj_dir = dir_path.to_path_buf().join(Self::OBJ_FOLDER);
         let paths = Self::read_dir(dir_path);
         let paths = paths?;
-        let mut hashes: Vec<u8> = Vec::new();
-        let mut object: Vec<u8> = Vec::new();
+        let hashes: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let object: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
 
-        let filter: HashSet<_> = HashSet::from([".freesync", ".git", "logs", &binary_name]);
+        let filter: HashSet<_> = HashSet::from([
+            ".freesync".to_string(),
+            ".git".to_string(),
+            "logs".to_string(),
+            binary_name,
+        ]);
+        let panic = Arc::new(AtomicBool::new(false));
+        let pool = Arc::new(ThreadPool::new(6));
+
         println!("Tree Path: {}", path.as_ref().display());
-        'pathLoop: for path in paths {
+        for path in paths {
+            let filter = filter.clone();
             let path = match path {
                 Ok(path) => path,
-                Err(_) => return Err(format!("Unable to read directory entry, path: {:?}", path)),
+                Err(_) => {
+                    panic.store(true, Ordering::Relaxed);
+                    eprintln!("Unable to read directory entry, path: {:?}", path);
+                    break;
+                }
             };
             match path.file_name().to_str() {
                 Some(file_name) => {
                     if filter.contains(file_name) {
-                        continue 'pathLoop;
+                        continue;
                     }
                 }
-                None => return Err(format!("Unable to read file name: {:?}", &path)),
+                None => {
+                    panic.store(true, Ordering::Relaxed);
+                    eprintln!("Unable to read file name: {:?}", &path);
+                    break;
+                }
             };
             let path_str = path.path();
-            match Node::new_object(path, &obj_dir) {
-                Ok(obj) => match obj {
-                    Some((hash, data)) => {
-                        hashes.extend(hash);
-                        object.extend(data);
+            let panic = Arc::clone(&panic);
+            let hashes = Arc::clone(&hashes);
+            let object = Arc::clone(&object);
+            let obj_dir = obj_dir.clone();
+            pool.execute(move || match Node::new_object(path, &obj_dir) {
+                Ok(obj) => {
+                    if let Some((hash, data)) = obj {
+                        hashes.lock().expect("Hash mutex poisoned").extend(hash);
+                        object.lock().expect("Object mutex poisoned").extend(data);
                     }
-                    None => continue,
-                },
+                }
 
                 Err(e) => {
-                    return Err(format!(
-                        "Unable to read object at {:?},{e}",
-                        path_str.display()
-                    ));
+                    panic.store(true, Ordering::Relaxed);
+                    eprintln!("Unable to read object at {:?},{e}", path_str.display())
                 }
-            }
+            })
         }
+        pool.join_all();
+        let hashes = hashes.lock().expect("Poisoned hashes lock");
+        let object = object.lock().expect("Poisoned object lock");
+        drop(filter);
+        drop(pool);
+
         let hash = TreeNode::hash(&hashes);
         drop(hashes);
         let hash_str = Self::hash_to_hex_string(&hash);
@@ -221,14 +246,26 @@ impl TreeNode {
     pub(crate) fn from_branch(path: impl AsRef<Path>, real_path: PathBuf) -> Result<(), String> {
         let path = path.as_ref();
         let head_path = Self::get_head_path(path)?;
+        let panic = Arc::new(AtomicBool::new(false));
+        let pool = Arc::new(ThreadPool::new(4));
+        let pool_c = Arc::clone(&pool);
+        let panic_c = Arc::clone(&panic);
 
-        Self::apply_branch(&path.to_path_buf(), head_path, real_path)
+        Self::apply_branch(&path.to_path_buf(), head_path, real_path, pool_c, panic_c)
+            .expect("Failed to apply branch");
+        pool.join_all();
+        if panic.load(Ordering::Relaxed) {
+            return Err("An error occurred while trying to apply branch".to_string());
+        }
+        Ok(())
     }
 
     fn apply_branch(
         working_directory: &PathBuf,
         path: impl AsRef<Path>,
         real_path: PathBuf,
+        pool: Arc<ThreadPool>,
+        panic: Arc<AtomicBool>,
     ) -> Result<(), String> {
         let path = path.as_ref();
         let mut data = Self::read_file(path)?;
@@ -247,27 +284,54 @@ impl TreeNode {
                 Self::EXECUTABLE_FILE | Self::REGULAR_FILE => {
                     match LeafNode::from(child_path, child_real_path) {
                         Ok(leaf) => {
-                            let decompress = LeafNode::decompress_data(leaf.data())?;
-                            let leaf_path = leaf.file_path.to_owned();
-                            drop(leaf);
+                            let panic_c = Arc::clone(&panic);
 
-                            match LeafNode::atomic_write_file(&leaf_path, &decompress) {
-                                Ok(file) => {
-                                    if let Err(e) = file.persist(&leaf_path) {
-                                        return Err(format!(
+                            pool.execute(move || {
+                                let decompress = match LeafNode::decompress_data(leaf.data()) {
+                                    Ok(decompress) => decompress,
+                                    Err(e) => {
+                                        panic_c.store(true, Ordering::Relaxed);
+                                        eprintln!("Unable to decompress data: {:?}", e);
+                                        return;
+                                    }
+                                };
+                                let leaf_path = leaf.file_path.to_owned();
+                                drop(leaf);
+
+                                match LeafNode::atomic_write_file(&leaf_path, &decompress) {
+                                    Ok(file) => {
+                                        if let Err(e) = file.persist(&leaf_path) {
+                                            panic_c.store(true, Ordering::Relaxed);
+                                            eprintln!(
+                                                "Unable to persist the file {} Error:{e}",
+                                                leaf_path.display(),
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        panic_c.store(true, Ordering::Relaxed);
+                                        eprintln!(
                                             "Unable to persist the file {} Error:{e}",
-                                            leaf_path.display(),
-                                        ));
+                                            leaf_path.display()
+                                        );
                                     }
                                 }
-                                Err(e) => return Err(e),
-                            }
+                            });
                         }
                         Err(e) => return Err(format!("{} at {}", e, real_path.display())),
                     }
                 }
                 Self::DIRECTORY => {
-                    TreeNode::apply_branch(working_directory, child_path, child_real_path)?
+                    let pool_c = Arc::clone(&pool);
+                    let panic_c = Arc::clone(&panic);
+                    TreeNode::apply_branch(
+                        working_directory,
+                        child_path,
+                        child_real_path,
+                        pool_c,
+                        panic_c,
+                    )
+                    .expect("Failed to apply branch");
                 }
 
                 _ => Err("Invalid entry type")?,
@@ -481,7 +545,7 @@ impl TreeNode {
         let path = path.as_ref();
 
         let head_path = path.join(Self::HEAD_FILE);
-        let branch = match path.exists() {
+        let branch = match head_path.exists() {
             true => match Self::read_file(&head_path) {
                 Ok(head) => match String::from_utf8(head) {
                     Ok(str) => str,

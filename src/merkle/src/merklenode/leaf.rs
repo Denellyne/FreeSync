@@ -66,14 +66,12 @@ impl LeafNode {
             path.as_ref().display()
         );
         let file_path = path.as_ref();
+        println!("File Path: {}", path.as_ref().display());
 
         match Self::hash_file(file_path) {
             Ok((hash, data_raw)) => {
                 if data_raw.is_empty() {
                     return Ok(None);
-                }
-                if data_raw.len() >= 10000000 {
-                    println!("File Path: {}", path.as_ref().display());
                 }
 
                 let mut data: Vec<u8> = format!("blob {}\0", data_raw.len()).into_bytes();

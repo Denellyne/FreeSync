@@ -49,7 +49,7 @@ fn main() {
     }
 
     if init {
-        MerkleTree::init(path.to_path_buf(), args[0].to_string())
+        MerkleTree::init(path.to_path_buf(), args.remove(0))
             .expect("Unable to create a repo from current directory");
     }
 

@@ -379,6 +379,7 @@ dependencies = [
  "rand",
  "sha2",
  "tempfile",
+ "threadpool",
 ]
 
 [[package]]
@@ -541,6 +542,7 @@ dependencies = [
  "merkle",
  "rand",
  "tempfile",
+ "threadpool",
 ]
 
 [[package]]
@@ -606,6 +608,10 @@ dependencies = [
  "rustix",
  "windows-sys",
 ]
+
+[[package]]
+name = "threadpool"
+version = "0.1.0"
 
 [[package]]
 name = "time-format"
