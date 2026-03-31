@@ -247,7 +247,7 @@ impl TreeNode {
         let path = path.as_ref();
         let head_path = Self::get_head_path(path)?;
         let panic = Arc::new(AtomicBool::new(false));
-        let pool = Arc::new(ThreadPool::new(4));
+        let pool = Arc::new(ThreadPool::new(8));
         let pool_c = Arc::clone(&pool);
         let panic_c = Arc::clone(&panic);
 
@@ -269,6 +269,7 @@ impl TreeNode {
     ) -> Result<(), String> {
         let path = path.as_ref();
         let mut data = Self::read_file(path)?;
+        let mutex = Arc::new(Mutex::new(()));
 
         while !data.is_empty() {
             let entry_type: [u8; 6];
@@ -285,6 +286,7 @@ impl TreeNode {
                     match LeafNode::from(child_path, child_real_path) {
                         Ok(leaf) => {
                             let panic_c = Arc::clone(&panic);
+                            let mutex = Arc::clone(&mutex);
 
                             pool.execute(move || {
                                 let decompress = match LeafNode::decompress_data(leaf.data()) {
@@ -298,6 +300,17 @@ impl TreeNode {
                                 let leaf_path = leaf.file_path.to_owned();
                                 drop(leaf);
 
+                                if let Err(e) =  mutex.lock() {
+                                    panic_c.store(true, Ordering::Relaxed);
+                                    eprintln!("Unable to acquire lock: {:?}", e);
+                                    return;
+                                }
+                                if let Err(e)= fs::create_dir_all(&leaf_path){
+                                    panic_c.store(true, Ordering::Relaxed);
+                                    eprintln!("Unable to create directories: {:?}", e);
+                                    return;
+                                }
+                                drop(mutex);
                                 match LeafNode::atomic_write_file(&leaf_path, &decompress) {
                                     Ok(file) => {
                                         if let Err(e) = file.persist(&leaf_path) {
