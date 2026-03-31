@@ -1,9 +1,7 @@
 use merkle::data::deserialize_from_stream;
-use merkle::merklenode::tree::TreeNode;
 use merkle::merkletree::MerkleTree;
-use merkle::traits::Hashable;
 use std::env;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 
 pub struct Client {
@@ -55,29 +53,29 @@ impl Client {
 
         Ok(())
     }
-    pub(crate) fn pull() -> Result<(), String> {
-        let dir = match env::current_dir() {
-            Ok(dir) => dir,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        let node = MerkleTree::create(dir).expect("Unable to create tree");
-        let _hash = TreeNode::hash_to_hex_string(&node.get_hash());
-        let _addr = match MerkleTree::get_upstream(".".into()) {
-            Ok(addr) => addr,
-            Err(e) => panic!("{e}"),
-        };
-
-        let mut conn = Client::new()?;
-
-        let command = "GET UPSTREAM\n\n";
-
-        conn.stream.write_all(command.as_bytes()).unwrap();
-
-        let mut upstream_hash: String = String::new();
-        conn.stream.read_to_string(&mut upstream_hash).unwrap();
-        println!("{upstream_hash}");
-
-        Ok(())
-    }
+    // pub(crate) fn pull() -> Result<(), String> {
+    //     let dir = match env::current_dir() {
+    //         Ok(dir) => dir,
+    //         Err(e) => return Err(e.to_string()),
+    //     };
+    //
+    //     let node = MerkleTree::create(dir).expect("Unable to create tree");
+    //     let _hash = TreeNode::hash_to_hex_string(&node.get_hash());
+    //     let _addr = match MerkleTree::get_upstream(".".into()) {
+    //         Ok(addr) => addr,
+    //         Err(e) => panic!("{e}"),
+    //     };
+    //
+    //     let mut conn = Client::new()?;
+    //
+    //     let command = "GET UPSTREAM\n\n";
+    //
+    //     conn.stream.write_all(command.as_bytes()).unwrap();
+    //
+    //     let mut upstream_hash: String = String::new();
+    //     conn.stream.read_to_string(&mut upstream_hash).unwrap();
+    //     println!("{upstream_hash}");
+    //
+    //     Ok(())
+    // }
 }

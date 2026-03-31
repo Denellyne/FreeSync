@@ -4,8 +4,6 @@ use crate::merklenode::node::Node;
 use crate::merklenode::node::Node::Tree;
 use crate::merklenode::traits::{LeafIO, TreeIO};
 use crate::merkletree::MerkleTree;
-use crate::tests::{generate_file, random_tree_builder};
-use crate::tests::{generate_random_tree, write_random_to_filepath};
 use crate::traits::Hashable;
 use std::fs::write;
 use std::path::PathBuf;
@@ -15,7 +13,7 @@ use tempfile::TempDir;
 fn test_read_blob() {
     let temp_dir = TempDir::new().expect("Unable to create temporary directory");
     let temp_file = temp_dir.path().to_path_buf().join("blob");
-    let str = write_random_to_filepath(&temp_file);
+    let str = MerkleTree::write_random_to_filepath(&temp_file);
 
     let leaf1 =
         MerkleTree::new_leaf(temp_file.as_path().to_path_buf()).expect("Unable to create tree");
@@ -44,7 +42,7 @@ fn test_read_write_tree() {
     let dir: TempDir = TempDir::new().expect("Unable to create temporary folder");
     let path = PathBuf::from(dir.path());
 
-    match generate_random_tree(dir.path().to_path_buf()) {
+    match MerkleTree::generate_random_tree(dir.path().to_path_buf()) {
         (Ok(Tree(tree)), _files, _dirs) => match tree.save_tree() {
             Ok(_) => {
                 let t2 =
@@ -62,8 +60,8 @@ fn test_read_write_tree() {
 fn test_diff() {
     let dir = TempDir::new().unwrap();
     let dir_path = dir.path();
-    let f1 = generate_file("abcdfghjqz", dir_path);
-    let f2 = generate_file("abcdefgijkrxyz", dir_path);
+    let f1 = MerkleTree::generate_file("abcdfghjqz", dir_path);
+    let f2 = MerkleTree::generate_file("abcdefgijkrxyz", dir_path);
     let leaf1 = MerkleTree::new_leaf(f1.path().to_path_buf()).expect("Unable to create leaf 1");
     let leaf2 = MerkleTree::new_leaf(f2.path().to_path_buf()).expect("Unable to create leaf 2");
 
@@ -100,7 +98,7 @@ fn test_diff() {
 fn tree_from_diff_simple() {
     let dir = TempDir::new().unwrap();
     let dir_path = dir.path();
-    let f1 = generate_file("abcdfghjqz", dir_path);
+    let f1 = MerkleTree::generate_file("abcdfghjqz", dir_path);
 
     let t1 = Tree(MerkleTree::create(dir_path.to_path_buf()).expect("Unable to create tree 1"));
 
@@ -132,8 +130,8 @@ fn tree_from_diff_simple() {
 }
 #[test]
 fn tree_from_diff() {
-    let (t1, temp_folder) = random_tree_builder(None::<PathBuf>);
-    let (t2, _) = random_tree_builder(Some(
+    let (t1, temp_folder) = MerkleTree::random_tree_builder(None::<PathBuf>);
+    let (t2, _) = MerkleTree::random_tree_builder(Some(
         temp_folder
             .expect("Expected path from temp folder")
             .path()

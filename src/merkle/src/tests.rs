@@ -1,3 +1,4 @@
+use std::fs;
 use crate::merklenode::leaf::LeafNode;
 use crate::merklenode::node::Node;
 use crate::merklenode::traits::LeafIO;
@@ -7,98 +8,131 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use tempfile::{NamedTempFile, TempDir, tempdir_in};
+use crate::merklenode::tree::TreeNode;
 
-pub(crate) fn random_tree_builder(
-    path: Option<PathBuf>,
-) -> (Result<Node, String>, Option<TempDir>) {
-    match path {
-        Some(path) => {
-            let (node, _, _) = generate_random_tree(path);
-            (node, None)
-        }
-        None => {
-            let temp_dir = tempfile::tempdir().expect("Unable to create temp dir");
-            let (node, _, _) = generate_random_tree(temp_dir.path().to_path_buf());
-            (node, Some(temp_dir))
-        }
-    }
-}
+impl MerkleTree {
 
-pub(crate) fn generate_file(contents: &str, path: &Path) -> NamedTempFile {
-    let file = NamedTempFile::new_in(path).expect("Unable to create temporary file");
-    write!(&file, "{}", contents).expect("Unable to write to file");
-    file
-}
-
-pub(crate) fn write_random_to_filepath(path: &PathBuf) -> String {
-    let file: File = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(path)
-        .unwrap_or_else(|_| panic!("Unable to open file {}", path.display()));
-
-    let mut str: String = String::new();
-    let len = random::<u8>() % u8::MAX + 1;
-    for _i in 0..len {
-        str.push(random::<char>());
-    }
-    write!(&file, "{}", str).expect("Unable to write to file");
-    str
-}
-fn write_random_to_file(file: NamedTempFile) -> (NamedTempFile, String) {
-    let mut str: String = String::new();
-    let len = random::<u16>() % u16::MAX / 4 + 1;
-    for _i in 0..len {
-        str.push(random::<char>());
-    }
-    write!(&file, "{}", str).expect("Unable to write to file");
-    (file, str)
-}
-
-fn generate_random_file(path: &PathBuf) -> NamedTempFile {
-    let (file, _) =
-        write_random_to_file(NamedTempFile::new_in(path).expect("Unable to create temporary file"));
-    file
-}
-pub(crate) fn generate_random_tree(
-    path: PathBuf,
-) -> (Result<Node, String>, Vec<NamedTempFile>, Vec<TempDir>) {
-    let size = random::<u8>() % 12 + 1;
-    let mut current_path: PathBuf = path.clone();
-    let mut temporary_files: Vec<NamedTempFile> = Vec::new();
-    let mut temporary_folders: Vec<TempDir> = Vec::new();
-
-    let get_relative_path =
-        |str: &Path| -> PathBuf { str.file_name().expect("Unable to get file name").into() };
-
-    for _i in 0..size {
-        let gen_dir = random::<bool>();
-        if gen_dir {
-            let temp_file = tempdir_in(&current_path).expect("Unable to create temporary folder");
-            let relative_path = get_relative_path(temp_file.path());
-            current_path.push(&relative_path);
-
-            temporary_folders.push(temp_file);
-        } else {
-            let temp_file = generate_random_file(&current_path);
-            temporary_files.push(temp_file);
+    pub fn create(path: PathBuf) -> Result<TreeNode, String> {
+        match fs::read_dir(&path) {
+            Ok(_) => match path {
+                path if path.is_dir() => MerkleTree::new_tree(path),
+                path if path.is_file() => Err(format!("Path is of a file: {}", path.display())),
+                path if path.is_symlink() => Err(format!("Path is a symlink: {}", path.display())),
+                _ => Err(String::from("Unable to generate merkle tree")),
+            },
+            _ => Err(format!(
+                "Could not read directory {:?}, is it a path to a directory?",
+                &path
+            ))?,
         }
     }
+    pub fn new_leaf(file_path: PathBuf) -> Result<LeafNode, String> {
+        LeafNode::new(file_path)
+    }
 
-    let tree = Node::Tree(MerkleTree::create(path.to_path_buf()).expect("Unable to create tree"));
-    (Ok(tree), temporary_files, temporary_folders)
+    pub fn random_tree_builder(
+        path: Option<PathBuf>,
+    ) -> (Result<Node, String>, Option<TempDir>) {
+        match path {
+            Some(path) => {
+                let (node, _, _) = Self::generate_random_tree(path);
+                (node, None)
+            }
+            None => {
+                let temp_dir = tempfile::tempdir().expect("Unable to create temp dir");
+                let (node, _, _) = Self::generate_random_tree(temp_dir.path().to_path_buf());
+                (node, Some(temp_dir))
+            }
+        }
+    }
+    pub fn generate_file(contents: &str, path: &Path) -> NamedTempFile {
+        let file = NamedTempFile::new_in(path).expect("Unable to create temporary file");
+        write!(&file, "{}", contents).expect("Unable to write to file");
+        file
+    }
+
+    pub fn write_random_to_filepath(path: &PathBuf) -> String {
+        let file: File = OpenOptions::new()
+          .create(true)
+          .truncate(false)
+          .write(true)
+          .open(path)
+          .unwrap_or_else(|_| panic!("Unable to open file {}", path.display()));
+
+        let mut str: String = String::new();
+        let len = random::<u8>() % u8::MAX + 1;
+        for _i in 0..len {
+            str.push(random::<char>());
+        }
+        write!(&file, "{}", str).expect("Unable to write to file");
+        str
+    }
+    pub fn write_random_to_file(file: NamedTempFile) -> (NamedTempFile, String) {
+        let mut str: String = String::new();
+        let len = random::<u16>() % u16::MAX / 4 + 1;
+        for _i in 0..len {
+            str.push(random::<char>());
+        }
+        write!(&file, "{}", str).expect("Unable to write to file");
+        (file, str)
+    }
+
+    pub  fn generate_random_file(path: &PathBuf) -> NamedTempFile {
+        let (file, _) =
+          Self::write_random_to_file(NamedTempFile::new_in(path).expect("Unable to create temporary file"));
+        file
+    }
+    pub fn generate_random_tree(
+        path: PathBuf,
+    ) -> (Result<Node, String>, Vec<NamedTempFile>, Vec<TempDir>) {
+        let size = random::<u8>() % 12 + 1;
+        let mut current_path: PathBuf = path.clone();
+        let mut temporary_files: Vec<NamedTempFile> = Vec::new();
+        let mut temporary_folders: Vec<TempDir> = Vec::new();
+
+        let get_relative_path =
+          |str: &Path| -> PathBuf { str.file_name().expect("Unable to get file name").into() };
+
+        for _i in 0..size {
+            let gen_dir = random::<bool>();
+            if gen_dir {
+                let temp_file = tempdir_in(&current_path).expect("Unable to create temporary folder");
+                let relative_path = get_relative_path(temp_file.path());
+                current_path.push(&relative_path);
+
+                temporary_folders.push(temp_file);
+            } else {
+                let temp_file = Self::generate_random_file(&current_path);
+                temporary_files.push(temp_file);
+            }
+        }
+
+        let tree = Node::Tree(MerkleTree::create(path.to_path_buf()).expect("Unable to create tree"));
+        (Ok(tree), temporary_files, temporary_folders)
+    }
+    pub fn random_data() -> String {
+        let mut str: String = String::new();
+        let len = random::<u16>() % u16::MAX / 4 + 1;
+        for _i in 0..len {
+            str.push(random::<char>());
+        }
+        str
+    }
+
 }
+
+
+
 
 #[test]
 fn test_new_tree() {
-    let (t1, _) = random_tree_builder(None::<PathBuf>);
+    let (t1, _) = MerkleTree::random_tree_builder(None::<PathBuf>);
     assert!(t1.is_ok());
 }
 #[test]
 fn test_trees_are_different() {
-    let (t1, temp_folder) = random_tree_builder(None::<PathBuf>);
-    let (t2, _) = random_tree_builder(Some(
+    let (t1, temp_folder) = MerkleTree::random_tree_builder(None::<PathBuf>);
+    let (t2, _) = MerkleTree::random_tree_builder(Some(
         temp_folder
             .expect("Expected path from temp folder")
             .path()
@@ -126,7 +160,7 @@ fn test_trees_are_different() {
 
 #[test]
 fn test_new_leaf() {
-    let temp_file = generate_random_file(&PathBuf::from("../../.."));
+    let temp_file = MerkleTree::generate_random_file(&PathBuf::from("../../.."));
     let leaf = MerkleTree::new_leaf(temp_file.path().to_path_buf());
     assert!(leaf.is_ok());
 }
@@ -134,7 +168,7 @@ fn test_new_leaf() {
 #[test]
 fn test_compression() {
     let temp_file: NamedTempFile = NamedTempFile::new().expect("Unable to create temporary file");
-    let (temp_file, str) = write_random_to_file(temp_file);
+    let (temp_file, str) = MerkleTree::write_random_to_file(temp_file);
     let leaf = MerkleTree::new_leaf(temp_file.path().to_path_buf());
     match leaf {
         Ok(leaf) => {

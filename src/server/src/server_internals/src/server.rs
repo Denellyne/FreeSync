@@ -12,10 +12,10 @@ use threadpool::pool::ThreadPool;
 
 // The only uses of expect and unwrap should be at the startup,after that there shall be no unwraps
 pub struct Server {
-    listener: TcpListener,
+    pub(super) listener: TcpListener,
     pub(super) mutex: Arc<Mutex<()>>,
-    tx: Sender<String>,
-    path: PathBuf,
+    pub(super)tx: Sender<String>,
+    pub(super)path: PathBuf,
 }
 
 impl Server {
@@ -116,7 +116,7 @@ impl Server {
             let _ = tx.send(format!("Error while sending {e}"));
         }
     }
-    fn clone_command(
+    pub(super) fn clone_command(
         mut stream: TcpStream,
         mutex: Arc<Mutex<()>>,
         tx: Sender<String>,
@@ -196,49 +196,3 @@ impl Server {
     }
 }
 
-#[cfg(test)]
-impl Server {
-    pub(super) fn mock_server(self) -> Vec<String> {
-        println!("\nServer running\n");
-        let mut request: Vec<String> = Vec::new();
-        if let Some(stream) = self.listener.incoming().next() {
-            match stream {
-                Ok(stream) => {
-                    let mutex = Arc::clone(&self.mutex);
-                    request = Self::mock_handle_connection(stream, mutex, self.tx, self.path);
-                    return request;
-                }
-                Err(e) => panic!("Unable to establish connection, {}", e),
-            }
-        }
-        request
-    }
-    fn mock_handle_connection(
-        mut stream: TcpStream,
-        mutex: Arc<Mutex<()>>,
-        tx: Sender<String>,
-        path: PathBuf,
-    ) -> Vec<String> {
-        println!("Received connection");
-        let buf_reader = BufReader::new(&stream);
-        println!("Created bufreader");
-
-        let request: Vec<_> = buf_reader
-            .lines()
-            .map(|result| result.unwrap())
-            .take_while(|line| !line.is_empty())
-            .collect();
-        println!("Request: {:?}", request);
-        if request[0] == "CLONE" {
-            Server::clone_command(stream, mutex, tx, path);
-        } else if request[0] == "TEST" {
-            if let Err(e) = stream.write_all(b"OK") {
-                panic!("{e}");
-            }
-        } else {
-            println!("ERROR");
-            let _ = stream.write_all(b"ERROR\n");
-        }
-        request
-    }
-}

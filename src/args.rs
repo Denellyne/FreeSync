@@ -37,11 +37,11 @@ fn execute_commands(mut args: Vec<String>) -> Vec<String> {
                 Err(msg) => println!("{}", msg),
             }
         }
-        "--pull" => {
-            if let Err(e) = Client::pull() {
-                eprintln!("{}", e);
-            }
-        }
+        // "--pull" => {
+        //     if let Err(e) = Client::pull() {
+        //         eprintln!("{}", e);
+        //     }
+        // }
         "--build" => {
             if let Err(e) = build_tree() {
                 eprintln!("{}", e);

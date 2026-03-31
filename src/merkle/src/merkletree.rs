@@ -13,20 +13,7 @@ impl MerkleTree {
     fn create_setter() -> MerkleTree {
         MerkleTree
     }
-    pub fn create(path: PathBuf) -> Result<TreeNode, String> {
-        match fs::read_dir(&path) {
-            Ok(_) => match path {
-                path if path.is_dir() => MerkleTree::new_tree(path),
-                path if path.is_file() => Err(format!("Path is of a file: {}", path.display())),
-                path if path.is_symlink() => Err(format!("Path is a symlink: {}", path.display())),
-                _ => Err(String::from("Unable to generate merkle tree")),
-            },
-            _ => Err(format!(
-                "Could not read directory {:?}, is it a path to a directory?",
-                &path
-            ))?,
-        }
-    }
+ 
     pub fn init(path: PathBuf, binary_name: String) -> Result<(), String> {
         match fs::read_dir(&path) {
             Ok(_) => match path {
@@ -45,9 +32,7 @@ impl MerkleTree {
         Node::from(path, real_path)
     }
 
-    fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
-        TreeNode::new(dir_path)
-    }
+    
 
     pub fn apply_branch(path: impl AsRef<Path>) -> Result<(), String> {
         let paths = match fs::read_dir(&path) {
@@ -156,6 +141,9 @@ impl MerkleTree {
             }
         }
     }
+    pub fn new_tree(dir_path: PathBuf) -> Result<TreeNode, String> {
+        TreeNode::new(dir_path)
+    }
 
     pub fn get_objects(dir_path: PathBuf) -> Result<Vec<Packet>, String> {
         let dir_path = dir_path.join(TreeNode::OBJ_FOLDER);
@@ -248,12 +236,6 @@ impl MerkleTree {
     }
 }
 
-#[cfg(test)]
-impl MerkleTree {
-    pub(super) fn new_leaf(file_path: PathBuf) -> Result<LeafNode, String> {
-        LeafNode::new(file_path)
-    }
-}
 
 impl CompressedData for MerkleTree {}
 impl ReadFile for MerkleTree {}
