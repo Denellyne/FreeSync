@@ -39,8 +39,7 @@ impl Server {
         path: PathBuf,
     ) -> Vec<String> {
         println!("Received connection");
-        let buf_reader = BufReader::new(&stream);
-        println!("Created bufreader");
+
 
         let mut command: String = String::new();
         let mut buf_reader = BufReader::new(&stream);
@@ -58,9 +57,9 @@ impl Server {
             }
         } else {
             println!("ERROR");
-            let _ = stream.write_all(b"ERROR\n");
+            let _ = stream.write_all(command.as_bytes());
         }
-        vec![command]
+        vec![command+"\n"]
     }
 }
 
@@ -138,14 +137,6 @@ pub fn generate_random_tree(
 
     (Ok(Node::Tree(tree)), temporary_files, temporary_folders)
 }
-pub fn random_data() -> String {
-    let mut str: String = String::new();
-    let len = random::<u16>() % u16::MAX / 4 + 1;
-    for _i in 0..len {
-        str.push(random::<char>());
-    }
-    str
-}
 
 struct MockConnection {
     pub stream: TcpStream,
@@ -156,7 +147,7 @@ impl MockConnection {
     fn new() -> MockConnection {
         let stream = TcpStream::connect(format!("localhost:{}", 25565))
             .expect("Failed to connect to server");
-        let data = random_data();
+        let data = "Test data\n".to_owned();
 
         MockConnection { stream, data }
     }
