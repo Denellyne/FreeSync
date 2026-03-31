@@ -292,26 +292,9 @@ impl TreeNode {
                                     return;
                                 }
                             };
-                            let leaf_path = leaf.file_path.clone();
-                            drop(leaf);
-
-                            match LeafNode::atomic_write_file(&leaf_path, &decompress) {
-                                Ok(file) => {
-                                    if let Err(e) = file.persist(&leaf_path) {
-                                        panic_c.store(true, Ordering::Relaxed);
-                                        eprintln!(
-                                            "Unable to persist the file {} Error:{e}",
-                                            leaf_path.display(),
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    panic_c.store(true, Ordering::Relaxed);
-                                    eprintln!(
-                                        "Unable to persist the file {} Error:{e}",
-                                        leaf_path.display()
-                                    );
-                                }
+                            if let Err(e) = LeafNode::atomic_write_file_ex(leaf.file_path, decompress) {
+                                panic_c.store(true, Ordering::Relaxed);
+                                eprintln!("{e}",);
                             }
                         }
                         Err(e) => {
@@ -321,8 +304,12 @@ impl TreeNode {
                     }
                 }
                 Self::DIRECTORY => {
-                    TreeNode::apply_branch(&working_directory, child_path, pool_c, panic_c)
-                        .expect("Failed to apply branch");
+                    let panic = Arc::clone(&panic_c);
+
+                   if let Err(e) = TreeNode::apply_branch(&working_directory, child_path, pool_c, panic_c) {
+                       panic.store(true, Ordering::Relaxed);
+                       eprintln!("{e}",);
+                   }
                 }
                 _ => {
                     panic_c.store(true, Ordering::Relaxed);
