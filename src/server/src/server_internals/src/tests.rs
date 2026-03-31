@@ -42,15 +42,17 @@ impl Server {
         let buf_reader = BufReader::new(&stream);
         println!("Created bufreader");
 
-        let request: Vec<_> = buf_reader
-            .lines()
-            .map(|result| result.unwrap())
-            .take_while(|line| !line.is_empty())
-            .collect();
-        println!("Request: {:?}", request);
-        if request[0] == "CLONE" {
+        let mut command: String = String::new();
+        let mut buf_reader = BufReader::new(&stream);
+        if buf_reader.read_line(&mut command).is_err() {
+            let _ = tx.send(format!("Error reading request: {:?}", command));
+            panic!("Error reading request");
+        };
+        command.pop();
+        println!("Request: {:?}", command);
+        if command == "CLONE" {
             Server::clone_command(stream, mutex, tx, path);
-        } else if request[0] == "TEST" {
+        } else if command == "TEST" {
             if let Err(e) = stream.write_all(b"OK") {
                 panic!("{e}");
             }
@@ -58,7 +60,7 @@ impl Server {
             println!("ERROR");
             let _ = stream.write_all(b"ERROR\n");
         }
-        request
+        vec![command]
     }
 }
 
@@ -161,7 +163,7 @@ impl MockConnection {
     fn from(data: String, port: u64) -> MockConnection {
         let stream =
             TcpStream::connect(format!("localhost:{}", port)).expect("Failed to connect to server");
-        let data = format! {"{data}\n\n"};
+        let data = format! {"{data}\n"};
 
         MockConnection { stream, data }
     }

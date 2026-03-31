@@ -6,12 +6,13 @@ edition = "2024"
 [dependencies]
 merkle = { path = "src/merkle" }
 threadpool = {path = "src/threadpool"}
+ptui = {path = "src/ptui"}
 url = "2.5.8"
 
 [workspace]
 members = [
     "src/merkle",
     "src/server",
-    "src/logger", "src/threadpool",
+    "src/logger", "src/threadpool", "src/ptui",
 ]
 

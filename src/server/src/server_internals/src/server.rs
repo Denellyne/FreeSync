@@ -88,19 +88,19 @@ impl Server {
         tx: Sender<String>,
         path: &PathBuf,
     ) {
-        let buf_reader = BufReader::new(&stream);
+        let mut command: String = String::new();
+        let mut buf_reader = BufReader::new(&stream);
+        if buf_reader.read_line(&mut command).is_err() {
+            let _ = tx.send(format!("Error reading request: {:?}", command));
+            return;
+        };
+        command.pop();
 
-        let request: Vec<_> = buf_reader
-            .lines()
-            .map(|result| result.unwrap())
-            .take_while(|line| !line.is_empty())
-            .collect();
+        let _ = tx.send(format!("Request: {command}"));
 
-        let _ = tx.send(format!("Request: {:?}", request));
-
-        if request[0] == "CLONE" {
+        if command == "CLONE" {
             Server::clone_command(stream, mutex, tx, path)
-        } else if request[0] == "GET UPSTREAM" {
+        } else if command == "GET UPSTREAM" {
             Server::upstream_command(stream, tx, path)
         }
     }

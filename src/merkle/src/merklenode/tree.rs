@@ -292,7 +292,9 @@ impl TreeNode {
                                     return;
                                 }
                             };
-                            if let Err(e) = LeafNode::atomic_write_file_ex(leaf.file_path, decompress) {
+                            if let Err(e) =
+                                LeafNode::atomic_write_file_ex(leaf.file_path, decompress)
+                            {
                                 panic_c.store(true, Ordering::Relaxed);
                                 eprintln!("{e}",);
                             }
@@ -306,10 +308,12 @@ impl TreeNode {
                 Self::DIRECTORY => {
                     let panic = Arc::clone(&panic_c);
 
-                   if let Err(e) = TreeNode::apply_branch(&working_directory, child_path, pool_c, panic_c) {
-                       panic.store(true, Ordering::Relaxed);
-                       eprintln!("{e}",);
-                   }
+                    if let Err(e) =
+                        TreeNode::apply_branch(&working_directory, child_path, pool_c, panic_c)
+                    {
+                        panic.store(true, Ordering::Relaxed);
+                        eprintln!("{e}",);
+                    }
                 }
                 _ => {
                     panic_c.store(true, Ordering::Relaxed);
