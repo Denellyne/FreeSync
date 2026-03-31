@@ -3,6 +3,9 @@ use merkle::merkletree::MerkleTree;
 use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use threadpool::pool::ThreadPool;
 
 pub struct Client {
     stream: TcpStream,
@@ -42,13 +45,33 @@ impl Client {
             .expect("Could not parse packets into a number");
         println!("Objects {packets}");
 
+        let pool = ThreadPool::new(4);
+        let panic = Arc::new(AtomicBool::new(false));
+        let stream = Arc::new(Mutex::from(conn.stream));
         for _ in 0..packets {
-            let packet = match deserialize_from_stream(&mut conn.stream) {
-                Ok(data) => data,
-                Err(e) => return Err(e.to_string()),
-            };
+            let panic = Arc::clone(&panic);
+            let stream_c = Arc::clone(&stream);
+            pool.execute(move || {
+                let packet = match deserialize_from_stream(
+                    &mut stream_c.lock().expect("Failed to get stream"),
+                ) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        panic.store(true, Ordering::Relaxed);
+                        eprintln!("{}", e);
+                        return;
+                    }
+                };
 
-            MerkleTree::write_packet(".".into(), packet).expect("Unable to write packet");
+                if MerkleTree::write_packet(".".into(), packet).is_err() {
+                    panic.store(true, Ordering::Relaxed);
+                    eprintln!("Failed to write packet");
+                }
+            })
+        }
+        pool.join_all();
+        if panic.load(Ordering::Relaxed) {
+            return Err(String::from("Thread pool panicked"));
         }
 
         Ok(())

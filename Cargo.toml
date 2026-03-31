@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 merkle = { path = "src/merkle" }
+threadpool = {path = "src/threadpool"}
 url = "2.5.8"
 
 [workspace]
@@ -13,15 +14,4 @@ members = [
     "src/server",
     "src/logger", "src/threadpool",
 ]
-[profile.release]
-opt-level = 3
-debug = false
-split-debuginfo = '...'
-strip = "none"
-debug-assertions = false
-overflow-checks = false
-lto = true
-panic = 'abort'
-incremental = false
-codegen-units = 16
-rpath = false
+

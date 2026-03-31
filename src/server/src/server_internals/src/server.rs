@@ -14,8 +14,8 @@ use threadpool::pool::ThreadPool;
 pub struct Server {
     pub(super) listener: TcpListener,
     pub(super) mutex: Arc<Mutex<()>>,
-    pub(super)tx: Sender<String>,
-    pub(super)path: PathBuf,
+    pub(super) tx: Sender<String>,
+    pub(super) path: PathBuf,
 }
 
 impl Server {
@@ -56,9 +56,9 @@ impl Server {
         let _ = self.tx.send("Server closed".to_string());
     }
 
-    pub fn run_server(self) {
+    pub fn run_server(self, num_threads: usize) {
         let _ = self.tx.send("\nServer running\n".to_string());
-        let mut pool = ThreadPool::new(4);
+        let pool = ThreadPool::new(num_threads);
 
         for stream in self.listener.incoming() {
             match stream {
@@ -77,7 +77,7 @@ impl Server {
                 }
             }
         }
-        pool.join_with_timeout(30000);
+        pool.join_all();
 
         self.close_server();
     }
@@ -138,6 +138,7 @@ impl Server {
             return;
         }
         println!("Sending objects");
+
         for object in objects {
             if let Err(e) = stream.write_all(&serialize(object)) {
                 let _ = tx.send(format!("Error while sending packet {e}"));
@@ -195,4 +196,3 @@ impl Server {
         Ok(())
     }
 }
-

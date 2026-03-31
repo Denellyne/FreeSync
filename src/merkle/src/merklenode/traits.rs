@@ -2,6 +2,7 @@ use crate::merklenode::diff::Change;
 use crate::merklenode::node::Node;
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::traits::{CompressedData, Hashable, ReadFile};
+use std::format;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
@@ -88,4 +89,6 @@ pub(crate) trait LeafIO: CompressedData + ReadFile {
             _ => Err(format!("Unable to read file {}", path.as_ref().display())),
         }
     }
+    fn atomic_write_file_ex(path: PathBuf, data: Vec<u8>) -> Result<(), String>;
+    fn write_blob_ex(self, path: PathBuf) -> Result<(), String>;
 }

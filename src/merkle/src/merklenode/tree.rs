@@ -1,7 +1,7 @@
 use crate::merklenode::diff::{Change, Diff};
 use crate::merklenode::leaf::LeafNode;
-use crate::merklenode::node::{Node, ObjectData};
 use crate::merklenode::node::Node::{Leaf, Tree};
+use crate::merklenode::node::{Node, ObjectData};
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
 use crate::traits::{Hashable, IO, ReadFile};
@@ -138,12 +138,9 @@ impl TreeNode {
         object_data.extend(&hash);
         let path = obj_folder.join(&hash_str[..2]).join(&hash_str[2..]);
 
-        match LeafNode::atomic_write_file(&path, &object) {
-            Ok(file) => match file.persist(path) {
-                Ok(_) => Ok(Some((hash, object_data))),
-                Err(e) => Err(format!("{} at {}", e, dir_path.display())),
-            },
-            Err(e) => Err(e),
+        match LeafNode::atomic_write_file_ex(path, object) {
+            Ok(_) => Ok(Some((hash, object_data))),
+            Err(e) => Err(format!("{} at {}", e, dir_path.display())),
         }
     }
 
@@ -168,7 +165,7 @@ impl TreeNode {
             binary_name,
         ]);
         let panic = Arc::new(AtomicBool::new(false));
-        let pool = Arc::new(ThreadPool::new(2));
+        let pool = ThreadPool::new(2);
 
         println!("Tree Path: {}", path.as_ref().display());
         for path in paths {
@@ -213,8 +210,14 @@ impl TreeNode {
             })
         }
         pool.join_all();
-        let hashes = hashes.lock().expect("Poisoned hashes lock");
-        let object = object.lock().expect("Poisoned object lock");
+        let hashes = Arc::try_unwrap(hashes)
+            .expect("Hashes mutex poisoned")
+            .into_inner()
+            .expect("Hashes mutex poisoned");
+        let object = Arc::try_unwrap(object)
+            .expect("Object mutex poisoned")
+            .into_inner()
+            .expect("Object mutex poisoned");
         drop(filter);
         drop(pool);
 
@@ -225,15 +228,12 @@ impl TreeNode {
             .join(Self::OBJ_FOLDER)
             .join(&hash_str[..2])
             .join(&hash_str[2..]);
-        match LeafNode::atomic_write_file(&path, &object) {
-            Ok(file) => match file.persist(path) {
-                Ok(_) => {
-                    Self::save_upstream(dir_path)?;
-                    Ok(Self::save_head(dir_path, hash)?)
-                }
-                Err(e) => Err(format!("{} at {}", e, dir_path.display())),
-            },
-            Err(e) => Err(e),
+        match LeafNode::atomic_write_file_ex(path, object) {
+            Ok(_) => {
+                Self::save_upstream(dir_path)?;
+                Ok(Self::save_head(dir_path, hash)?)
+            }
+            Err(e) => Err(format!("{} at {}", e, dir_path.display())),
         }
     }
 
@@ -243,11 +243,11 @@ impl TreeNode {
 
         Self::from_tree(&path.to_path_buf(), head_path, real_path)
     }
-    pub(crate) fn from_branch(path: impl AsRef<Path>) -> Result<(), String> {
+    pub(crate) fn from_branch(path: impl AsRef<Path>, num_thread: usize) -> Result<(), String> {
         let path = path.as_ref();
         let head_path = Self::get_head_path(path)?;
         let panic = Arc::new(AtomicBool::new(false));
-        let pool = Arc::new(ThreadPool::new(8));
+        let pool = Arc::new(ThreadPool::new(num_thread));
         let pool_c = Arc::clone(&pool);
         let panic_c = Arc::clone(&panic);
 

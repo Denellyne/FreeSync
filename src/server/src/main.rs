@@ -61,5 +61,5 @@ fn main() {
     );
     let server = Server::new(port, path, tx);
 
-    server.run_server();
+    server.run_server(4);
 }

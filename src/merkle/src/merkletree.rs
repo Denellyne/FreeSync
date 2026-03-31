@@ -13,7 +13,7 @@ impl MerkleTree {
     fn create_setter() -> MerkleTree {
         MerkleTree
     }
- 
+
     pub fn init(path: PathBuf, binary_name: String) -> Result<(), String> {
         match fs::read_dir(&path) {
             Ok(_) => match path {
@@ -32,9 +32,7 @@ impl MerkleTree {
         Node::from(path, real_path)
     }
 
-    
-
-    pub fn apply_branch(path: impl AsRef<Path>) -> Result<(), String> {
+    pub fn apply_branch(path: impl AsRef<Path>, num_threads: usize) -> Result<(), String> {
         let paths = match fs::read_dir(&path) {
             Ok(paths) => paths,
             Err(e) => return Err(format!("Unable to read directory : {e}")),
@@ -65,7 +63,7 @@ impl MerkleTree {
                 Err(e) => return Err(format!("Unable to read file metadata : {e}")),
             }
         }
-        TreeNode::from_branch(path)
+        TreeNode::from_branch(path, num_threads)
     }
 
     pub fn get_upstream(dir_path: PathBuf) -> Result<String, String> {
@@ -235,7 +233,6 @@ impl MerkleTree {
         }
     }
 }
-
 
 impl CompressedData for MerkleTree {}
 impl ReadFile for MerkleTree {}

@@ -28,6 +28,20 @@ pub trait CompressedData {
             Err(_) => Err(String::from("Failed to compress")),
         }
     }
+    fn compress_ex(data: Vec<u8>) -> Result<Vec<u8>, String> {
+        use flate2::Compression;
+        use flate2::write::ZlibEncoder;
+        use std::io::prelude::*;
+
+        let mut encoder = ZlibEncoder::new(Vec::with_capacity(data.len()), Compression::best());
+        match encoder.write_all(&data) {
+            Ok(_) => match encoder.finish() {
+                Ok(data) => Ok(data),
+                Err(_) => Err(String::from("Failed to flush compressed data")),
+            },
+            Err(_) => Err(String::from("Failed to compress")),
+        }
+    }
     fn decompress(data: &[u8]) -> Result<Vec<u8>, String> {
         use std::io::prelude::*;
 

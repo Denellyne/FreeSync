@@ -7,6 +7,7 @@ name = "FreeSync"
 version = "0.1.0"
 dependencies = [
  "merkle",
+ "threadpool",
  "url",
 ]
 

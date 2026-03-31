@@ -79,17 +79,15 @@ impl LeafNode {
 
                 let leaf = LeafNode {
                     hash,
-                    compressed_data: Self::compress(&data)?,
+                    compressed_data: Self::compress_ex(data)?,
                     file_path: file_path.to_path_buf(),
                 };
-                drop(data);
-
-                leaf.write_blob(obj_folder.as_ref())?;
                 let entry = match leaf.is_executable()? {
                     true => TreeNode::EXECUTABLE_FILE,
                     false => TreeNode::REGULAR_FILE,
                 };
-                drop(leaf);
+                leaf.write_blob_ex(obj_folder.as_ref().to_path_buf())?;
+
                 let file_path = match file_path.to_str() {
                     Some(path) => path.to_owned(),
                     None => {
@@ -227,7 +225,6 @@ impl LeafIO for LeafNode {
             Err(e) => Err(e),
         }
     }
-
     fn is_executable(&self) -> Result<bool, String> {
         #[cfg(unix)]
         {
@@ -288,10 +285,9 @@ impl LeafIO for LeafNode {
     fn data(&self) -> &Vec<u8> {
         &self.compressed_data
     }
-
     fn diff_file(&self, other: &Self) -> Result<Vec<Change>, String> {
         type FileDiffs<'a> = (Change, &'a [u8], &'a [u8], u64, u64);
-        
+
         fn diff<'a>(
             v1: &'a [u8],
             v2: &'a [u8],
@@ -458,5 +454,63 @@ impl LeafIO for LeafNode {
         }
 
         Ok(raw_data)
+    }
+
+    fn atomic_write_file_ex(path: PathBuf, data: Vec<u8>) -> Result<(), String> {
+        let parent_dir = match path.parent() {
+            Some(dir) => dir,
+            None => {
+                return Err(format!(
+                    "Unable to get parent directory of file of path:{}",
+                    path.display()
+                ));
+            }
+        };
+        if let Err(err) = fs::create_dir_all(parent_dir) {
+            return Err(format!(
+                "Unable to create parent directory of file:{}:{}",
+                path.display(),
+                err
+            ));
+        }
+
+        let mut file = match NamedTempFile::new_in(parent_dir) {
+            Ok(file) => file,
+            Err(_) => return Err(format!("Unable to create the file {}", path.display())),
+        };
+        match file.write_all(&data) {
+            Ok(_) => (),
+            Err(_) => return Err(format!("Unable to write to the file {}", path.display())),
+        }
+        if file.flush().is_err() {
+            return Err(format!("Unable to write to the file {}", path.display()));
+        }
+
+        if let Err(e) = file.persist(&path) {
+            return Err(format!(
+                "Unable to persist file {} Error:{:?}",
+                path.display(),
+                e
+            ));
+        }
+        Ok(())
+    }
+
+    fn write_blob_ex(self, path: PathBuf) -> Result<(), String> {
+        let dir_path = path.join(&LeafNode::hash_to_hex_string(&self.hash)[..2]);
+        if !dir_path.exists() {
+            match fs::create_dir_all(&dir_path) {
+                Ok(_) => (),
+                Err(_) => {
+                    return Err(format!(
+                        "Unable to create the directory {}",
+                        dir_path.display()
+                    ));
+                }
+            }
+        }
+        let file_path = dir_path.join(&LeafNode::hash_to_hex_string(&self.hash)[2..]);
+
+        LeafNode::atomic_write_file_ex(file_path, self.compressed_data)
     }
 }

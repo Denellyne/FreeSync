@@ -30,7 +30,7 @@ impl ThreadPool {
         let receiver = Arc::new(Mutex::new(receiver));
         let active_jobs = Arc::new(AtomicUsize::new(0));
 
-        let mut workers = Vec::with_capacity(size + 2);
+        let mut workers = Vec::with_capacity(size);
 
         for id in 0..size {
             workers.push(Worker::new(id, Arc::clone(&receiver)));
@@ -114,6 +114,7 @@ impl Worker {
                     let result = panic::catch_unwind(AssertUnwindSafe(job));
                     if result.is_err() {
                         println!("Worker {id}: job panicked but thread survived.");
+                        todo!("Sub active job")
                     }
                 } else {
                     return;

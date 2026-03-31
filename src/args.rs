@@ -73,7 +73,7 @@ fn build_tree() -> Result<(), String> {
         Err(e) => return Err(e.to_string()),
     };
 
-    MerkleTree::apply_branch(dir)
+    MerkleTree::apply_branch(dir, 3)
 }
 fn is_valid_ip(input: String) -> Result<String, String> {
     if input == "localhost" {
