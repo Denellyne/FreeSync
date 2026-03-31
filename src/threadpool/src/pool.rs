@@ -89,8 +89,6 @@ impl Drop for ThreadPool {
         drop(self.sender.take());
 
         for worker in &mut self.workers {
-            println!("Shutting down worker {}", worker.id);
-
             if let Some(thread) = worker.thread.take() {
                 thread.join().expect("Unable to join thread");
             }
@@ -109,20 +107,16 @@ impl Worker {
             loop {
                 let message = receiver.lock().expect("Unable to lock receiver").recv();
 
-                match message {
-                    Ok(job) => {
-                        #[cfg(debug_assertions)]
-                        println!("Worker {id} got a job; executing.");
+                if let Ok(job) = message {
+                    #[cfg(debug_assertions)]
+                    println!("Worker {id} got a job; executing.");
 
-                        let result = panic::catch_unwind(AssertUnwindSafe(job));
-                        if result.is_err() {
-                            println!("Worker {id}: job panicked but thread survived.");
-                        }
+                    let result = panic::catch_unwind(AssertUnwindSafe(job));
+                    if result.is_err() {
+                        println!("Worker {id}: job panicked but thread survived.");
                     }
-                    Err(_) => {
-                        println!("Worker {id} disconnected; shutting down.");
-                        break;
-                    }
+                } else {
+                    return;
                 }
             }
         });

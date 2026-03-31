@@ -1,6 +1,6 @@
 use crate::merklenode::diff::{Change, Diff};
 use crate::merklenode::leaf::LeafNode;
-use crate::merklenode::node::Node;
+use crate::merklenode::node::{Node, ObjectData};
 use crate::merklenode::node::Node::{Leaf, Tree};
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
@@ -85,7 +85,7 @@ impl TreeNode {
     pub(crate) fn new_object(
         path: impl AsRef<Path>,
         obj_folder: PathBuf,
-    ) -> Result<Option<([u8; 32], Vec<u8>)>, String> {
+    ) -> Result<ObjectData, String> {
         assert!(
             path.as_ref().exists(),
             "There isn't any folder in the path {}",
@@ -168,7 +168,7 @@ impl TreeNode {
             binary_name,
         ]);
         let panic = Arc::new(AtomicBool::new(false));
-        let pool = Arc::new(ThreadPool::new(6));
+        let pool = Arc::new(ThreadPool::new(2));
 
         println!("Tree Path: {}", path.as_ref().display());
         for path in paths {
@@ -243,15 +243,15 @@ impl TreeNode {
 
         Self::from_tree(&path.to_path_buf(), head_path, real_path)
     }
-    pub(crate) fn from_branch(path: impl AsRef<Path>, real_path: PathBuf) -> Result<(), String> {
+    pub(crate) fn from_branch(path: impl AsRef<Path>) -> Result<(), String> {
         let path = path.as_ref();
         let head_path = Self::get_head_path(path)?;
         let panic = Arc::new(AtomicBool::new(false));
-        let pool = Arc::new(ThreadPool::new(4));
+        let pool = Arc::new(ThreadPool::new(8));
         let pool_c = Arc::clone(&pool);
         let panic_c = Arc::clone(&panic);
 
-        Self::apply_branch(&path.to_path_buf(), head_path, real_path, pool_c, panic_c)
+        Self::apply_branch(&path.to_path_buf(), head_path, pool_c, panic_c)
             .expect("Failed to apply branch");
         pool.join_all();
         if panic.load(Ordering::Relaxed) {
@@ -263,7 +263,6 @@ impl TreeNode {
     fn apply_branch(
         working_directory: &PathBuf,
         path: impl AsRef<Path>,
-        real_path: PathBuf,
         pool: Arc<ThreadPool>,
         panic: Arc<AtomicBool>,
     ) -> Result<(), String> {
@@ -275,67 +274,61 @@ impl TreeNode {
             let file_name: String;
             let hash: [u8; 32];
             (data, (entry_type, file_name, hash)) = Self::parse_header(data)?;
-
-            let child_real_path = real_path.join(file_name);
+            let child_real_path = working_directory.join(&file_name);
 
             let child_path = Self::hash_to_path(working_directory, &hash);
-
-            match &entry_type {
+            let pool_c = Arc::clone(&pool);
+            let panic_c = Arc::clone(&panic);
+            let working_directory = working_directory.clone();
+            pool.execute(move || match &entry_type {
                 Self::EXECUTABLE_FILE | Self::REGULAR_FILE => {
                     match LeafNode::from(child_path, child_real_path) {
                         Ok(leaf) => {
-                            let panic_c = Arc::clone(&panic);
+                            let decompress = match LeafNode::decompress_data(leaf.data()) {
+                                Ok(decompress) => decompress,
+                                Err(e) => {
+                                    panic_c.store(true, Ordering::Relaxed);
+                                    eprintln!("Unable to decompress data: {:?}", e);
+                                    return;
+                                }
+                            };
+                            let leaf_path = leaf.file_path.clone();
+                            drop(leaf);
 
-                            pool.execute(move || {
-                                let decompress = match LeafNode::decompress_data(leaf.data()) {
-                                    Ok(decompress) => decompress,
-                                    Err(e) => {
-                                        panic_c.store(true, Ordering::Relaxed);
-                                        eprintln!("Unable to decompress data: {:?}", e);
-                                        return;
-                                    }
-                                };
-                                let leaf_path = leaf.file_path.to_owned();
-                                drop(leaf);
-
-                                match LeafNode::atomic_write_file(&leaf_path, &decompress) {
-                                    Ok(file) => {
-                                        if let Err(e) = file.persist(&leaf_path) {
-                                            panic_c.store(true, Ordering::Relaxed);
-                                            eprintln!(
-                                                "Unable to persist the file {} Error:{e}",
-                                                leaf_path.display(),
-                                            );
-                                        }
-                                    }
-                                    Err(e) => {
+                            match LeafNode::atomic_write_file(&leaf_path, &decompress) {
+                                Ok(file) => {
+                                    if let Err(e) = file.persist(&leaf_path) {
                                         panic_c.store(true, Ordering::Relaxed);
                                         eprintln!(
                                             "Unable to persist the file {} Error:{e}",
-                                            leaf_path.display()
+                                            leaf_path.display(),
                                         );
                                     }
                                 }
-                            });
+                                Err(e) => {
+                                    panic_c.store(true, Ordering::Relaxed);
+                                    eprintln!(
+                                        "Unable to persist the file {} Error:{e}",
+                                        leaf_path.display()
+                                    );
+                                }
+                            }
                         }
-                        Err(e) => return Err(format!("{} at {}", e, real_path.display())),
+                        Err(e) => {
+                            panic_c.store(true, Ordering::Relaxed);
+                            eprintln!("{} at {}", e, working_directory.display());
+                        }
                     }
                 }
                 Self::DIRECTORY => {
-                    let pool_c = Arc::clone(&pool);
-                    let panic_c = Arc::clone(&panic);
-                    TreeNode::apply_branch(
-                        working_directory,
-                        child_path,
-                        child_real_path,
-                        pool_c,
-                        panic_c,
-                    )
-                    .expect("Failed to apply branch");
+                    TreeNode::apply_branch(&working_directory, child_path, pool_c, panic_c)
+                        .expect("Failed to apply branch");
                 }
-
-                _ => Err("Invalid entry type")?,
-            }
+                _ => {
+                    panic_c.store(true, Ordering::Relaxed);
+                    eprintln!("Invalid entry type: {:?}", entry_type);
+                }
+            });
         }
 
         Ok(())

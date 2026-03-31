@@ -49,7 +49,7 @@ impl MerkleTree {
         TreeNode::new(dir_path)
     }
 
-    pub fn apply_branch(path: impl AsRef<Path>, real_path: PathBuf) -> Result<(), String> {
+    pub fn apply_branch(path: impl AsRef<Path>) -> Result<(), String> {
         let paths = match fs::read_dir(&path) {
             Ok(paths) => paths,
             Err(e) => return Err(format!("Unable to read directory : {e}")),
@@ -68,7 +68,7 @@ impl MerkleTree {
             match fs::metadata(path.path()) {
                 Ok(metadata) => {
                     if metadata.is_dir()
-                        && let Err(e) = fs::remove_dir(path.path())
+                        && let Err(e) = fs::remove_dir_all(path.path())
                     {
                         return Err(format!("Unable to remove directory {:?},{e}", path.path()));
                     } else if metadata.is_file()
@@ -80,7 +80,7 @@ impl MerkleTree {
                 Err(e) => return Err(format!("Unable to read file metadata : {e}")),
             }
         }
-        TreeNode::from_branch(path, real_path)
+        TreeNode::from_branch(path)
     }
 
     pub fn get_upstream(dir_path: PathBuf) -> Result<String, String> {

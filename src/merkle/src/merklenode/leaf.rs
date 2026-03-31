@@ -1,5 +1,5 @@
 use crate::merklenode::diff::Change;
-use crate::merklenode::node::Node;
+use crate::merklenode::node::{Node, ObjectData};
 use crate::merklenode::traits::{EntryData, LeafIO};
 use crate::merklenode::tree::TreeNode;
 use crate::traits::{CompressedData, Hashable, ReadFile};
@@ -59,7 +59,7 @@ impl LeafNode {
     pub(crate) fn new_object(
         path: impl AsRef<Path>,
         obj_folder: impl AsRef<Path>,
-    ) -> Result<Option<([u8; 32], Vec<u8>)>, String> {
+    ) -> Result<ObjectData, String> {
         assert!(
             path.as_ref().exists(),
             "There isn't any file in the path {}",
@@ -290,13 +290,15 @@ impl LeafIO for LeafNode {
     }
 
     fn diff_file(&self, other: &Self) -> Result<Vec<Change>, String> {
+        type FileDiffs<'a> = (Change, &'a [u8], &'a [u8], u64, u64);
+        
         fn diff<'a>(
             v1: &'a [u8],
             v2: &'a [u8],
             v1_start: u64,
             v2_start: u64,
             other_hash: &[u8; 32],
-        ) -> Result<(Change, &'a [u8], &'a [u8], u64, u64), String> {
+        ) -> Result<FileDiffs<'a>, String> {
             fn should_delete(v1: &[u8], v2: &[u8]) -> bool {
                 const LOOK: usize = 32;
 

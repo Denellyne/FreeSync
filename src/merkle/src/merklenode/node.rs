@@ -8,6 +8,8 @@ use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 use std::{collections, fs};
 
+pub(crate) type ObjectData = Option<([u8; 32], Vec<u8>)>;
+
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum Node {
     Tree(TreeNode),
@@ -25,6 +27,7 @@ impl Hashable for Node {
         }
     }
 }
+
 impl Node {
     pub fn new(path: DirEntry) -> Result<Node, String> {
         match path.path() {
@@ -36,10 +39,7 @@ impl Node {
             )),
         }
     }
-    pub fn new_object(
-        path: DirEntry,
-        obj_dir: impl AsRef<Path>,
-    ) -> Result<Option<([u8; 32], Vec<u8>)>, String> {
+    pub fn new_object(path: DirEntry, obj_dir: impl AsRef<Path>) -> Result<ObjectData, String> {
         match path.path() {
             path if path.is_dir() => {
                 Ok(TreeNode::new_object(path, obj_dir.as_ref().to_path_buf())?)
