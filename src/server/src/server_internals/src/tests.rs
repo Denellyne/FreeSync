@@ -40,7 +40,6 @@ impl Server {
     ) -> Vec<String> {
         println!("Received connection");
 
-
         let mut command: String = String::new();
         let mut buf_reader = BufReader::new(&stream);
         if buf_reader.read_line(&mut command).is_err() {
@@ -59,7 +58,7 @@ impl Server {
             println!("ERROR");
             let _ = stream.write_all(command.as_bytes());
         }
-        vec![command+"\n"]
+        vec![command + "\n"]
     }
 }
 

@@ -115,7 +115,7 @@ impl Worker {
                     println!("Worker {id} got a job; executing.");
 
                     let result = panic::catch_unwind(AssertUnwindSafe(job));
-                    if let Err(e) =  result {
+                    if let Err(e) = result {
                         println!("Worker {id}: job panicked but thread survived. {:?}", e);
                     }
                     running.fetch_sub(1, Ordering::SeqCst);

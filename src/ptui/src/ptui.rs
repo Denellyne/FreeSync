@@ -1,9 +1,12 @@
 use crate::modifiers::{BackgroundModifier, ForegroundModifier};
-use crate::tiling::Pane;
-use crate::traits::{Printable, TerminalManager, TextManager};
+use crate::tiling::pane::Pane;
+use crate::tiling::tiles::Tile;
+use crate::tiling::traits::Printable;
+use crate::traits::{TerminalManager, TextManager};
 use std::io;
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
+
 static PANE: Mutex<Pane> = Mutex::new(Pane::new(0, 0, (0, 1)));
 
 pub struct Ptui {
@@ -11,6 +14,7 @@ pub struct Ptui {
     pane: &'static Mutex<Pane>,
     bg: BackgroundModifier,
     accents: ForegroundModifier,
+    dimensions: (u16, u16),
 }
 
 fn ptui() -> &'static Mutex<Ptui> {
@@ -21,6 +25,7 @@ fn ptui() -> &'static Mutex<Ptui> {
             pane: &PANE,
             bg: BackgroundModifier::Black,
             accents: ForegroundModifier::White,
+            dimensions: (0, 0),
         })
     })
 }
@@ -32,6 +37,7 @@ impl Ptui {
         io::stdout().flush().unwrap();
         Self::clear_screen();
         let mut ptui = ptui().lock().unwrap();
+        let title = Self::color_string(&title, &fg);
         ptui.pane.lock().unwrap().set_title(title);
         ptui.bg = bg;
         ptui.accents = fg;
@@ -46,48 +52,20 @@ impl Ptui {
     pub fn get_pane() -> &'static Mutex<Pane> {
         &PANE
     }
-
-    // pub fn new_pane(modifiers: &[PaneModifier]) -> Pane {
-    //     let mut vsplit = false;
-    //     let mut hsplit = false;
-    //     let mut temp = false;
-    //     let pane = Pane::new();
-    //     pane
-    // }
-
-    // pub fn push(args: fmt::Arguments) {
-    //     ptui().lock().unwrap().buffer.push(format!("{}", args));
-    // }
-    //
-    // pub fn pushln(args: fmt::Arguments) {
-    //     ptui().lock().unwrap().buffer.push(format!("{}\n", args));
-    // }
-    //
-    // pub fn eprintln(args: fmt::Arguments) {
-    //     ptui().lock().unwrap().errors.push(
-    //         Self::color_string(format_args!("{args}").to_string(), ForegroundModifier::Red)
-    //             .to_string(),
-    //     );
-    // }
-    //
-    // pub fn play_sound() {
-    //     ptui().lock().unwrap().buffer.push("\x07".to_string());
-    // }
-    //
-    // pub fn print() {
-    //     let mut ptui = ptui().lock().unwrap();
-    //     for s in ptui.buffer.iter() {
-    //         print!("{}", s);
-    //     }
-    //     ptui.buffer.clear();
-    //     io::stdout().flush().unwrap();
-    // }
+    pub fn push(tile: Tile) -> usize {
+        PANE.lock().unwrap().push(tile)
+    }
 
     fn render_loop(&mut self) {
-        Self::clear_screen();
-        let (cols, rows) = Self::get_terminal_size();
+        let (rows, cols) = Self::get_terminal_size();
+        if (rows, cols) != self.dimensions {
+            Self::clear_screen();
+            self.dimensions = (rows, cols);
+        }
+
         let mut pane = self.pane.lock().expect("Unable to lock pane");
-        pane.print((cols as usize, rows as usize), (0, 0));
+        pane.print((0, 3), (rows as usize, cols as usize - 3));
+        io::stdout().flush().unwrap();
     }
     pub fn render() {
         ptui().lock().unwrap().render_loop();

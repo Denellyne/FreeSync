@@ -70,45 +70,7 @@ pub trait TextManager {
         // ptui_pushln!("Press any key to exit");
         let _ = stdin().read(&mut [0u8]).unwrap();
     }
-    fn progress_bar(current: usize, total: usize, modifier: ForegroundModifier) {
-        let str = format!(
-            "{}{} {} objects of {total}",
-            Ptui::clear_line().repeat(2),
-            Ptui::color_string("Progress:", &modifier),
-            current
-        );
 
-        // ptui_pushln!(
-        //             "{str}\n{}",
-        //             Ptui::progress_bar_simple(
-        //                 current,
-        //                 total
-        //             )
-        //         );
-    }
-
-    fn progress_bar_simple(current: usize, total: usize) -> String {
-        Self::progress_bar_simple_ex(('=', '<', '>'), 32, current, total)
-    }
-
-    fn progress_bar_simple_ex(
-        ui: (char, char, char),
-        resolution: usize,
-        current: usize,
-        total: usize,
-    ) -> String {
-        let progress_bar_percent = resolution * current / total;
-        let ldelim: char;
-        let rdelim: char;
-        let ch: char;
-        (ch, ldelim, rdelim) = ui;
-        format!(
-            "{ldelim}{}{}{rdelim} {}%",
-            ch.to_string().repeat(progress_bar_percent),
-            " ".repeat(resolution - progress_bar_percent),
-            progress_bar_percent * 100 / resolution
-        )
-    }
     fn set_foreground(foreground: ForegroundModifier) {
         print!("{}", TextModifier::get_foreground_modifier(&foreground));
     }
@@ -122,8 +84,4 @@ pub trait TextManager {
     fn set_background(background: BackgroundModifier) {
         print!("{}", TextModifier::get_background_modifier(&background));
     }
-}
-
-pub trait Printable {
-    fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize;
 }

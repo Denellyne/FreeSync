@@ -4,18 +4,16 @@ use crate::merklenode::node::Node::{Leaf, Tree};
 use crate::merklenode::node::{Node, ObjectData};
 use crate::merklenode::traits::internal_traits::TreeIOInternal;
 use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO};
+use crate::merkletree::MerkleTree;
 use crate::traits::{Hashable, IO, ReadFile};
+use ptui::ptui::Ptui;
+use ptui::tiling::tiles::{ProgressBar, Tile};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use ptui::modifiers::ForegroundModifier;
-use ptui::ptui::Ptui;
-use ptui::{ptui_pushln};
-use ptui::traits::TextManager;
 use threadpool::pool::ThreadPool;
-use crate::merkletree::MerkleTree;
 
 #[derive(Eq, PartialEq, Clone, Hash)]
 pub struct TreeNode {
@@ -257,9 +255,15 @@ impl TreeNode {
         let panic_c = Arc::clone(&panic);
         let current = Arc::new(AtomicUsize::new(0));
         let current_c = Arc::clone(&current);
-        //ptui_pushln!("\n");
+        let bar = ProgressBar::new(
+            current_c,
+            MerkleTree::get_total_objects(path.to_path_buf())?,
+            32,
+            false,
+        );
+        let bar_idx = Ptui::push(Tile::ProgressBar(bar));
 
-        let result = Self::apply_branch(&path.to_path_buf(), head_path, pool_c, panic_c,current_c,MerkleTree::get_total_objects(path.to_path_buf())?,ForegroundModifier::Custom("\x1b[38;5;61m".to_string()));
+        let result = Self::apply_branch(&path.to_path_buf(), head_path, pool_c, panic_c, bar_idx);
         pool.join_all();
         if panic.load(Ordering::Relaxed) || result.is_err() {
             return Err("An error occurred while trying to apply branch".to_string());
@@ -272,9 +276,7 @@ impl TreeNode {
         path: impl AsRef<Path>,
         pool: Arc<ThreadPool>,
         panic: Arc<AtomicBool>,
-        current : Arc<AtomicUsize>,
-        total : usize,
-        modifier : ForegroundModifier
+        idx: usize,
     ) -> Result<(), String> {
         let path = path.as_ref();
         let mut data = Self::read_file(path)?;
@@ -290,8 +292,6 @@ impl TreeNode {
             let pool_c = Arc::clone(&pool);
             let panic_c = Arc::clone(&panic);
             let working_directory = working_directory.clone();
-            let current = Arc::clone(&current);
-            let modifier = modifier.clone();
             pool.execute(move || match &entry_type {
                 Self::EXECUTABLE_FILE | Self::REGULAR_FILE => {
                     match LeafNode::from(child_path, child_real_path) {
@@ -309,10 +309,19 @@ impl TreeNode {
                             {
                                 panic_c.store(true, Ordering::Relaxed);
                                 eprintln!("{e}");
-                            }
-                            else {
-                                current.fetch_add(1, Ordering::SeqCst);
-                                Ptui::progress_bar(current.load(Ordering::SeqCst),total,modifier);
+                            } else {
+                                let mut pane = Ptui::get_pane().lock().unwrap();
+                                if let Some((tile, idx)) = pane.get_tile(idx) {
+                                    match tile {
+                                        Tile::ProgressBar(mut bar) => {
+                                            bar.incr();
+                                            pane.insert(Tile::ProgressBar(bar), idx);
+                                        }
+                                        _ => {
+                                            pane.insert(tile, idx);
+                                        }
+                                    }
+                                }
                             }
                         }
                         Err(e) => {
@@ -323,10 +332,9 @@ impl TreeNode {
                 }
                 Self::DIRECTORY => {
                     let panic = Arc::clone(&panic_c);
-                    let current = Arc::clone(&current);
 
                     if let Err(e) =
-                        TreeNode::apply_branch(&working_directory, child_path, pool_c, panic_c,current,total,modifier)
+                        TreeNode::apply_branch(&working_directory, child_path, pool_c, panic_c, idx)
                     {
                         panic.store(true, Ordering::Relaxed);
                         eprintln!("{e}",);

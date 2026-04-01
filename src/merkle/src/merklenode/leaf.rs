@@ -3,11 +3,11 @@ use crate::merklenode::node::{Node, ObjectData};
 use crate::merklenode::traits::{EntryData, LeafIO};
 use crate::merklenode::tree::TreeNode;
 use crate::traits::{CompressedData, Hashable, ReadFile};
+use std::fs;
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::fs;
 use tempfile::NamedTempFile;
 
 #[derive(Eq, PartialEq, Clone, Hash)]
@@ -475,19 +475,17 @@ impl LeafIO for LeafNode {
             ));
         }
 
-
         let mut file = match NamedTempFile::new_in(parent_dir) {
             Ok(file) => file,
             Err(_) => return Err(format!("Unable to create the file {}", path.display())),
         };
         if file.write_all(&data).is_err() {
-             return Err(format!("Unable to write to the file {}", path.display()))
+            return Err(format!("Unable to write to the file {}", path.display()));
         }
 
         if file.flush().is_err() {
             return Err(format!("Unable to write to the file {}", path.display()));
         }
-
 
         if let Err(e) = file.persist(&path) {
             return Err(format!(

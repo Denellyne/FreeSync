@@ -1,8 +1,7 @@
 use merkle::data::deserialize_from_stream;
 use merkle::merkletree::MerkleTree;
-use ptui::modifiers::ForegroundModifier;
 use ptui::ptui::Ptui;
-use ptui::tiling::{Line, Temporary, Tile};
+use ptui::tiling::tiles::{Line, Temporary, Tile};
 use ptui::traits::TextManager;
 use std::env;
 use std::io::{BufRead, BufReader, Write};
@@ -35,6 +34,7 @@ impl Client {
                 None,
                 1,
             ))));
+        //  Ptui::render();
         let stream = TcpStream::connect(&addr)
             .unwrap_or_else(|_| panic!("Failed to connect to server,Upstream : {addr}"));
 
@@ -50,6 +50,7 @@ impl Client {
                 None,
                 1,
             ))));
+        //   Ptui::render();
 
         Ok((Client { stream }, addr))
     }
