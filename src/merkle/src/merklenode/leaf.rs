@@ -3,11 +3,11 @@ use crate::merklenode::node::{Node, ObjectData};
 use crate::merklenode::traits::{EntryData, LeafIO};
 use crate::merklenode::tree::TreeNode;
 use crate::traits::{CompressedData, Hashable, ReadFile};
-use std::fs;
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::{env, fs};
 use tempfile::NamedTempFile;
 
 #[derive(Eq, PartialEq, Clone, Hash)]
@@ -457,6 +457,11 @@ impl LeafIO for LeafNode {
     }
 
     fn atomic_write_file_ex(path: PathBuf, data: Vec<u8>) -> Result<(), String> {
+        let dir = match env::current_dir() {
+            Ok(dir) => dir,
+            Err(e) => return Err(e.to_string()),
+        };
+
         let parent_dir = match path.parent() {
             Some(dir) => dir,
             None => {
@@ -466,7 +471,19 @@ impl LeafIO for LeafNode {
                 ));
             }
         };
-        if let Err(err) = fs::create_dir_all(parent_dir) {
+
+        let path = path
+          .strip_prefix(&dir)
+          .unwrap_or(path.as_ref())
+          .to_path_buf();
+
+        let parent_dir = parent_dir
+          .strip_prefix(dir)
+          .unwrap_or(parent_dir.as_ref())
+          .to_path_buf();
+
+
+        if let Err(err) = fs::create_dir_all(&parent_dir) {
             return Err(format!(
                 "Unable to create parent directory of file:{}:{}",
                 path.display(),
@@ -474,25 +491,27 @@ impl LeafIO for LeafNode {
             ));
         }
 
+
         let mut file = match NamedTempFile::new_in(parent_dir) {
             Ok(file) => file,
             Err(_) => return Err(format!("Unable to create the file {}", path.display())),
         };
-        match file.write_all(&data) {
-            Ok(_) => (),
-            Err(_) => return Err(format!("Unable to write to the file {}", path.display())),
+        if file.write_all(&data).is_err() {
+             return Err(format!("Unable to write to the file {}", path.display()))
         }
+
         if file.flush().is_err() {
             return Err(format!("Unable to write to the file {}", path.display()));
         }
 
+
         if let Err(e) = file.persist(&path) {
             return Err(format!(
-                "Unable to persist file {} Error:{:?}",
-                path.display(),
-                e
+                "Unable to persist file {} Error:{e}",
+                path.display()
             ));
         }
+
         Ok(())
     }
 
