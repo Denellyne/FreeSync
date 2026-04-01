@@ -1,14 +1,16 @@
-use crate::traits::{TerminalManager, TextManager};
+use crate::modifiers::{BackgroundModifier, ForegroundModifier};
+use crate::tiling::Pane;
+use crate::traits::{Printable, TerminalManager, TextManager};
+use std::io;
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
-use std::{ io};
-use crate::tiling::Pane;
-
+static PANE: Mutex<Pane> = Mutex::new(Pane::new(0, 0, (0, 1)));
 
 pub struct Ptui {
     errors: Vec<String>,
-    panes: Vec<Pane>,
-    title: String,
+    pane: &'static Mutex<Pane>,
+    bg: BackgroundModifier,
+    accents: ForegroundModifier,
 }
 
 fn ptui() -> &'static Mutex<Ptui> {
@@ -16,41 +18,62 @@ fn ptui() -> &'static Mutex<Ptui> {
     PTUI.get_or_init(|| {
         Mutex::new(Ptui {
             errors: vec![],
-            panes: vec![],
-            title: "".to_string(),
+            pane: &PANE,
+            bg: BackgroundModifier::Black,
+            accents: ForegroundModifier::White,
         })
     })
 }
 
 impl Ptui {
-    pub fn init(title : String) {
+    pub fn init(title: String, bg: BackgroundModifier, fg: ForegroundModifier) {
         // Enter alternate screen and hide cursor
         print!("\x1B[?1049h\x1B[?25l");
         io::stdout().flush().unwrap();
         Self::clear_screen();
-        let ptui = ptui();
-        ptui.lock().unwrap().title = title;
+        let mut ptui = ptui().lock().unwrap();
+        ptui.pane.lock().unwrap().set_title(title);
+        ptui.bg = bg;
+        ptui.accents = fg;
     }
+    pub fn get_bg() -> BackgroundModifier {
+        ptui().lock().unwrap().bg.clone()
+    }
+    pub fn get_accents() -> ForegroundModifier {
+        ptui().lock().unwrap().accents.clone()
+    }
+
+    pub fn get_pane() -> &'static Mutex<Pane> {
+        &PANE
+    }
+
+    // pub fn new_pane(modifiers: &[PaneModifier]) -> Pane {
+    //     let mut vsplit = false;
+    //     let mut hsplit = false;
+    //     let mut temp = false;
+    //     let pane = Pane::new();
+    //     pane
+    // }
 
     // pub fn push(args: fmt::Arguments) {
     //     ptui().lock().unwrap().buffer.push(format!("{}", args));
     // }
-    // 
+    //
     // pub fn pushln(args: fmt::Arguments) {
     //     ptui().lock().unwrap().buffer.push(format!("{}\n", args));
     // }
-    // 
+    //
     // pub fn eprintln(args: fmt::Arguments) {
     //     ptui().lock().unwrap().errors.push(
     //         Self::color_string(format_args!("{args}").to_string(), ForegroundModifier::Red)
     //             .to_string(),
     //     );
     // }
-    // 
+    //
     // pub fn play_sound() {
     //     ptui().lock().unwrap().buffer.push("\x07".to_string());
     // }
-    // 
+    //
     // pub fn print() {
     //     let mut ptui = ptui().lock().unwrap();
     //     for s in ptui.buffer.iter() {
@@ -60,14 +83,14 @@ impl Ptui {
     //     io::stdout().flush().unwrap();
     // }
 
-    pub fn render(&self){
+    fn render_loop(&mut self) {
         Self::clear_screen();
-        let (x,y) = Self::get_terminal_size();
-        for pane in self.panes.iter() {
-            Self::reset_cursor();
-            pane.print()
-
-        }
+        let (cols, rows) = Self::get_terminal_size();
+        let mut pane = self.pane.lock().expect("Unable to lock pane");
+        pane.print((cols as usize, rows as usize), (0, 0));
+    }
+    pub fn render() {
+        ptui().lock().unwrap().render_loop();
     }
 }
 impl TerminalManager for Ptui {}

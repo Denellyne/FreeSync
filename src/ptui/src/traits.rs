@@ -1,11 +1,7 @@
 use crate::modifiers::ForegroundModifier::White;
 use crate::modifiers::{BackgroundModifier, ForegroundModifier, TextModifier};
 use crate::ptui::Ptui;
-use crate::ptui_pushln;
-use std::io::{stdin, stdout, Read, Write};
-
-pub struct A{}
-impl TerminalManager for A{}
+use std::io::{Read, Write, stdin, stdout};
 
 pub trait TerminalManager {
     fn clear_screen() {
@@ -13,58 +9,50 @@ pub trait TerminalManager {
 
         stdout().flush().unwrap();
     }
-    fn reset_cursor(){
+    fn reset_cursor() {
         print!("\x1B[H");
         stdout().flush().unwrap();
     }
     fn clear_line() -> String {
         "\x1B[1A\x1B[K".to_string()
     }
-    fn set_background(background: BackgroundModifier) {
-        Self::clear_screen();
-        print!("{}", TextModifier::get_background_modifier(background));
-        stdout().flush().unwrap();
-
+    fn set_cursor(pos: (usize, usize)) {
+        print!("\x1B[{};{}f", pos.0, pos.1)
     }
 
-    fn set_foreground(foreground: ForegroundModifier) {
-        print!("{}", TextModifier::get_foreground_modifier(foreground));
-    }
-
-    fn reset_foreground() {
-        print!(
-            "{}",
-            TextModifier::get_foreground_modifier(White)
-        );
-    }
     #[cfg(windows)]
     fn get_terminal_size() -> (u16, u16) {
         use winapi_util::console::*;
-        let  handle = stdout();
+        let handle = stdout();
         let terminal_info = screen_buffer_info(handle).unwrap();
 
-        let (x,y) = terminal_info.size();
+        let (x, y) = terminal_info.size();
         (x as u16, y as u16)
-
     }
 
-  #[cfg(unix)]
+    #[cfg(unix)]
     fn get_terminal_size() -> (u16, u16) {
-      use nix::ioctl_read;
+        unsafe {
+            use std::os::fd::AsRawFd;
 
-      let mut x : u16 = 0;
-      let mut y : u16 = 0;
-      let mut _z : u64 = 0;
-      ioctl_read!(stdout(), libc::TIOCGWINSZ, x, y, _z);
-        (x, y)
+            use nix::libc::{self};
+            let mut win: libc::winsize = libc::winsize {
+                ws_row: 0,
+                ws_col: 0,
+                ws_xpixel: 0,
+                ws_ypixel: 0,
+            };
+            libc::ioctl(stdout().as_raw_fd(), libc::TIOCGWINSZ, &mut win);
+
+            (win.ws_col + 1, win.ws_row + 1)
+        }
     }
 }
 
-
 pub trait TextManager {
-    fn color_string(text: String, modifier: ForegroundModifier) -> String {
+    fn color_string(text: &str, modifier: &ForegroundModifier) -> String {
         let modifier = TextModifier::get_foreground_modifier(modifier);
-        let default = TextModifier::get_foreground_modifier(White);
+        let default = TextModifier::get_foreground_modifier(&White);
         format!("{modifier}{text}{default}")
     }
 
@@ -73,8 +61,8 @@ pub trait TextManager {
         modifier: ForegroundModifier,
         default: ForegroundModifier,
     ) -> String {
-        let modifier = TextModifier::get_foreground_modifier(modifier);
-        let default = TextModifier::get_foreground_modifier(default);
+        let modifier = TextModifier::get_foreground_modifier(&modifier);
+        let default = TextModifier::get_foreground_modifier(&default);
         format!("{modifier}{text}{default}")
     }
 
@@ -82,13 +70,11 @@ pub trait TextManager {
         // ptui_pushln!("Press any key to exit");
         let _ = stdin().read(&mut [0u8]).unwrap();
     }
-    fn progress_bar(        current: usize,
-                            total: usize,
-                    modifier : ForegroundModifier){
+    fn progress_bar(current: usize, total: usize, modifier: ForegroundModifier) {
         let str = format!(
             "{}{} {} objects of {total}",
             Ptui::clear_line().repeat(2),
-            Ptui::color_string("Progress:".to_string(), modifier),
+            Ptui::color_string("Progress:", &modifier),
             current
         );
 
@@ -101,11 +87,8 @@ pub trait TextManager {
         //         );
     }
 
-    fn progress_bar_simple(
-        current: usize,
-        total: usize,
-    ) -> String {
-        Self::progress_bar_simple_ex(('=','<','>'),32,current,total)
+    fn progress_bar_simple(current: usize, total: usize) -> String {
+        Self::progress_bar_simple_ex(('=', '<', '>'), 32, current, total)
     }
 
     fn progress_bar_simple_ex(
@@ -126,4 +109,21 @@ pub trait TextManager {
             progress_bar_percent * 100 / resolution
         )
     }
+    fn set_foreground(foreground: ForegroundModifier) {
+        print!("{}", TextModifier::get_foreground_modifier(&foreground));
+    }
+
+    fn reset_foreground() {
+        print!("{}", TextModifier::get_foreground_modifier(&White));
+    }
+    fn reset_background() {
+        print!("{}", TextModifier::get_background_modifier(&Ptui::get_bg()));
+    }
+    fn set_background(background: BackgroundModifier) {
+        print!("{}", TextModifier::get_background_modifier(&background));
+    }
+}
+
+pub trait Printable {
+    fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize;
 }

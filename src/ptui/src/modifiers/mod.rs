@@ -32,7 +32,13 @@ pub enum TextModifier {
 }
 
 impl TextModifier {
-    pub fn get_background_modifier(modifier: BackgroundModifier) -> String {
+    pub fn get(modifier: &TextModifier) -> String {
+        match modifier {
+            TextModifier::Foreground(modifier) => Self::get_foreground_modifier(modifier),
+            TextModifier::Background(modifier) => Self::get_background_modifier(modifier),
+        }
+    }
+    pub fn get_background_modifier(modifier: &BackgroundModifier) -> String {
         match modifier {
             BackgroundModifier::Black => "\x1B[40m",
             BackgroundModifier::Red => "\x1B[41m",
@@ -42,11 +48,11 @@ impl TextModifier {
             BackgroundModifier::Magenta => "\x1B[45m",
             BackgroundModifier::Cyan => "\x1B[46m",
             BackgroundModifier::White => "\x1B[47m",
-            BackgroundModifier::Custom(s) => return s,
+            BackgroundModifier::Custom(s) => return s.to_string(),
         }
         .to_string()
     }
-    pub fn get_foreground_modifier(modifier: ForegroundModifier) -> String {
+    pub fn get_foreground_modifier(modifier: &ForegroundModifier) -> String {
         match modifier {
             ForegroundModifier::Black => "\x1B[30m",
             ForegroundModifier::Red => "\x1B[31m",
@@ -56,8 +62,26 @@ impl TextModifier {
             ForegroundModifier::Magenta => "\x1B[35m",
             ForegroundModifier::Cyan => "\x1B[36m",
             ForegroundModifier::White => "\x1B[37m",
-            ForegroundModifier::Custom(s) => return s,
+            ForegroundModifier::Custom(s) => return s.to_string(),
         }
         .to_string()
+    }
+}
+impl ForegroundModifier {
+    pub fn len(&self) -> usize {
+        TextModifier::get(&TextModifier::Foreground(self.clone())).len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+impl BackgroundModifier {
+    pub fn len(&self) -> usize {
+        TextModifier::get(&TextModifier::Background(self.clone())).len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }

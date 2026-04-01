@@ -2,7 +2,8 @@ use merkle::data::deserialize_from_stream;
 use merkle::merkletree::MerkleTree;
 use ptui::modifiers::ForegroundModifier;
 use ptui::ptui::Ptui;
-use ptui::traits::{ TextManager};
+use ptui::tiling::{Line, Temporary, Tile};
+use ptui::traits::TextManager;
 use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
@@ -26,23 +27,34 @@ impl Client {
             Err(e) => return Err(e.to_string()),
         };
 
-        // ptui_println!("Connecting to {}...", addr);
+        Ptui::get_pane()
+            .lock()
+            .unwrap()
+            .push_tile(Temporary::create(Tile::Line(Line::new(
+                Ptui::color_string("Connecting to:", &Ptui::get_accents()) + " {}...",
+                None,
+                1,
+            ))));
         let stream = TcpStream::connect(&addr)
             .unwrap_or_else(|_| panic!("Failed to connect to server,Upstream : {addr}"));
 
-        let custom = ForegroundModifier::Custom("\x1b[38;5;61m".to_string());
+        Ptui::get_pane()
+            .lock()
+            .unwrap()
+            .push_tile(Temporary::create(Tile::Line(Line::new(
+                format!(
+                    "{} Cloning request",
+                    Ptui::color_string("Sending:", &Ptui::get_accents())
+                )
+                .to_string(),
+                None,
+                1,
+            ))));
 
-        // ptui_println!(
-        //     "{}{} Cloning request",
-        //     Ptui::clear_line(),
-        //     Ptui::color_string("Sending:".to_string(), custom)
-        // );
         Ok((Client { stream }, addr))
     }
 
     pub(crate) fn clone() -> Result<(), String> {
-        type Fgm = ForegroundModifier;
-        let custom = Fgm::Custom("\x1b[38;5;61m".to_string());
         let mut conn: Client;
         let upstream: String;
         (conn, upstream) = Client::new()?;
@@ -79,7 +91,6 @@ impl Client {
             let panic = Arc::clone(&panic);
             let stream_c = Arc::clone(&stream);
             let objects_c = Arc::clone(&objects);
-            let custom = custom.clone();
             pool.execute(move || {
                 let packet = match deserialize_from_stream(
                     &mut stream_c.lock().expect("Failed to get stream"),
@@ -98,11 +109,7 @@ impl Client {
                 }
                 objects_c.fetch_add(1, Ordering::SeqCst);
 
-          
-                    Ptui::progress_bar(
-                        objects_c.load(Ordering::SeqCst),
-                        packets as usize,custom
-                    )
+                // Ptui::progress_bar(objects_c.load(Ordering::SeqCst), packets as usize, custom)
             })
         }
         pool.join_all();
