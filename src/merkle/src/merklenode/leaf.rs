@@ -7,7 +7,7 @@ use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::{env, fs};
+use std::fs;
 use tempfile::NamedTempFile;
 
 #[derive(Eq, PartialEq, Clone, Hash)]
@@ -457,11 +457,6 @@ impl LeafIO for LeafNode {
     }
 
     fn atomic_write_file_ex(path: PathBuf, data: Vec<u8>) -> Result<(), String> {
-        let dir = match env::current_dir() {
-            Ok(dir) => dir,
-            Err(e) => return Err(e.to_string()),
-        };
-
         let parent_dir = match path.parent() {
             Some(dir) => dir,
             None => {
@@ -471,17 +466,6 @@ impl LeafIO for LeafNode {
                 ));
             }
         };
-
-        let path = path
-          .strip_prefix(&dir)
-          .unwrap_or(path.as_ref())
-          .to_path_buf();
-
-        let parent_dir = parent_dir
-          .strip_prefix(dir)
-          .unwrap_or(parent_dir.as_ref())
-          .to_path_buf();
-
 
         if let Err(err) = fs::create_dir_all(&parent_dir) {
             return Err(format!(
