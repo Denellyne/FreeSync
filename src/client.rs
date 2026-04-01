@@ -2,8 +2,7 @@ use merkle::data::deserialize_from_stream;
 use merkle::merkletree::MerkleTree;
 use ptui::modifiers::ForegroundModifier;
 use ptui::ptui::Ptui;
-use ptui::ptui_println;
-use ptui::traits::{TerminalManager, TextManager};
+use ptui::traits::{ TextManager};
 use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
@@ -27,27 +26,23 @@ impl Client {
             Err(e) => return Err(e.to_string()),
         };
 
-        ptui_println!("Connecting to {}...", addr);
+        // ptui_println!("Connecting to {}...", addr);
         let stream = TcpStream::connect(&addr)
             .unwrap_or_else(|_| panic!("Failed to connect to server,Upstream : {addr}"));
 
         let custom = ForegroundModifier::Custom("\x1b[38;5;61m".to_string());
 
-        ptui_println!(
-            "{}{} Cloning request",
-            Ptui::clear_line(),
-            Ptui::color_string("Sending:".to_string(), custom)
-        );
+        // ptui_println!(
+        //     "{}{} Cloning request",
+        //     Ptui::clear_line(),
+        //     Ptui::color_string("Sending:".to_string(), custom)
+        // );
         Ok((Client { stream }, addr))
     }
 
     pub(crate) fn clone() -> Result<(), String> {
         type Fgm = ForegroundModifier;
         let custom = Fgm::Custom("\x1b[38;5;61m".to_string());
-        ptui_println!(
-            "{}",
-            Ptui::color_string("FreeSync:".to_string(), custom.clone())
-        );
         let mut conn: Client;
         let upstream: String;
         (conn, upstream) = Client::new()?;
@@ -66,15 +61,15 @@ impl Client {
             .parse::<i32>()
             .expect("Could not parse packets into a number");
 
-        ptui_println!(
-            "{}{} {upstream}",
-            Ptui::clear_line(),
-            Ptui::color_string("Upstream:".to_string(), custom.clone())
-        );
-        ptui_println!(
-            "{} {packets} objects\n\n",
-            Ptui::color_string("Pulling:".to_string(), custom.clone())
-        );
+        // ptui_println!(
+        //     "{}{} {upstream}",
+        //     Ptui::clear_line(),
+        //     Ptui::color_string("Upstream:".to_string(), custom.clone())
+        // );
+        // ptui_println!(
+        //     "{} {packets} objects\n\n",
+        //     Ptui::color_string("Pulling:".to_string(), custom.clone())
+        // );
 
         let pool = ThreadPool::new(4);
         let panic = Arc::new(AtomicBool::new(false));
@@ -102,33 +97,23 @@ impl Client {
                     eprintln!("Failed to write packet");
                 }
                 objects_c.fetch_add(1, Ordering::SeqCst);
-                let str = format!(
-                    "{}{} {} objects of {packets}",
-                    Ptui::clear_line().repeat(2),
-                    Ptui::color_string("Progress:".to_string(), custom),
-                    objects_c.load(Ordering::SeqCst)
-                );
 
-                ptui_println!(
-                    "{str}\n{}",
+          
                     Ptui::progress_bar(
-                        ('=', '<', '>'),
-                        32,
                         objects_c.load(Ordering::SeqCst),
-                        packets as usize
+                        packets as usize,custom
                     )
-                );
             })
         }
         pool.join_all();
         if panic.load(Ordering::Relaxed) {
             return Err(String::from("Thread pool panicked"));
         }
-        ptui_println!(
-            "{}{}",
-            Ptui::clear_line(),
-            Ptui::color_string("Cloned successfully".to_string(), Fgm::Green)
-        );
+        // ptui_println!(
+        //     "{}{}",
+        //     Ptui::clear_line(),
+        //     Ptui::color_string("Cloned successfully".to_string(), Fgm::Green)
+        // );
 
         Ok(())
     }

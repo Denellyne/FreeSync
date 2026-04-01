@@ -84,7 +84,7 @@ pub fn deserialize_from_stream(stream: &mut TcpStream) -> Result<Packet, String>
                 Ok(val) => val,
                 Err(e) => {
                     return Err(format!(
-                        "Unable to convert data inside vector to string, lenth {e}, {:?}",
+                        "Unable to convert data inside vector to string, length {e}, {:?}",
                         buf
                     ));
                 }

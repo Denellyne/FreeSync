@@ -8,9 +8,14 @@ use crate::traits::{Hashable, IO, ReadFile};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use ptui::modifiers::ForegroundModifier;
+use ptui::ptui::Ptui;
+use ptui::{ptui_pushln};
+use ptui::traits::TextManager;
 use threadpool::pool::ThreadPool;
+use crate::merkletree::MerkleTree;
 
 #[derive(Eq, PartialEq, Clone, Hash)]
 pub struct TreeNode {
@@ -250,11 +255,13 @@ impl TreeNode {
         let pool = Arc::new(ThreadPool::new(num_thread));
         let pool_c = Arc::clone(&pool);
         let panic_c = Arc::clone(&panic);
+        let current = Arc::new(AtomicUsize::new(0));
+        let current_c = Arc::clone(&current);
+        //ptui_pushln!("\n");
 
-        Self::apply_branch(&path.to_path_buf(), head_path, pool_c, panic_c)
-            .expect("Failed to apply branch");
+        let result = Self::apply_branch(&path.to_path_buf(), head_path, pool_c, panic_c,current_c,MerkleTree::get_total_objects(path.to_path_buf())?,ForegroundModifier::Custom("\x1b[38;5;61m".to_string()));
         pool.join_all();
-        if panic.load(Ordering::Relaxed) {
+        if panic.load(Ordering::Relaxed) || result.is_err() {
             return Err("An error occurred while trying to apply branch".to_string());
         }
         Ok(())
@@ -265,6 +272,9 @@ impl TreeNode {
         path: impl AsRef<Path>,
         pool: Arc<ThreadPool>,
         panic: Arc<AtomicBool>,
+        current : Arc<AtomicUsize>,
+        total : usize,
+        modifier : ForegroundModifier
     ) -> Result<(), String> {
         let path = path.as_ref();
         let mut data = Self::read_file(path)?;
@@ -280,6 +290,8 @@ impl TreeNode {
             let pool_c = Arc::clone(&pool);
             let panic_c = Arc::clone(&panic);
             let working_directory = working_directory.clone();
+            let current = Arc::clone(&current);
+            let modifier = modifier.clone();
             pool.execute(move || match &entry_type {
                 Self::EXECUTABLE_FILE | Self::REGULAR_FILE => {
                     match LeafNode::from(child_path, child_real_path) {
@@ -296,7 +308,11 @@ impl TreeNode {
                                 LeafNode::atomic_write_file_ex(leaf.file_path, decompress)
                             {
                                 panic_c.store(true, Ordering::Relaxed);
-                                eprintln!("{e}",);
+                                eprintln!("{e}");
+                            }
+                            else {
+                                current.fetch_add(1, Ordering::SeqCst);
+                                Ptui::progress_bar(current.load(Ordering::SeqCst),total,modifier);
                             }
                         }
                         Err(e) => {
@@ -307,9 +323,10 @@ impl TreeNode {
                 }
                 Self::DIRECTORY => {
                     let panic = Arc::clone(&panic_c);
+                    let current = Arc::clone(&current);
 
                     if let Err(e) =
-                        TreeNode::apply_branch(&working_directory, child_path, pool_c, panic_c)
+                        TreeNode::apply_branch(&working_directory, child_path, pool_c, panic_c,current,total,modifier)
                     {
                         panic.store(true, Ordering::Relaxed);
                         eprintln!("{e}",);
@@ -321,7 +338,6 @@ impl TreeNode {
                 }
             });
         }
-
         Ok(())
     }
 

@@ -33,7 +33,11 @@ impl ThreadPool {
         let mut workers = Vec::with_capacity(size);
 
         for id in 0..size {
-            workers.push(Worker::new(id, Arc::clone(&receiver)));
+            workers.push(Worker::new(
+                id,
+                Arc::clone(&receiver),
+                Arc::clone(&active_jobs),
+            ));
         }
 
         ThreadPool {
@@ -47,20 +51,15 @@ impl ThreadPool {
     where
         F: FnOnce() + Send + 'static,
     {
-        let active_jobs = Arc::clone(&self.active_jobs);
         let job = Box::new(move || {
             f();
-            active_jobs.fetch_sub(1, Ordering::SeqCst);
         });
-        let active_jobs = Arc::clone(&self.active_jobs);
-        active_jobs.fetch_add(1, Ordering::SeqCst);
 
         if let Some(sender) = self.sender.as_ref() {
+            self.active_jobs.fetch_add(1, Ordering::SeqCst);
             if sender.send(job).is_err() {
-                active_jobs.fetch_sub(1, Ordering::SeqCst);
+                self.active_jobs.fetch_sub(1, Ordering::SeqCst);
             }
-        } else if self.sender.as_ref().is_none() {
-            active_jobs.fetch_sub(1, Ordering::SeqCst);
         }
     }
 
@@ -102,7 +101,11 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
+    fn new(
+        id: usize,
+        receiver: Arc<Mutex<mpsc::Receiver<Job>>>,
+        running: Arc<AtomicUsize>,
+    ) -> Worker {
         let thread = thread::spawn(move || {
             loop {
                 let message = receiver.lock().expect("Unable to lock receiver").recv();
@@ -112,10 +115,10 @@ impl Worker {
                     println!("Worker {id} got a job; executing.");
 
                     let result = panic::catch_unwind(AssertUnwindSafe(job));
-                    if result.is_err() {
-                        println!("Worker {id}: job panicked but thread survived.");
-                        todo!("Sub active job")
+                    if let Err(e) =  result {
+                        println!("Worker {id}: job panicked but thread survived. {:?}", e);
                     }
+                    running.fetch_sub(1, Ordering::SeqCst);
                 } else {
                     return;
                 }

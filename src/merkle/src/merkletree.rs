@@ -183,6 +183,34 @@ impl MerkleTree {
 
         Ok(vec)
     }
+    pub fn get_total_objects(dir_path: PathBuf) -> Result<usize, String> {
+        let dir_path = dir_path.join(TreeNode::OBJ_FOLDER);
+        let dirs = match fs::read_dir(&dir_path) {
+            Ok(dirs) => dirs,
+            Err(e) => {
+                return Err(format!(
+                    "Unable to read directory : {}, {e}",
+                    dir_path.display()
+                ));
+            }
+        };
+        let mut result: usize = 0;
+        for dir in dirs {
+            let dir = match dir {
+                Ok(dir) => dir,
+                Err(_) => return Err("Unable to read directory".to_owned()),
+            };
+
+            let files = match fs::read_dir(dir.path()) {
+                Ok(files) => files,
+                Err(_) => return Err("Unable to read directory".to_owned()),
+            };
+
+            result += files.count();
+        }
+
+        Ok(result)
+    }
 
     pub fn get_head_path(path: PathBuf) -> Result<PathBuf, String> {
         let head_file = path.join(TreeNode::HEAD_FILE);

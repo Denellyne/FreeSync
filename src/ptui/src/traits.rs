@@ -1,19 +1,30 @@
 use crate::modifiers::ForegroundModifier::White;
 use crate::modifiers::{BackgroundModifier, ForegroundModifier, TextModifier};
 use crate::ptui::Ptui;
-use crate::ptui_println;
-use std::io::{Read, stdin};
+use crate::ptui_pushln;
+use std::io::{stdin, stdout, Read, Write};
+
+pub struct A{}
+impl TerminalManager for A{}
 
 pub trait TerminalManager {
     fn clear_screen() {
         print!("\x1B[2J\x1B[1;1H");
+
+        stdout().flush().unwrap();
+    }
+    fn reset_cursor(){
+        print!("\x1B[H");
+        stdout().flush().unwrap();
     }
     fn clear_line() -> String {
         "\x1B[1A\x1B[K".to_string()
     }
     fn set_background(background: BackgroundModifier) {
+        Self::clear_screen();
         print!("{}", TextModifier::get_background_modifier(background));
-        Self::clear_screen()
+        stdout().flush().unwrap();
+
     }
 
     fn set_foreground(foreground: ForegroundModifier) {
@@ -23,10 +34,33 @@ pub trait TerminalManager {
     fn reset_foreground() {
         print!(
             "{}",
-            TextModifier::get_foreground_modifier(ForegroundModifier::White)
+            TextModifier::get_foreground_modifier(White)
         );
     }
+    #[cfg(windows)]
+    fn get_terminal_size() -> (u16, u16) {
+        use winapi_util::console::*;
+        let  handle = stdout();
+        let terminal_info = screen_buffer_info(handle).unwrap();
+
+        let (x,y) = terminal_info.size();
+        (x as u16, y as u16)
+
+    }
+
+  #[cfg(unix)]
+    fn get_terminal_size() -> (u16, u16) {
+      use nix::ioctl_read;
+
+      let mut x : u16 = 0;
+      let mut y : u16 = 0;
+      let mut _z : u64 = 0;
+      ioctl_read!(stdout(), libc::TIOCGWINSZ, x, y, _z);
+        (x, y)
+    }
 }
+
+
 pub trait TextManager {
     fn color_string(text: String, modifier: ForegroundModifier) -> String {
         let modifier = TextModifier::get_foreground_modifier(modifier);
@@ -45,11 +79,36 @@ pub trait TextManager {
     }
 
     fn wait_input() {
-        ptui_println!("Press any key to exit");
+        // ptui_pushln!("Press any key to exit");
         let _ = stdin().read(&mut [0u8]).unwrap();
     }
+    fn progress_bar(        current: usize,
+                            total: usize,
+                    modifier : ForegroundModifier){
+        let str = format!(
+            "{}{} {} objects of {total}",
+            Ptui::clear_line().repeat(2),
+            Ptui::color_string("Progress:".to_string(), modifier),
+            current
+        );
 
-    fn progress_bar(
+        // ptui_pushln!(
+        //             "{str}\n{}",
+        //             Ptui::progress_bar_simple(
+        //                 current,
+        //                 total
+        //             )
+        //         );
+    }
+
+    fn progress_bar_simple(
+        current: usize,
+        total: usize,
+    ) -> String {
+        Self::progress_bar_simple_ex(('=','<','>'),32,current,total)
+    }
+
+    fn progress_bar_simple_ex(
         ui: (char, char, char),
         resolution: usize,
         current: usize,

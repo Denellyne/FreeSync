@@ -467,7 +467,7 @@ impl LeafIO for LeafNode {
             }
         };
 
-        if let Err(err) = fs::create_dir_all(&parent_dir) {
+        if let Err(err) = fs::create_dir_all(parent_dir) {
             return Err(format!(
                 "Unable to create parent directory of file:{}:{}",
                 path.display(),
