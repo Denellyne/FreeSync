@@ -1,13 +1,16 @@
 use merkle::data::deserialize_from_stream;
 use merkle::merkletree::MerkleTree;
 use ptui::ptui::Ptui;
-use ptui::tiling::tiles::{Line, Temporary, Tile};
+use ptui::tiling::text::TextTile;
+use ptui::tiling::tiles::{TemporaryTile, Tile};
 use ptui::traits::TextManager;
 use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread::sleep;
+use std::time::Duration;
 use threadpool::pool::ThreadPool;
 
 pub struct Client {
@@ -29,28 +32,24 @@ impl Client {
         Ptui::get_pane()
             .lock()
             .unwrap()
-            .push_tile(Temporary::create(Tile::Line(Line::new(
+            .push_tile(TemporaryTile::create(Tile::Line(TextTile::new(
                 Ptui::color_string("Connecting to:", &Ptui::get_accents()) + " {}...",
-                None,
-                1,
             ))));
-        //  Ptui::render();
+        sleep(Duration::from_secs(100));
+
         let stream = TcpStream::connect(&addr)
             .unwrap_or_else(|_| panic!("Failed to connect to server,Upstream : {addr}"));
 
         Ptui::get_pane()
             .lock()
             .unwrap()
-            .push_tile(Temporary::create(Tile::Line(Line::new(
+            .push_tile(TemporaryTile::create(Tile::Line(TextTile::new(
                 format!(
                     "{} Cloning request",
                     Ptui::color_string("Sending:", &Ptui::get_accents())
                 )
                 .to_string(),
-                None,
-                1,
             ))));
-        //   Ptui::render();
 
         Ok((Client { stream }, addr))
     }

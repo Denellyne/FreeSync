@@ -1,51 +1,36 @@
 use crate::modifiers::ForegroundModifier::White;
 use crate::modifiers::{BackgroundModifier, ForegroundModifier, TextModifier};
+use crate::os_impl::windows::TerminalManagerImpl;
 use crate::ptui::Ptui;
 use std::io::{Read, Write, stdin, stdout};
 
-pub trait TerminalManager {
-    fn clear_screen() {
+pub trait TerminalManager: TerminalManagerImpl {
+    fn clear_screen()
+    where
+        Self: Sized,
+    {
         print!("\x1B[2J\x1B[1;1H");
 
         stdout().flush().unwrap();
     }
-    fn reset_cursor() {
+    fn reset_cursor()
+    where
+        Self: Sized,
+    {
         print!("\x1B[H");
         stdout().flush().unwrap();
     }
-    fn clear_line() -> String {
+    fn clear_line() -> String
+    where
+        Self: Sized,
+    {
         "\x1B[1A\x1B[K".to_string()
     }
-    fn set_cursor(pos: (usize, usize)) {
+    fn set_cursor(pos: (usize, usize))
+    where
+        Self: Sized,
+    {
         print!("\x1B[{};{}f", pos.0, pos.1)
-    }
-
-    #[cfg(windows)]
-    fn get_terminal_size() -> (u16, u16) {
-        use winapi_util::console::*;
-        let handle = stdout();
-        let terminal_info = screen_buffer_info(handle).unwrap();
-
-        let (x, y) = terminal_info.size();
-        (x as u16, y as u16)
-    }
-
-    #[cfg(unix)]
-    fn get_terminal_size() -> (u16, u16) {
-        unsafe {
-            use std::os::fd::AsRawFd;
-
-            use nix::libc::{self};
-            let mut win: libc::winsize = libc::winsize {
-                ws_row: 0,
-                ws_col: 0,
-                ws_xpixel: 0,
-                ws_ypixel: 0,
-            };
-            libc::ioctl(stdout().as_raw_fd(), libc::TIOCGWINSZ, &mut win);
-
-            (win.ws_col + 1, win.ws_row + 1)
-        }
     }
 }
 

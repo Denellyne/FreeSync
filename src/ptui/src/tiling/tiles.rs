@@ -1,10 +1,9 @@
-use crate::modifiers::TextModifier;
+use crate::os_impl::windows::TerminalManagerImpl;
 use crate::ptui::Ptui;
 use crate::tiling::pane::Pane;
+use crate::tiling::text::TextTile;
 use crate::tiling::traits::Printable;
 use crate::traits::{TerminalManager, TextManager};
-use std::io;
-use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -14,56 +13,36 @@ pub enum PaneModifier {
     Temporary,
 }
 
-pub struct ProgressBar {
+pub struct ProgressBarTile {
     ui: (char, char, char),
     current: Arc<AtomicUsize>,
     total: usize,
     resolution: f32,
-    text: Option<(Line, usize)>,
+    text: Option<(TextTile, usize)>,
 }
 
-pub struct Line {
-    string: String,
-    modifier: Option<TextModifier>,
-    accents_len: u16,
-}
-
-pub struct Temporary {
+pub struct TemporaryTile {
     tile: Box<Tile>,
 }
 
 pub enum Tile {
-    Line(Line),
-    ProgressBar(ProgressBar),
+    Line(TextTile),
+    ProgressBar(ProgressBarTile),
     Pane(Pane),
-    Temporary(Temporary),
+    Temporary(TemporaryTile),
 }
 
-impl Line {
-    pub fn new(string: String, modifier: Option<TextModifier>, num_accents: u16) -> Self {
-        let accents_len = (Ptui::get_accents().len() * 2) * num_accents as usize;
-        Line {
-            string,
-            modifier,
-            accents_len: accents_len as u16,
-        }
-    }
-    pub fn set_string(&mut self, text: String, accents_len: u16) {
-        self.string = text;
-        self.accents_len = accents_len;
-    }
-}
-impl ProgressBar {
+impl ProgressBarTile {
     pub fn new(
         current: Arc<AtomicUsize>,
         total: usize,
         resolution: usize,
         only_bar: bool,
-    ) -> ProgressBar {
+    ) -> ProgressBarTile {
         let text = Self::generate_text(Arc::clone(&current), total, only_bar);
         let resolution = resolution as f32 / Ptui::get_terminal_size().0 as f32;
 
-        ProgressBar {
+        ProgressBarTile {
             ui: ('=', '<', '>'),
             current,
             total,
@@ -77,11 +56,11 @@ impl ProgressBar {
         total: usize,
         resolution: usize,
         only_bar: bool,
-    ) -> ProgressBar {
+    ) -> ProgressBarTile {
         let text = Self::generate_text(Arc::clone(&current), total, only_bar);
         let resolution = resolution as f32 / Ptui::get_terminal_size().0 as f32;
 
-        ProgressBar {
+        ProgressBarTile {
             ui,
             current,
             total,
@@ -94,7 +73,7 @@ impl ProgressBar {
         current: Arc<AtomicUsize>,
         total: usize,
         only_bar: bool,
-    ) -> Option<(Line, usize)> {
+    ) -> Option<(TextTile, usize)> {
         if !only_bar {
             let accented_str = Ptui::color_string("Progress:", &Ptui::get_accents());
             let length = accented_str.len();
@@ -104,7 +83,7 @@ impl ProgressBar {
                 current.load(Ordering::SeqCst),
                 total
             );
-            Some((Line::new(str, None, 1), length))
+            Some((TextTile::new(str), length))
         } else {
             None
         }
@@ -118,7 +97,7 @@ impl ProgressBar {
         let text = &mut self.text.as_mut().unwrap().0;
 
         let row = text.print(pos, dimensions);
-        self.progress_bar_simple((row,pos.1), dimensions)
+        self.progress_bar_simple((row, pos.1), dimensions)
     }
 
     fn progress_bar_simple(&self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
@@ -139,56 +118,15 @@ impl ProgressBar {
         pos.1 + 2
     }
 }
-impl Temporary {
+impl TemporaryTile {
     pub fn create(tile: Tile) -> Tile {
-        Tile::Temporary(Temporary {
+        Tile::Temporary(TemporaryTile {
             tile: Box::from(tile),
         })
     }
 }
-impl TerminalManager for Pane {}
-impl TextManager for Line {}
-impl Printable for Line {
-    fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
-        let (mut rows, cols) = pos;
-        let (mut height,width) = dimensions;
-        let mut slice = self.string.as_str();
-        let modify = match &self.modifier {
-            Some(modifier) => {
-                print!("{}", TextModifier::get(modifier));
-                true
-            }
-            None => false,
-        };
-        let mut length = slice.len() - 2*self.accents_len as usize;
 
-        while length >= width {
-            if width == 0 || height == 0 {
-                break;
-            }
-            Pane::set_cursor((rows, cols));
-            let str = &slice[..width];
-
-            print!("{str}");
-            rows += 2;
-            height -= 2;
-            length -= width;
-            slice = &slice[width..];
-        }
-        if modify {
-            Self::reset_foreground();
-            Self::reset_background();
-            io::stdout().flush().unwrap();
-        }
-        if !slice.is_empty() {
-            print!("{slice}");
-            rows += 2;
-        }
-
-        rows
-    }
-}
-impl Printable for ProgressBar {
+impl Printable for ProgressBarTile {
     fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
         Ptui::set_cursor(pos);
 
@@ -198,7 +136,7 @@ impl Printable for ProgressBar {
         }
     }
 }
-impl Printable for Temporary {
+impl Printable for TemporaryTile {
     fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
         self.tile.print(pos, dimensions)
     }

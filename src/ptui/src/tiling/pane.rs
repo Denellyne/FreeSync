@@ -1,3 +1,4 @@
+use crate::os_impl::windows::TerminalManagerImpl;
 use crate::tiling::tiles::Tile;
 use crate::tiling::traits::Printable;
 use crate::traits::TerminalManager;
@@ -21,6 +22,7 @@ impl Pane {
             title: String::new(),
         }
     }
+
     fn print_title(&self, width: usize) {
         let str_len = self.title.len() - 16;
         let pos: usize = width.saturating_sub(str_len) >> 1;
@@ -86,7 +88,7 @@ impl Printable for Pane {
                 Tile::ProgressBar(progress_bar) => progress_bar.print(pos, dimensions),
                 Tile::Pane(pane) => pane.print(pos, dimensions),
                 Tile::Temporary(tile) => tile.print(pos, dimensions),
-            } + 1;
+            } + 2;
         }
         self.tiles
             .retain(|tile| !matches!(*tile.lock().unwrap(), Tile::Temporary(_)));
@@ -94,3 +96,5 @@ impl Printable for Pane {
         last_row
     }
 }
+impl TerminalManager for Pane {}
+impl TerminalManagerImpl for Pane {}

@@ -7,7 +7,7 @@ use crate::merklenode::traits::{EntryData, HashableNode, Header, LeafIO, TreeIO}
 use crate::merkletree::MerkleTree;
 use crate::traits::{Hashable, IO, ReadFile};
 use ptui::ptui::Ptui;
-use ptui::tiling::tiles::{ProgressBar, Tile};
+use ptui::tiling::tiles::{ProgressBarTile, Tile};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -255,7 +255,7 @@ impl TreeNode {
         let panic_c = Arc::clone(&panic);
         let current = Arc::new(AtomicUsize::new(0));
         let current_c = Arc::clone(&current);
-        let bar = ProgressBar::new(
+        let bar = ProgressBarTile::new(
             current_c,
             MerkleTree::get_total_objects(path.to_path_buf())?,
             32,
