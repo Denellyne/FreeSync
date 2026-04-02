@@ -3,6 +3,7 @@ mod client;
 use args::parse_args;
 use ptui::modifiers::{BackgroundModifier, ForegroundModifier};
 use ptui::ptui::Ptui;
+use ptui::traits::TextManager;
 use std::env;
 
 fn main() {
@@ -14,5 +15,6 @@ fn main() {
     );
 
     parse_args(env::args().collect());
+    Ptui::wait_input();
     Ptui::finalize();
 }

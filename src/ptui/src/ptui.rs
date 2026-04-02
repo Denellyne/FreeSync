@@ -87,6 +87,7 @@ impl Ptui {
     }
 
     pub fn finalize() {
+        Self::render();
         Self::clear_screen();
         print!("\x1B[0m"); // Reset background and foreground
         print!("\x1B[?25h"); // Restore cursor

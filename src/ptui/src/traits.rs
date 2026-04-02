@@ -2,7 +2,9 @@ use crate::modifiers::ForegroundModifier::White;
 use crate::modifiers::{BackgroundModifier, ForegroundModifier, TextModifier};
 use crate::os_impl::TerminalManagerImpl;
 use crate::ptui::Ptui;
-use std::io::{Read, Write, stdin, stdout};
+use crate::tiling::text::TextTile;
+use crate::tiling::tiles::Tile;
+use std::io::{self, Read, Write, stdin, stdout};
 
 pub trait TerminalManager: TerminalManagerImpl {
     fn clear_screen()
@@ -10,7 +12,6 @@ pub trait TerminalManager: TerminalManagerImpl {
         Self: Sized,
     {
         print!("\x1B[2J\x1B[1;1H");
-
         stdout().flush().unwrap();
     }
     fn reset_cursor()
@@ -30,7 +31,8 @@ pub trait TerminalManager: TerminalManagerImpl {
     where
         Self: Sized,
     {
-        print!("\x1B[{};{}f", pos.0, pos.1)
+        print!("\x1B[{};{}f", pos.0, pos.1);
+        stdout().flush().unwrap();
     }
 }
 
@@ -52,7 +54,9 @@ pub trait TextManager {
     }
 
     fn wait_input() {
-        // ptui_pushln!("Press any key to exit");
+        let _ = Ptui::push(Tile::Line(TextTile::new(
+            "Press any key to exit.".to_owned(),
+        )));
         let _ = stdin().read(&mut [0u8]).unwrap();
     }
 

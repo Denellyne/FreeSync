@@ -9,8 +9,6 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread::sleep;
-use std::time::Duration;
 use threadpool::pool::ThreadPool;
 
 pub struct Client {
@@ -35,7 +33,6 @@ impl Client {
             .push_tile(TemporaryTile::create(Tile::Line(TextTile::new(
                 Ptui::color_string("Connecting to:", &Ptui::get_accents()) + " {}...",
             ))));
-        sleep(Duration::from_secs(100));
 
         let stream = TcpStream::connect(&addr)
             .unwrap_or_else(|_| panic!("Failed to connect to server,Upstream : {addr}"));
@@ -73,15 +70,15 @@ impl Client {
             .parse::<i32>()
             .expect("Could not parse packets into a number");
 
-        // ptui_println!(
-        //     "{}{} {upstream}",
-        //     Ptui::clear_line(),
-        //     Ptui::color_string("Upstream:".to_string(), custom.clone())
-        // );
-        // ptui_println!(
-        //     "{} {packets} objects\n\n",
-        //     Ptui::color_string("Pulling:".to_string(), custom.clone())
-        // );
+        Ptui::push(Tile::Line(TextTile::new(format!(
+            "{}{upstream}",
+            Ptui::color_string("Upstream:", &Ptui::get_accents()),
+        ))));
+
+        Ptui::push(Tile::Line(TextTile::new(format!(
+            "{} {packets} objects\n\n",
+            Ptui::color_string("Pulling:", &Ptui::get_accents()),
+        ))));
 
         let pool = ThreadPool::new(4);
         let panic = Arc::new(AtomicBool::new(false));
