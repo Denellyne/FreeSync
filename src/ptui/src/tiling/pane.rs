@@ -1,4 +1,4 @@
-use crate::os_impl::windows::TerminalManagerImpl;
+use crate::os_impl::TerminalManagerImpl;
 use crate::tiling::tiles::Tile;
 use crate::tiling::traits::Printable;
 use crate::traits::TerminalManager;

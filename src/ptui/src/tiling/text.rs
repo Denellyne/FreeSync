@@ -1,11 +1,16 @@
+use std::borrow::Cow;
+use std::ops::Deref;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use crate::modifiers::{ForegroundModifier, TextModifier};
 use crate::tiling::pane::Pane;
 use crate::tiling::traits::Printable;
 use crate::traits::{TerminalManager, TextManager};
 
 enum Line {
-    CLine(String, ForegroundModifier),
-    PLine(String),
+    Custom(String, ForegroundModifier),
+    Plain(String),
+    Dynamic((String, String), AtomicUsize, Ordering),
 }
 
 pub struct TextTile {
@@ -26,7 +31,7 @@ impl TextTile {
 
         while let Some(val) = string.find("\x1B[") {
             if val > 0 {
-                lines.push(Line::PLine(string.drain(..val).collect()));
+                lines.push(Line::Plain(string.drain(..val).collect()));
             }
             let modifier: String = string
                 .drain(..=string.find("m").expect("Malformed Opening Modifier"))
@@ -34,16 +39,16 @@ impl TextTile {
             let str: String = string
                 .drain(..string.find("\x1B[").expect("Malformed Closing Modifier"))
                 .collect();
-            lines.push(Line::CLine(str, ForegroundModifier::Custom(modifier)));
+            lines.push(Line::Custom(str, ForegroundModifier::Custom(modifier)));
             let _: String = string
                 .drain(..=string.find("m").expect("Malformed Closing Modifier"))
                 .collect();
         }
 
         if !string.is_empty() {
-            lines.push(Line::PLine(string));
+            lines.push(Line::Plain(string));
         }
-        vec![]
+        lines
     }
 
     fn print_modifier(&self, modifier: &ForegroundModifier) {
@@ -54,22 +59,33 @@ impl TextTile {
 impl Printable for TextTile {
     fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
         let (mut rows, cols) = pos;
-        let (mut height, width) = dimensions;
+        let (height, width) = dimensions;
+        let mut buf = String::with_capacity(128);
 
         for line in &self.lines {
-            let mut slice = match line {
-                Line::CLine(slice, foreground) => {
-                    self.print_modifier(&foreground);
-                    slice
+            let is_custom = match line {
+                Line::Custom(slice, foreground) => {
+                    self.print_modifier(foreground);
+                    buf.clear();
+                    buf.push_str(slice);
+                    true
                 }
-                Line::PLine(slice) => slice,
-            }
-            .as_str();
+                Line::Plain(slice) => {
+                    buf.clear();
+                    buf.push_str(slice);
+                    false
+                }
+                Line::Dynamic((pre, sub), atomic, ord) => {
+                    buf = format!("{}{}{}", pre, atomic.load(*ord), sub);
+                    false
+                }
+            };
+            let mut slice = buf.as_str();
 
             let mut length = slice.len();
 
             while length >= width {
-                if width == 0 || height == 0 {
+                if width == 0 || height - rows == 0 {
                     break;
                 }
                 Pane::set_cursor((rows, cols));
@@ -77,7 +93,6 @@ impl Printable for TextTile {
 
                 print!("{str}");
                 rows += 2;
-                height -= 2;
                 length -= width;
                 slice = &slice[width..];
             }
@@ -85,6 +100,9 @@ impl Printable for TextTile {
             if !slice.is_empty() {
                 print!("{slice}");
                 rows += 2;
+            }
+            if is_custom {
+                print! {"{}",TextModifier::get_foreground_modifier(&ForegroundModifier::White)}
             }
         }
 

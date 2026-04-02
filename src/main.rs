@@ -14,4 +14,5 @@ fn main() {
     );
 
     parse_args(env::args().collect());
+    Ptui::finalize();
 }

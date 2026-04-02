@@ -22,4 +22,13 @@ pub(crate) trait TerminalManagerImpl {
         }
         0
     }
+
+    fn init_signal() {
+        unsafe {
+            windows_sys::Win32::System::Console::SetConsoleCtrlHandler(
+                Some(Self::signal_handler),
+                1,
+            );
+        }
+    }
 }

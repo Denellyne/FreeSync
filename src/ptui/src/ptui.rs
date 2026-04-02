@@ -1,5 +1,5 @@
 use crate::modifiers::{BackgroundModifier, ForegroundModifier, TextModifier};
-use crate::os_impl::windows::TerminalManagerImpl;
+use crate::os_impl::TerminalManagerImpl;
 use crate::tiling::pane::Pane;
 use crate::tiling::tiles::Tile;
 use crate::tiling::traits::Printable;
@@ -48,14 +48,8 @@ impl Ptui {
         ptui.pane.lock().unwrap().set_title(title);
         ptui.bg = bg;
         ptui.accents = fg;
-        #[cfg(windows)]
-        unsafe {
-            windows_sys::Win32::System::Console::SetConsoleCtrlHandler(
-                Some(Self::signal_handler),
-                1,
-            );
-        }
 
+        Ptui::init_signal();
         let _th = thread::spawn(move || {
             while RUNNING.load(Relaxed) {
                 Ptui::render();
@@ -92,7 +86,7 @@ impl Ptui {
         ptui().lock().unwrap().render_loop();
     }
 
-    pub(crate) fn finalize() {
+    pub fn finalize() {
         Self::clear_screen();
         print!("\x1B[0m"); // Reset background and foreground
         print!("\x1B[?25h"); // Restore cursor

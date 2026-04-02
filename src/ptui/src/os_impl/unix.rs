@@ -1,3 +1,5 @@
+use nix::libc;
+
 use crate::ptui::Ptui;
 use std::io::stdout;
 use std::sync::atomic::Ordering::Relaxed;
@@ -20,14 +22,15 @@ pub(crate) trait TerminalManagerImpl {
         }
     }
 
-    unsafe fn signal_handler(signal: u32) -> i32 {
-        let ctrlc = nix::sys::signal::Signal::from_c_int(signal).unwrap();
+    fn signal_handler() -> i32 {
+        crate::ptui::RUNNING.store(false, Relaxed);
+        Ptui::finalize();
+        1
+    }
 
-        if signal == ctrlc {
-            crate::ptui::RUNNING.store(false, Relaxed);
-            Ptui::finalize();
-            return 1;
+    fn init_signal() {
+        unsafe {
+            libc::signal(libc::SIGINT, Self::signal_handler as usize);
         }
-        0
     }
 }

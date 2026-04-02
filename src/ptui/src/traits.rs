@@ -1,6 +1,6 @@
 use crate::modifiers::ForegroundModifier::White;
 use crate::modifiers::{BackgroundModifier, ForegroundModifier, TextModifier};
-use crate::os_impl::windows::TerminalManagerImpl;
+use crate::os_impl::TerminalManagerImpl;
 use crate::ptui::Ptui;
 use std::io::{Read, Write, stdin, stdout};
 

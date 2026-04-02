@@ -1,4 +1,4 @@
-use crate::os_impl::windows::TerminalManagerImpl;
+use crate::os_impl::TerminalManagerImpl;
 use crate::ptui::Ptui;
 use crate::tiling::pane::Pane;
 use crate::tiling::text::TextTile;
