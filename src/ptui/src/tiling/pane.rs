@@ -7,13 +7,13 @@ use std::sync::Mutex;
 pub struct Pane {
     width: usize,
     height: usize,
-    pos: (usize, usize),
+    pos: (u32, u32),
     tiles: Vec<Mutex<Tile>>,
     title: String,
 }
 
 impl Pane {
-    pub const fn new(width: usize, height: usize, pos: (usize, usize)) -> Self {
+    pub const fn new(width: usize, height: usize, pos: (u32, u32)) -> Self {
         Pane {
             width,
             height,
@@ -24,9 +24,9 @@ impl Pane {
     }
 
     fn print_title(&self, width: usize) {
-        let str_len = self.title.len() - 16;
-        let pos: usize = width.saturating_sub(str_len) >> 1;
-        Self::set_cursor((0, pos));
+        let str_len = self.title.len().saturating_sub(16);
+        let pos = width.saturating_sub(str_len) >> 1;
+        Self::set_cursor((0, pos as u32));
         print!("{}", self.title);
     }
 
@@ -47,7 +47,7 @@ impl Pane {
         }
         Some(&self.tiles[idx])
     }
-    pub(crate) fn set_pos(&mut self, pos: (usize, usize)) {
+    pub(crate) fn set_pos(&mut self, pos: (u32, u32)) {
         self.pos = pos
     }
     fn set_dimensions(&mut self, dimensions: (usize, usize)) {
@@ -71,27 +71,29 @@ impl Pane {
     }
 }
 impl Printable for Pane {
-    fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
+    fn print(&mut self, pos: (u32, u32), dimensions: (usize, usize)) -> u32 {
         self.set_dimensions(dimensions);
         self.set_pos(pos);
         self.print_title(self.width);
-        let mut last_row = self.pos.0 + 2;
+        let mut last_row = self.pos.0 + 1;
         for tile in self.tiles.iter() {
             let pos = (last_row, self.pos.1);
+            Self::set_cursor(pos);
 
-            let dimensions = (
-                self.width - self.pos.1,
-                self.height - (self.pos.0 - last_row),
-            );
+            let dimensions = (self.height - 1, self.width);
             last_row = match &mut *tile.lock().expect("Unable to lock tile") {
                 Tile::Line(line) => line.print(pos, dimensions),
                 Tile::ProgressBar(progress_bar) => progress_bar.print(pos, dimensions),
                 Tile::Pane(pane) => pane.print(pos, dimensions),
                 Tile::Temporary(tile) => tile.print(pos, dimensions),
-            } + 2;
+            } + 1;
         }
+        let len = self.tiles.len();
         self.tiles
             .retain(|tile| !matches!(*tile.lock().unwrap(), Tile::Temporary(_)));
+        if self.tiles.len() != len {
+            Self::clear_screen();
+        }
 
         last_row
     }

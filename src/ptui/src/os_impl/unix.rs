@@ -18,7 +18,7 @@ pub(crate) trait TerminalManagerImpl {
             };
             libc::ioctl(stdout().as_raw_fd(), libc::TIOCGWINSZ, &mut win);
 
-            (win.ws_row + 1, win.ws_col + 1)
+            (win.ws_col + 1, win.ws_row + 1)
         }
     }
 

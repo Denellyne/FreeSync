@@ -27,11 +27,11 @@ pub trait TerminalManager: TerminalManagerImpl {
     {
         "\x1B[1A\x1B[K".to_string()
     }
-    fn set_cursor(pos: (usize, usize))
+    fn set_cursor(pos: (u32, u32))
     where
         Self: Sized,
     {
-        print!("\x1B[{};{}f", pos.0, pos.1);
+        print!("\x1B[{};{}H", pos.0 + 1, pos.1 + 1);
         stdout().flush().unwrap();
     }
 }

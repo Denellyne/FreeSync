@@ -93,17 +93,17 @@ impl ProgressBarTile {
         self.current.fetch_add(1, Ordering::SeqCst);
     }
 
-    fn progress_bar(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
+    fn progress_bar(&mut self, pos: (u32, u32), dimensions: (usize, usize)) -> u32 {
         let text = &mut self.text.as_mut().unwrap().0;
 
-        let row = text.print(pos, dimensions);
+        let row = text.print(pos, dimensions) + 1;
         self.progress_bar_simple((row, pos.1), dimensions)
     }
 
-    fn progress_bar_simple(&self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
+    fn progress_bar_simple(&self, pos: (u32, u32), dimensions: (usize, usize)) -> u32 {
         Ptui::set_cursor(pos);
 
-        let resolution = self.resolution * dimensions.0 as f32;
+        let resolution = self.resolution * dimensions.1 as f32;
         let resolution = resolution as usize;
 
         let progress_bar_percent = resolution * self.current.load(Ordering::SeqCst) / self.total;
@@ -115,7 +115,7 @@ impl ProgressBarTile {
             " ".repeat(resolution - progress_bar_percent),
             progress_bar_percent * 100 / resolution
         );
-        pos.1 + 2
+        pos.0
     }
 }
 impl TemporaryTile {
@@ -127,7 +127,7 @@ impl TemporaryTile {
 }
 
 impl Printable for ProgressBarTile {
-    fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
+    fn print(&mut self, pos: (u32, u32), dimensions: (usize, usize)) -> u32 {
         Ptui::set_cursor(pos);
 
         match self.text {
@@ -137,12 +137,12 @@ impl Printable for ProgressBarTile {
     }
 }
 impl Printable for TemporaryTile {
-    fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
+    fn print(&mut self, pos: (u32, u32), dimensions: (usize, usize)) -> u32 {
         self.tile.print(pos, dimensions)
     }
 }
 impl Printable for Tile {
-    fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
+    fn print(&mut self, pos: (u32, u32), dimensions: (usize, usize)) -> u32 {
         match self {
             Tile::Line(line) => line.print(pos, dimensions),
             Tile::ProgressBar(progress_bar) => progress_bar.print(pos, dimensions),

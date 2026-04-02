@@ -2,7 +2,7 @@ use merkle::data::deserialize_from_stream;
 use merkle::merkletree::MerkleTree;
 use ptui::ptui::Ptui;
 use ptui::tiling::text::TextTile;
-use ptui::tiling::tiles::{TemporaryTile, Tile};
+use ptui::tiling::tiles::{ProgressBarTile, TemporaryTile, Tile};
 use ptui::traits::TextManager;
 use std::env;
 use std::io::{BufRead, BufReader, Write};
@@ -76,7 +76,7 @@ impl Client {
         ))));
 
         Ptui::push(Tile::Line(TextTile::new(format!(
-            "{} {packets} objects\n\n",
+            "{} {packets} objects",
             Ptui::color_string("Pulling:", &Ptui::get_accents()),
         ))));
 
@@ -84,6 +84,9 @@ impl Client {
         let panic = Arc::new(AtomicBool::new(false));
         let stream = Arc::new(Mutex::from(conn.stream));
         let objects = Arc::new(AtomicUsize::new(0));
+
+        let bar = ProgressBarTile::new(Arc::clone(&objects), packets as usize, 32, false);
+        let _ = Ptui::push(Tile::ProgressBar(bar));
         for _ in 0..packets {
             let panic = Arc::clone(&panic);
             let stream_c = Arc::clone(&stream);

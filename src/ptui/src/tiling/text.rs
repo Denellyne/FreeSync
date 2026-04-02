@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::modifiers::{ForegroundModifier, TextModifier};
@@ -57,12 +55,15 @@ impl TextTile {
 }
 
 impl Printable for TextTile {
-    fn print(&mut self, pos: (usize, usize), dimensions: (usize, usize)) -> usize {
+    fn print(&mut self, pos: (u32, u32), dimensions: (usize, usize)) -> u32 {
         let (mut rows, cols) = pos;
         let (height, width) = dimensions;
         let mut buf = String::with_capacity(128);
 
         for line in &self.lines {
+            if width == 0 || height.saturating_sub(rows as usize) == 0 {
+                break;
+            }
             let is_custom = match line {
                 Line::Custom(slice, foreground) => {
                     self.print_modifier(foreground);
@@ -85,21 +86,17 @@ impl Printable for TextTile {
             let mut length = slice.len();
 
             while length >= width {
-                if width == 0 || height - rows == 0 {
-                    break;
-                }
                 Pane::set_cursor((rows, cols));
                 let str = &slice[..width];
 
                 print!("{str}");
-                rows += 2;
+                rows += 1;
                 length -= width;
                 slice = &slice[width..];
             }
 
             if !slice.is_empty() {
                 print!("{slice}");
-                rows += 2;
             }
             if is_custom {
                 print! {"{}",TextModifier::get_foreground_modifier(&ForegroundModifier::White)}

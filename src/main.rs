@@ -3,6 +3,8 @@ mod client;
 use args::parse_args;
 use ptui::modifiers::{BackgroundModifier, ForegroundModifier};
 use ptui::ptui::Ptui;
+use ptui::tiling::text::TextTile;
+use ptui::tiling::tiles::Tile;
 use ptui::traits::TextManager;
 use std::env;
 
@@ -13,6 +15,10 @@ fn main() {
         ForegroundModifier::Custom("\x1b[38;5;61m".to_string()),
         33,
     );
+    let _ = Ptui::push(Tile::Line(TextTile::new(
+        "A REALLLLLLLLLYYYY YLONG STRING SO THAT I CAN TEXT THE FICKING IRE OWERQWE WRAPAROUND"
+            .to_owned(),
+    )));
 
     parse_args(env::args().collect());
     Ptui::wait_input();

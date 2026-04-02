@@ -79,7 +79,7 @@ impl Ptui {
         }
 
         let mut pane = self.pane.lock().expect("Unable to lock pane");
-        pane.print((0, 3), (rows as usize, cols as usize - 3));
+        pane.print((3, 3), (rows as usize - 3, cols as usize - 3));
         io::stdout().flush().unwrap();
     }
     fn render() {
@@ -87,7 +87,6 @@ impl Ptui {
     }
 
     pub fn finalize() {
-        Self::render();
         Self::clear_screen();
         print!("\x1B[0m"); // Reset background and foreground
         print!("\x1B[?25h"); // Restore cursor
