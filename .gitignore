@@ -1,0 +1,6 @@
+src/cores
+bin/
+*.o
+compile_commands.json
+.cache
+.freesync
