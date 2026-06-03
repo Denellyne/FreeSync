@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <netinet/in.h>
 #include <print>
 #include <sys/socket.h>
@@ -9,14 +10,14 @@
 
 class FTP {
 public:
-  FTP();
+  FTP(std::atomic_bool &running);
   ~FTP() {
     if (this->_serverFD != -1)
       close(this->_serverFD);
   }
 
-  [[noreturn]] void run();
-  static void handleConnection(const int fd);
+  void run();
+  static void handleConnection(const int fd, const std::atomic_bool &running);
 
   struct Connection {
     const int _fd;
@@ -33,15 +34,17 @@ public:
         close(this->_dataSock);
     }
 
-    void run();
+    void run(const std::atomic_bool &running);
 
   private:
     int readSocket();
+    int writeToSocket(const int fd, std::string_view &message);
     bool write(std::string message);
-    bool writeData(const std::string message, const int fd);
+    bool writeDataSocket(const std::string message, const int fd);
     bool handleLogin();
     bool passiveMode();
   };
   struct sockaddr_in _sockAddr;
   int _serverFD;
+  std::atomic_bool &_running;
 };
