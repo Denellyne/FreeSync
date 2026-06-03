@@ -12,8 +12,12 @@ class FTP {
 public:
   FTP(std::atomic_bool &running);
   ~FTP() {
-    if (this->_serverFD != -1)
+    if (this->_serverFD < 0)
+      return;
+    do
       close(this->_serverFD);
+    while (errno == EAGAIN || errno == EWOULDBLOCK);
+    this->_serverFD = -1;
   }
 
   void run();
@@ -29,9 +33,8 @@ public:
     Connection(const int fd, bool &valid);
     ~Connection() {
       std::println("Closing connection of sock:{}", this->_fd);
-      close(this->_fd);
-      if (this->_dataSock != -1)
-        close(this->_dataSock);
+      closeSocket(const_cast<int &>(this->_fd));
+      closeSocket(this->_dataSock);
     }
 
     void run(const std::atomic_bool &running);
@@ -43,6 +46,14 @@ public:
     bool writeDataSocket(const std::string message, const int fd);
     bool handleLogin();
     bool passiveMode();
+    void closeSocket(int &fd) {
+      if (fd < 0)
+        return;
+      do
+        close(fd);
+      while (errno == EAGAIN || errno == EWOULDBLOCK);
+      fd = -1;
+    }
   };
   struct sockaddr_in _sockAddr;
   int _serverFD;

@@ -10,7 +10,7 @@ FTP::FTP(std::atomic_bool &running) : _running(running) {
   struct timeval timeout;
   timeout.tv_sec = 10;
   timeout.tv_usec = 0;
-  if ((this->_serverFD = socket(AF_INET, SOCK_STREAM, 0)) == 0)
+  if ((this->_serverFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) == 0)
     throw std::runtime_error("Socket failed\n");
 
   if (setsockopt(this->_serverFD, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt,
@@ -182,7 +182,7 @@ bool FTP::Connection::handleLogin() {
 bool FTP::Connection::passiveMode() {
   int opt = 1;
   if (this->_dataSock != -1)
-    close(this->_dataSock);
+    closeSocket(this->_dataSock);
   if ((this->_dataSock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) ==
       0) {
     std::cerr << "Unable to open socket for data\n";
@@ -238,8 +238,7 @@ void FTP::Connection::run(const std::atomic_bool &running) {
         perror("Accept");
 
         connectionValid &= write("226 Couldn't accept new socket");
-        close(this->_dataSock);
-        this->_dataSock = -1;
+        closeSocket(this->_dataSock);
         continue;
       }
       connectionValid &= writeDataSocket(
@@ -247,9 +246,8 @@ void FTP::Connection::run(const std::atomic_bool &running) {
           "MUTIO TOTO E CHEIRA A CU HEHEHHE PARA DEOLHAR PARA AQUI "
           "SUA TOTO   ",
           newSocket);
-      close(newSocket);
-      close(this->_dataSock);
-      this->_dataSock = -1;
+      closeSocket(newSocket);
+      closeSocket(this->_dataSock);
       connectionValid &= write("226 Transfer Complete");
     } else if (strstr(this->_buffer, "PWD") != NULL) {
       const std::string message = "257 \"" + this->currentPath + "\"";
@@ -287,25 +285,15 @@ void FTP::Connection::run(const std::atomic_bool &running) {
         perror("Accept");
         connectionValid &= write("226 Couldn't accept new socket");
 
-        do
-          close(this->_dataSock);
-        while (errno == EAGAIN || errno == EWOULDBLOCK);
-
-        this->_dataSock = -1;
+        closeSocket(this->_dataSock);
         continue;
       }
 
       connectionValid &= write("150 Directory listing");
       connectionValid &= writeDataSocket(
           "-rw-r--r-- 1 user group 123 Jan 01 12:00 file.txt\r\n", newSocket);
-      do
-        close(newSocket);
-      while (errno == EAGAIN || errno == EWOULDBLOCK);
-
-      do
-        close(this->_dataSock);
-      while (errno == EAGAIN || errno == EWOULDBLOCK);
-      this->_dataSock = -1;
+      closeSocket(newSocket);
+      closeSocket(this->_dataSock);
       connectionValid &= write("226 Transfer Complete");
     } else
       connectionValid &=
