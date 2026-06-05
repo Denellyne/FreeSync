@@ -24,11 +24,6 @@ public:
   static void handleConnection(const int fd, const std::atomic_bool &running);
 
   struct Connection {
-    const int _fd;
-    int _dataSock = -1;
-    struct sockaddr_in _dataAddr;
-    std::string currentPath = "/FreeSync";
-    char _buffer[BUFFERSIZE];
     Connection() = delete;
     Connection(const int fd, bool &valid);
     ~Connection() {
@@ -54,6 +49,12 @@ public:
       while (errno == EAGAIN || errno == EWOULDBLOCK);
       fd = -1;
     }
+
+    const int _fd;
+    int _dataSock = -1;
+    struct sockaddr_in _dataAddr;
+    std::string currentPath = "/FreeSync";
+    char _buffer[BUFFERSIZE];
   };
   struct sockaddr_in _sockAddr;
   int _serverFD;
