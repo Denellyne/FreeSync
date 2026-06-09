@@ -5,6 +5,8 @@
 #include <sys/socket.h>
 #include <thread>
 
+std::unordered_map<std::string, std::string> FTP::_users = {
+    {"Santos", "fedora"}};
 FTP::FTP(std::atomic_bool &running) : _running(running) {
   int opt = 1;
   struct timeval timeout;
@@ -92,7 +94,7 @@ int FTP::Connection::readSocket() {
 }
 
 int FTP::Connection::writeToSocket(const int fd, std::string_view &message) {
-  const size_t size = message.length();
+  const ssize_t size = message.length();
   const int res = send(fd, message.data(), size, 0);
   if (res > 0)
     return res;
@@ -108,7 +110,7 @@ int FTP::Connection::writeToSocket(const int fd, std::string_view &message) {
 
 bool FTP::Connection::write(std::string message) {
   message += "\r\n";
-  const size_t size = message.length();
+  const ssize_t size = message.length();
   ssize_t sent = 0;
   std::string_view view = message;
   while (sent < size) {
@@ -127,7 +129,7 @@ bool FTP::Connection::writeDataSocket(const std::string message, const int fd) {
     return false;
   ssize_t sent = 0;
   std::string_view view = message;
-  const size_t size = view.size();
+  const ssize_t size = view.size();
   while (sent < size) {
     const ssize_t val = this->writeToSocket(fd, view);
     if (val == -1)
@@ -140,47 +142,44 @@ bool FTP::Connection::writeDataSocket(const std::string message, const int fd) {
 }
 bool FTP::Connection::handleLogin() {
 
-  ssize_t valread = readSocket();
-  if (!valread)
-    return false;
+  bool isValid = true;
+  std::string user = "";
+  std::string pass = "";
+  while (isValid) {
+    if (!user.empty() && !pass.empty())
+      return FTP::isUserValid(user, pass);
 
-  if (strstr(this->_buffer, "AUTH TLS") != NULL)
-    write("534 TLS not supported");
-
-  valread = readSocket();
-  if (!valread)
-    return false;
-  if (strstr(this->_buffer, "AUTH SSL") != NULL)
-    write("534 SSL not supported");
-
-  valread = readSocket();
-  if (!valread)
-    return false;
-  if (strstr(this->_buffer, "USER") != NULL) {
-    std::string user = this->_buffer;
-    user.erase(user.length() - 2, 2);
-    user.erase(0, 5);
-    if (user != "Santos")
+    const ssize_t valread = readSocket();
+    if (!valread)
       return false;
-    write("331 Password required.");
-  } else
-    return false;
-  valread = readSocket();
-  if (!valread)
-    return false;
-  if (strstr(this->_buffer, "PASS") != NULL) {
-    std::string pass = this->_buffer;
-    pass.erase(pass.length() - 2, 2);
-    pass.erase(0, 5);
-    if (pass != "fedora")
-      return false;
-  } else
-    return false;
 
-  return true;
+    if (strstr(this->_buffer, "CLNT") != NULL) {
+      std::string client = this->_buffer;
+      client.erase(pass.length() - 2, 2);
+      client.erase(0, 5);
+      std::cout << client << " Connected to server\n";
+      isValid &= write("200 Command okay");
+
+    } else if (strstr(this->_buffer, "AUTH TLS") != NULL)
+      isValid &= isValid & write("534 TLS not supported");
+    else if (strstr(this->_buffer, "AUTH SSL") != NULL)
+      isValid &= write("534 SSL not supported");
+    else if (strstr(this->_buffer, "USER") != NULL) {
+      user = this->_buffer;
+      user.erase(user.length() - 2, 2);
+      user.erase(0, 5);
+
+      isValid &= write("331 Password required.");
+    } else if (strstr(this->_buffer, "PASS") != NULL) {
+      pass = this->_buffer;
+      pass.erase(pass.length() - 2, 2);
+      pass.erase(0, 5);
+    } else
+      isValid &= write("202 Command not implemented, superfluous at this site");
+  }
+  return isValid;
 }
 bool FTP::Connection::passiveMode() {
-  int opt = 1;
   if (this->_dataSock != -1)
     closeSocket(this->_dataSock);
   if ((this->_dataSock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) ==
@@ -203,6 +202,22 @@ bool FTP::Connection::passiveMode() {
   }
   return true;
 }
+
+int FTP::Connection::acceptSocket(const int &sock,
+                                  const sockaddr_in &sockAddr) {
+
+  socklen_t addrlen = sizeof(sockAddr);
+  if (int newSocket =
+          accept4(sock, (struct sockaddr *)&sockAddr, &addrlen, SOCK_NONBLOCK);
+      newSocket < 0) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+      return acceptSocket(sock, sockAddr);
+
+    perror("Accept");
+    return -1;
+  } else
+    return newSocket;
+}
 void FTP::Connection::run(const std::atomic_bool &running) {
 
   // send(con._fd, "220 Features: a\r\n", 17, 0);
@@ -214,29 +229,38 @@ void FTP::Connection::run(const std::atomic_bool &running) {
 
     if (strstr(this->_buffer, "QUIT") != NULL) {
       connectionValid &= write("221 Closing connection");
+      connectionValid = false;
       break;
     } else if (strstr(this->_buffer, "TYPE") != NULL)
       connectionValid &= write("200 TYPE set");
-
+    else if (strstr(this->_buffer, "NOOP") != NULL)
+      connectionValid &= write("200 Command OK");
     else if (strstr(this->_buffer, "CWD") != NULL)
       connectionValid &= write("250 Directory Changed");
-    else if (strstr(this->_buffer, "RETR") != NULL) {
+    else if (strstr(this->_buffer, "STRU") != NULL) {
+      if ((strstr(&this->_buffer[5], "F") != NULL) ||
+          (strstr(&this->_buffer[5], "f") != NULL))
+        connectionValid &= write("200 Command OK");
+      else
+        connectionValid &=
+            write("504 Command not implemented for that parameter");
+    } else if (strstr(this->_buffer, "MODE") != NULL) {
+      if ((strstr(&this->_buffer[5], "S") != NULL) ||
+          (strstr(&this->_buffer[5], "s") != NULL))
+        connectionValid &= write("200 Command OK");
+      else
+        connectionValid &=
+            write("504 Command not implemented for that parameter");
+    } else if (strstr(this->_buffer, "RETR") != NULL) {
       if (this->_dataSock < 0) {
         connectionValid &= write("425 Use PASV first");
         continue;
       }
 
       connectionValid &= write("150 Opening binary mode data connection");
-    retry:
-      int newSocket;
-      socklen_t addrlen = sizeof(this->_dataAddr);
-      if ((newSocket =
-               accept4(this->_dataSock, (struct sockaddr *)&this->_dataAddr,
-                       &addrlen, SOCK_NONBLOCK)) < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-          goto retry;
-        perror("Accept");
+      int newSocket = this->acceptSocket(this->_dataSock, this->_dataAddr);
 
+      if (newSocket == -1) {
         connectionValid &= write("226 Couldn't accept new socket");
         closeSocket(this->_dataSock);
         continue;
@@ -274,17 +298,10 @@ void FTP::Connection::run(const std::atomic_bool &running) {
         continue;
       }
 
-    retry2:
-      int newSocket;
-      socklen_t addrlen = sizeof(this->_dataAddr);
-      if ((newSocket =
-               accept4(this->_dataSock, (struct sockaddr *)&this->_dataAddr,
-                       &addrlen, SOCK_NONBLOCK)) < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-          goto retry2;
-        perror("Accept");
-        connectionValid &= write("226 Couldn't accept new socket");
+      int newSocket = this->acceptSocket(this->_dataSock, this->_dataAddr);
 
+      if (newSocket == -1) {
+        connectionValid &= write("226 Couldn't accept new socket");
         closeSocket(this->_dataSock);
         continue;
       }
