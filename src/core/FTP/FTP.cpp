@@ -1,9 +1,16 @@
 #include "FTP.h"
+#include <arpa/inet.h>
 #include <asm-generic/socket.h>
 #include <cstring>
 #include <iostream>
+#include <optional>
+#include <ranges>
+#include <sys/poll.h>
 #include <sys/socket.h>
 #include <thread>
+using CommandVector = std::vector<FTP::Connection::Command>;
+using CommandVectorOpt = std::optional<CommandVector>;
+using FTPCommand = FTP::Connection::Command;
 
 std::unordered_map<std::string, std::string> FTP::_users = {
     {"Santos", "fedora"}};
@@ -12,7 +19,7 @@ FTP::FTP(std::atomic_bool &running) : _running(running) {
   struct timeval timeout;
   timeout.tv_sec = 10;
   timeout.tv_usec = 0;
-  if ((this->_serverFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) == 0)
+  if ((this->_serverFD = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) < 0)
     throw std::runtime_error("Socket failed\n");
 
   if (setsockopt(this->_serverFD, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt,
@@ -43,8 +50,11 @@ void FTP::run() {
             accept4(this->_serverFD, (struct sockaddr *)&this->_sockAddr,
                     &addrlen, SOCK_NONBLOCK);
         newSocket < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         continue;
+      }
 
       perror("Accept");
     } else
@@ -71,26 +81,45 @@ FTP::Connection::Connection(const int fd, bool &valid) : _fd(fd) {
     write("230 User is logged in, may proceed.");
 }
 
-int FTP::Connection::readSocket() {
+StringOpt FTP::Connection::readSocket() {
 
-  memset(this->_buffer, 0, BUFFERSIZE);
-  int res = 0;
+  std::string receivedData = "";
+  int valread = 0;
+  struct pollfd pfd;
+  pfd.fd = this->_fd;
+  pfd.events = POLLIN;
+
+  int pollResult = poll(&pfd, 1, SOCKET_TIMEOUT);
+
+  if (pollResult < 0) {
+    if (errno == EINTR)
+      return readSocket();
+    perror("Poll error");
+    return std::nullopt;
+  } else if (pollResult == 0) {
+    std::println("Client socket timed out waiting for input.");
+    return std::nullopt;
+  }
 
   do {
-    const int valread =
-        recv(this->_fd, &this->_buffer[res], BUFFERSIZE - res, 0);
-    if (valread > 0)
-      res += valread;
-    else if (valread == 0) {
-      perror("Recv");
-      return 0;
-    } else if (errno == EAGAIN || errno == EWOULDBLOCK)
+    memset(this->_buffer, 0, BUFFERSIZE);
+    valread = recv(this->_fd, this->_buffer, BUFFERSIZE, 0);
+    if (valread > 0) {
+      receivedData.append(this->_buffer, valread);
+    } else if (valread == 0)
+      break;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK)
+      break;
+    else if (errno == EINTR)
       continue;
+    else {
+      perror("Recv error");
+      return std::nullopt;
+    }
+  } while (valread != 0);
 
-    std::cout << "Received: " << this->_buffer << '\n';
-  } while (this->_buffer[res - 2] != '\r' && this->_buffer[res - 1] != '\n');
-
-  return res;
+  std::println("Received: {}", receivedData);
+  return receivedData;
 }
 
 int FTP::Connection::writeToSocket(const int fd, std::string_view &message) {
@@ -141,7 +170,6 @@ bool FTP::Connection::writeDataSocket(const std::string message, const int fd) {
   return true;
 }
 bool FTP::Connection::handleLogin() {
-
   bool isValid = true;
   std::string user = "";
   std::string pass = "";
@@ -149,41 +177,41 @@ bool FTP::Connection::handleLogin() {
     if (!user.empty() && !pass.empty())
       return FTP::isUserValid(user, pass);
 
-    const ssize_t valread = readSocket();
-    if (!valread)
+    StringOpt opt = readSocket();
+    if (!opt.has_value())
       return false;
+    CommandVectorOpt vecOpt = parseCommands(opt.value());
+    if (!vecOpt.has_value())
+      return false;
+    CommandVector commands = vecOpt.value();
+    for (const auto &command : commands) {
+      if (!isValid)
+        return false;
+      if (!user.empty() && !pass.empty())
+        return FTP::isUserValid(user, pass);
 
-    if (strstr(this->_buffer, "CLNT") != NULL) {
-      std::string client = this->_buffer;
-      client.erase(pass.length() - 2, 2);
-      client.erase(0, 5);
-      std::cout << client << " Connected to server\n";
-      isValid &= write("200 Command okay");
-
-    } else if (strstr(this->_buffer, "AUTH TLS") != NULL)
-      isValid &= isValid & write("534 TLS not supported");
-    else if (strstr(this->_buffer, "AUTH SSL") != NULL)
-      isValid &= write("534 SSL not supported");
-    else if (strstr(this->_buffer, "USER") != NULL) {
-      user = this->_buffer;
-      user.erase(user.length() - 2, 2);
-      user.erase(0, 5);
-
-      isValid &= write("331 Password required.");
-    } else if (strstr(this->_buffer, "PASS") != NULL) {
-      pass = this->_buffer;
-      pass.erase(pass.length() - 2, 2);
-      pass.erase(0, 5);
-    } else
-      isValid &= write("202 Command not implemented, superfluous at this site");
+      else if (checkCommand(command._command, "CLNT")) {
+        std::cout << command._arg << " Connected to server\n";
+        isValid &= write("200 Command okay");
+      } else if (checkCommand(command._command, "AUTH TLS"))
+        isValid &= isValid & write("534 TLS not supported");
+      else if (checkCommand(command._command, "AUTH SSL"))
+        isValid &= write("534 SSL not supported");
+      else if (checkCommand(command._command, "USER")) {
+        user = command._arg;
+        isValid &= write("331 Password required.");
+      } else if (checkCommand(command._command, "PASS"))
+        pass = command._arg;
+      else
+        isValid &=
+            write("202 Command not implemented, superfluous at this site");
+    }
   }
   return isValid;
 }
 bool FTP::Connection::passiveMode() {
-  if (this->_dataSock != -1)
-    closeSocket(this->_dataSock);
-  if ((this->_dataSock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) ==
-      0) {
+  closeSocket(this->_dataSock);
+  if ((this->_dataSock = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) < 0) {
     std::cerr << "Unable to open socket for data\n";
     return false;
   }
@@ -205,12 +233,29 @@ bool FTP::Connection::passiveMode() {
 
 int FTP::Connection::acceptSocket(const int &sock,
                                   const sockaddr_in &sockAddr) {
+  if (sock < 0)
+    return -1;
 
+  struct pollfd pfd;
+  pfd.fd = sock;
+  pfd.events = POLLIN;
+
+  int pollResult = poll(&pfd, 1, SOCKET_TIMEOUT);
+
+  if (pollResult < 0) {
+    if (errno == EINTR)
+      return acceptSocket(sock, sockAddr);
+    perror("Poll error");
+    return false;
+  } else if (pollResult == 0) {
+    std::println("Client socket timed out waiting to accept.");
+    return false;
+  }
   socklen_t addrlen = sizeof(sockAddr);
   if (int newSocket =
           accept4(sock, (struct sockaddr *)&sockAddr, &addrlen, SOCK_NONBLOCK);
       newSocket < 0) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+    if (errno == EINTR)
       return acceptSocket(sock, sockAddr);
 
     perror("Accept");
@@ -220,100 +265,165 @@ int FTP::Connection::acceptSocket(const int &sock,
 }
 void FTP::Connection::run(const std::atomic_bool &running) {
 
-  // send(con._fd, "220 Features: a\r\n", 17, 0);
   bool connectionValid = true;
   while (connectionValid && running.load()) {
-    connectionValid = readSocket();
-    if (!connectionValid)
+    StringOpt opt = readSocket();
+    if (!opt.has_value())
       break;
-
-    if (strstr(this->_buffer, "QUIT") != NULL) {
-      connectionValid &= write("221 Closing connection");
-      connectionValid = false;
+    const std::string input = this->_fragmentBuffer + opt.value();
+    CommandVectorOpt vecOpt = parseCommands(input);
+    if (!vecOpt.has_value())
       break;
-    } else if (strstr(this->_buffer, "TYPE") != NULL)
-      connectionValid &= write("200 TYPE set");
-    else if (strstr(this->_buffer, "NOOP") != NULL)
-      connectionValid &= write("200 Command OK");
-    else if (strstr(this->_buffer, "CWD") != NULL)
-      connectionValid &= write("250 Directory Changed");
-    else if (strstr(this->_buffer, "STRU") != NULL) {
-      if ((strstr(&this->_buffer[5], "F") != NULL) ||
-          (strstr(&this->_buffer[5], "f") != NULL))
-        connectionValid &= write("200 Command OK");
-      else
+    CommandVector commands = vecOpt.value();
+    for (const auto &command : commands) {
+
+      if (checkCommand(command._command, "QUIT")) {
+        connectionValid &= write("221 Closing connection");
+        connectionValid = false;
+        break;
+      } else if (checkCommand(command._command, "SYST"))
+        connectionValid &= write("215 UNIX Type: L8");
+      else if (checkCommand(command._command, "FEAT"))
         connectionValid &=
-            write("504 Command not implemented for that parameter");
-    } else if (strstr(this->_buffer, "MODE") != NULL) {
-      if ((strstr(&this->_buffer[5], "S") != NULL) ||
-          (strstr(&this->_buffer[5], "s") != NULL))
+            write("211-Extensions supported:\r\n UTF8\r\n211 End");
+      else if (checkCommand(command._command, "TYPE"))
+        connectionValid &= write("200 TYPE set");
+      else if (checkCommand(command._command, "NOOP"))
         connectionValid &= write("200 Command OK");
-      else
+      else if (checkCommand(command._command, "CWD")) {
+        this->_currentPath = command._arg;
+        connectionValid &= write("250 Directory Changed");
+      } else if (checkCommand(command._command, "STRU"))
+        if (checkCommand(command._arg, "F"))
+          connectionValid &= write("200 Command OK");
+        else
+          connectionValid &=
+              write("504 Command not implemented for that parameter");
+      else if (checkCommand(command._command, "MODE")) {
+        if (checkCommand(command._arg, "S"))
+          connectionValid &= write("200 Command OK");
+        else
+          connectionValid &=
+              write("504 Command not implemented for that parameter");
+      }
+
+      else if (checkCommand(command._command, "SIZE"))
+        connectionValid &= write("213 123");
+
+      else if (checkCommand(command._command, "MDTM"))
+        connectionValid &= write("213 20260609214600");
+
+      else if (checkCommand(command._command, "RETR")) {
+        if (this->_dataSock < 0) {
+          connectionValid &= write("425 Use PASV first");
+          continue;
+        }
+
+        connectionValid &= write("150 Opening binary mode data connection");
+        int newSocket = this->acceptSocket(this->_dataSock, this->_dataAddr);
+
+        if (newSocket == -1) {
+          connectionValid &= write("226 Couldn't accept new socket");
+          closeSocket(this->_dataSock);
+          continue;
+        }
+        connectionValid &= writeDataSocket(
+            "TEST STRING OF ME TRANSFERING SHIT MUAHSHAHA poookie +E "
+            "MUTIO TOTO E CHEIRA A CU HEHEHHE PARA DEOLHAR PARA AQUI "
+            "SUA TOTO   ",
+            newSocket);
+        closeSocket(newSocket);
+        closeSocket(this->_dataSock);
+        connectionValid &= write("226 Transfer Complete");
+      } else if (checkCommand(command._command, "PWD")) {
+        const std::string message = "257 \"" + this->_currentPath + "\"";
+        connectionValid &= write(message);
+      } else if (checkCommand(command._command, "PASV")) {
+        if (!this->passiveMode()) {
+          connectionValid &= write("500 Unable to enter Passive Mode");
+          continue;
+        }
+        socklen_t len = sizeof(this->_dataAddr);
+        getsockname(this->_dataSock, (sockaddr *)&this->_dataAddr, &len);
+
+        const int port = ntohs(this->_dataAddr.sin_port);
+        sockaddr_in localAddr;
+        socklen_t addrLen = sizeof(localAddr);
+        getsockname(this->_fd, (struct sockaddr *)&localAddr, &addrLen);
+
+        std::string ipStr = inet_ntoa(localAddr.sin_addr);
+        std::replace(ipStr.begin(), ipStr.end(), '.', ',');
+        const int p1 = port / 256;
+        const int p2 = port % 256;
+        const std::string message = "227 Entering Passive Mode (" + ipStr +
+                                    ',' + std::to_string(p1) + ',' +
+                                    std::to_string(p2) + ')';
+        connectionValid &= write(message);
+      } else if (checkCommand(command._command, "LIST")) {
+        if (this->_dataSock < 0) {
+          connectionValid &= write("425 Use PASV first");
+          continue;
+        }
+
+        int newSocket = this->acceptSocket(this->_dataSock, this->_dataAddr);
+
+        if (newSocket == -1) {
+          connectionValid &= write("226 Couldn't accept new socket");
+          closeSocket(this->_dataSock);
+          continue;
+        }
+
+        connectionValid &= write("150 Directory listing");
+        connectionValid &= writeDataSocket(
+            "-rw-r--r-- 1 user group 123 Jan 01 12:00 file.txt\r\n", newSocket);
+        closeSocket(newSocket);
+        closeSocket(this->_dataSock);
+        connectionValid &= write("226 Transfer Complete");
+      } else
         connectionValid &=
-            write("504 Command not implemented for that parameter");
-    } else if (strstr(this->_buffer, "RETR") != NULL) {
-      if (this->_dataSock < 0) {
-        connectionValid &= write("425 Use PASV first");
-        continue;
-      }
-
-      connectionValid &= write("150 Opening binary mode data connection");
-      int newSocket = this->acceptSocket(this->_dataSock, this->_dataAddr);
-
-      if (newSocket == -1) {
-        connectionValid &= write("226 Couldn't accept new socket");
-        closeSocket(this->_dataSock);
-        continue;
-      }
-      connectionValid &= writeDataSocket(
-          "TEST STRING OF ME TRANSFERING SHIT MUAHSHAHA poookie +E "
-          "MUTIO TOTO E CHEIRA A CU HEHEHHE PARA DEOLHAR PARA AQUI "
-          "SUA TOTO   ",
-          newSocket);
-      closeSocket(newSocket);
-      closeSocket(this->_dataSock);
-      connectionValid &= write("226 Transfer Complete");
-    } else if (strstr(this->_buffer, "PWD") != NULL) {
-      const std::string message = "257 \"" + this->currentPath + "\"";
-      connectionValid &= write(message);
-    } else if (strstr(this->_buffer, "PASV") != NULL) {
-      if (!this->passiveMode()) {
-        connectionValid &= write("500 Unable to enter Passive Mode");
-        continue;
-      }
-      socklen_t len = sizeof(this->_dataAddr);
-      getsockname(this->_dataSock, (sockaddr *)&this->_dataAddr, &len);
-
-      const int port = ntohs(this->_dataAddr.sin_port);
-
-      const int p1 = port / 256;
-      const int p2 = port % 256;
-      const std::string message = "227 Entering Passive Mode (127,0,0,1," +
-                                  std::to_string(p1) + ',' +
-                                  std::to_string(p2) + ')';
-      connectionValid &= write(message);
-    } else if (strstr(this->_buffer, "LIST") != NULL) {
-      if (this->_dataSock < 0) {
-        connectionValid &= write("425 Use PASV first");
-        continue;
-      }
-
-      int newSocket = this->acceptSocket(this->_dataSock, this->_dataAddr);
-
-      if (newSocket == -1) {
-        connectionValid &= write("226 Couldn't accept new socket");
-        closeSocket(this->_dataSock);
-        continue;
-      }
-
-      connectionValid &= write("150 Directory listing");
-      connectionValid &= writeDataSocket(
-          "-rw-r--r-- 1 user group 123 Jan 01 12:00 file.txt\r\n", newSocket);
-      closeSocket(newSocket);
-      closeSocket(this->_dataSock);
-      connectionValid &= write("226 Transfer Complete");
-    } else
-      connectionValid &=
-          write("202 Command not implemented, superfluous at this site");
+            write("202 Command not implemented, superfluous at this site");
+    }
   }
+}
+CommandVectorOpt FTP::Connection::parseCommands(std::string_view input) {
+  if (!input.ends_with("\r\n")) {
+    const size_t idx = input.rfind("\r\n");
+    if (idx != input.npos) {
+      this->_fragmentBuffer = std::string{input.substr(idx + 2)};
+      input = input.substr(0, idx + 2);
+    } else {
+      std::cerr << "Incomplete input passed\n";
+      return std::nullopt;
+    }
+  }
+
+  auto split =
+      input | std::views::split(std::string_view{"\r\n"}) |
+      std::views::transform([](auto &&str) { return std::string_view(str); });
+  std::vector<FTPCommand> commands{};
+  commands.reserve(std::ranges::distance(split));
+  for (const auto str : split)
+    if (!str.empty())
+      commands.emplace_back(FTPCommand(str));
+
+  return commands;
+}
+
+FTP::Connection::Command::Command(std::string_view input) {
+  constexpr auto toUpper = [](std::string &str) {
+    for (auto &ch : str)
+      ch = std::toupper(ch);
+  };
+  auto split =
+      input | std::views::split(std::string_view{" "}) |
+      std::views::transform([](auto &&str) { return std::string_view(str); });
+  int idx = 0;
+  for (auto str : split) {
+    if (idx == 0)
+      this->_command = std::string{str};
+    else if (idx == 1)
+      this->_arg = std::string{str};
+    idx++;
+  }
+  toUpper(this->_command);
 }

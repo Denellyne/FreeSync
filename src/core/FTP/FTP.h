@@ -1,14 +1,20 @@
 #pragma once
+#include <algorithm>
 #include <atomic>
+#include <iostream>
 #include <netinet/in.h>
 #include <print>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <unordered_map>
+#include <vector>
 #define PORT 21
 #define BUFFERSIZE 8192
+#define SOCKET_TIMEOUT 5000
 
+using StringOpt = std::optional<std::string>;
 class FTP {
 public:
   FTP(std::atomic_bool &running);
@@ -26,7 +32,7 @@ public:
   static void handleConnection(const int fd, const std::atomic_bool &running);
   constexpr static bool isUserValid(const std::string_view user,
                                     const std::string_view pass) {
-    return FTP::_users[user.data()] == pass;
+    return FTP::_users[user.data()] == pass.data();
   }
 
   struct Connection {
@@ -40,27 +46,44 @@ public:
 
     void run(const std::atomic_bool &running);
 
+    struct Command {
+      Command() = delete;
+      Command(std::string_view input);
+
+      std::string _command, _arg;
+    };
+
+    using CommandVector = std::vector<FTP::Connection::Command>;
+    using CommandVectorOpt = std::optional<CommandVector>;
+
   private:
+    std::optional<CommandVector> parseCommands(std::string_view input);
     int acceptSocket(const int &sock, const sockaddr_in &sockAddr);
-    int readSocket();
+    StringOpt readSocket();
     int writeToSocket(const int fd, std::string_view &message);
     bool write(std::string message);
     bool writeDataSocket(const std::string message, const int fd);
     bool handleLogin();
     bool passiveMode();
+    bool checkCommand(const std::string_view buffer,
+                      const std::string_view command) {
+      return buffer == command;
+    }
+
     void closeSocket(int &fd) {
       if (fd < 0)
         return;
       do
-        close(fd);
-      while (errno == EAGAIN || errno == EWOULDBLOCK);
+        ;
+      while (close(fd) == -1 && errno == EINTR);
       fd = -1;
     }
 
+    std::string _fragmentBuffer = "";
     const int _fd;
     int _dataSock = -1;
     struct sockaddr_in _dataAddr;
-    std::string currentPath = "/FreeSync";
+    std::string _currentPath = "/";
     char _buffer[BUFFERSIZE];
   };
 
