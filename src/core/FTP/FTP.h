@@ -4,17 +4,18 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <print>
+#include <queue>
 #include <strings.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <unordered_map>
-#include <vector>
 #define PORT 21
 #define BUFFERSIZE 8192
-#define SOCKET_TIMEOUT 5000
+#define SOCKET_TIMEOUT 30000
 
 using StringOpt = std::optional<std::string>;
+
 class FTP {
 public:
   FTP(std::atomic_bool &running);
@@ -53,17 +54,17 @@ public:
       std::string _command, _arg;
     };
 
-    using CommandVector = std::vector<FTP::Connection::Command>;
-    using CommandVectorOpt = std::optional<CommandVector>;
+    using CommandQueue = std::queue<FTP::Connection::Command>;
+    using CommandQueueOpt = std::optional<CommandQueue>;
 
   private:
-    std::optional<CommandVector> parseCommands(std::string_view input);
+    std::optional<CommandQueue> parseCommands(std::string_view input);
     int acceptSocket(const int &sock, const sockaddr_in &sockAddr);
     StringOpt readSocket();
     int writeToSocket(const int fd, std::string_view &message);
     bool write(std::string message);
     bool writeDataSocket(const std::string message, const int fd);
-    bool handleLogin();
+    bool handleLogin(CommandQueue &queue, std::string &user, std::string &pass);
     bool passiveMode();
     bool checkCommand(const std::string_view buffer,
                       const std::string_view command) {
@@ -73,9 +74,8 @@ public:
     void closeSocket(int &fd) {
       if (fd < 0)
         return;
-      do
-        ;
-      while (close(fd) == -1 && errno == EINTR);
+      do {
+      } while (close(fd) == -1 && errno == EINTR);
       fd = -1;
     }
 
@@ -90,6 +90,6 @@ public:
 private:
   static std::unordered_map<std::string, std::string> _users;
   struct sockaddr_in _sockAddr;
-  int _serverFD;
+  int _serverFD = -1;
   std::atomic_bool &_running;
 };

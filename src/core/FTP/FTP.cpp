@@ -8,8 +8,8 @@
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <thread>
-using CommandVector = std::vector<FTP::Connection::Command>;
-using CommandVectorOpt = std::optional<CommandVector>;
+using CommandQueue = std::queue<FTP::Connection::Command>;
+using CommandQueueOpt = std::optional<CommandQueue>;
 using FTPCommand = FTP::Connection::Command;
 
 std::unordered_map<std::string, std::string> FTP::_users = {
@@ -71,14 +71,7 @@ void FTP::handleConnection(const int fd, const std::atomic_bool &running) {
 }
 
 FTP::Connection::Connection(const int fd, bool &valid) : _fd(fd) {
-
   valid = write("220 Welcome");
-  valid &= handleLogin();
-
-  if (!valid)
-    write("431 Log-on unsuccessful. User and/or password invalid.");
-  else
-    write("230 User is logged in, may proceed.");
 }
 
 StringOpt FTP::Connection::readSocket() {
@@ -169,44 +162,39 @@ bool FTP::Connection::writeDataSocket(const std::string message, const int fd) {
   std::cout << "Wrote " << message;
   return true;
 }
-bool FTP::Connection::handleLogin() {
+bool FTP::Connection::handleLogin(CommandQueue &queue, std::string &user,
+                                  std::string &pass) {
   bool isValid = true;
-  std::string user = "";
-  std::string pass = "";
-  while (isValid) {
-    if (!user.empty() && !pass.empty())
-      return FTP::isUserValid(user, pass);
 
-    StringOpt opt = readSocket();
-    if (!opt.has_value())
-      return false;
-    CommandVectorOpt vecOpt = parseCommands(opt.value());
-    if (!vecOpt.has_value())
-      return false;
-    CommandVector commands = vecOpt.value();
-    for (const auto &command : commands) {
-      if (!isValid)
+  while (!queue.empty() && isValid) {
+    if (!user.empty() && !pass.empty()) {
+      if (!FTP::isUserValid(user, pass)) {
+        write("431 Log-on unsuccessful. User and/or password invalid.");
         return false;
-      if (!user.empty() && !pass.empty())
-        return FTP::isUserValid(user, pass);
-
-      else if (checkCommand(command._command, "CLNT")) {
-        std::cout << command._arg << " Connected to server\n";
-        isValid &= write("200 Command okay");
-      } else if (checkCommand(command._command, "AUTH TLS"))
-        isValid &= isValid & write("534 TLS not supported");
-      else if (checkCommand(command._command, "AUTH SSL"))
-        isValid &= write("534 SSL not supported");
-      else if (checkCommand(command._command, "USER")) {
-        user = command._arg;
-        isValid &= write("331 Password required.");
-      } else if (checkCommand(command._command, "PASS"))
-        pass = command._arg;
-      else
-        isValid &=
-            write("202 Command not implemented, superfluous at this site");
+      }
+      write("230 User is logged in, may proceed.");
+      return true;
     }
+
+    const Command command = queue.front();
+    queue.pop();
+
+    if (checkCommand(command._command, "CLNT")) {
+      std::cout << command._arg << " Connected to server\n";
+      isValid &= write("200 Command okay");
+    } else if (checkCommand(command._command, "AUTH TLS"))
+      isValid &= isValid & write("534 TLS not supported");
+    else if (checkCommand(command._command, "AUTH SSL"))
+      isValid &= write("534 SSL not supported");
+    else if (checkCommand(command._command, "USER")) {
+      user = command._arg;
+      isValid &= write("331 Password required.");
+    } else if (checkCommand(command._command, "PASS"))
+      pass = command._arg;
+    else
+      isValid &= write("530 Not logged in");
   }
+
   return isValid;
 }
 bool FTP::Connection::passiveMode() {
@@ -264,41 +252,60 @@ int FTP::Connection::acceptSocket(const int &sock,
     return newSocket;
 }
 void FTP::Connection::run(const std::atomic_bool &running) {
-
   bool connectionValid = true;
+  bool isLoggedIn = false;
+  std::string user = "";
+  std::string pass = "";
   while (connectionValid && running.load()) {
     StringOpt opt = readSocket();
     if (!opt.has_value())
       break;
     const std::string input = this->_fragmentBuffer + opt.value();
-    CommandVectorOpt vecOpt = parseCommands(input);
+    CommandQueueOpt vecOpt = parseCommands(input);
     if (!vecOpt.has_value())
       break;
-    CommandVector commands = vecOpt.value();
-    for (const auto &command : commands) {
-
-      if (checkCommand(command._command, "QUIT")) {
+    CommandQueue queue = vecOpt.value();
+    while (!queue.empty() && connectionValid) {
+      if (!isLoggedIn) {
+        isLoggedIn = handleLogin(queue, user, pass);
+        continue;
+      }
+      Command command = queue.front();
+      queue.pop();
+      if (checkCommand(command._command, "CLNT")) {
+        std::cout << command._arg << " Connected to server\n";
+        connectionValid &= write("200 Command okay");
+      } else if (checkCommand(command._command, "QUIT")) {
         connectionValid &= write("221 Closing connection");
         connectionValid = false;
         break;
-      } else if (checkCommand(command._command, "SYST"))
+      }
+
+      else if (checkCommand(command._command, "SYST"))
         connectionValid &= write("215 UNIX Type: L8");
+
       else if (checkCommand(command._command, "FEAT"))
         connectionValid &=
             write("211-Extensions supported:\r\n UTF8\r\n211 End");
+
       else if (checkCommand(command._command, "TYPE"))
         connectionValid &= write("200 TYPE set");
+
       else if (checkCommand(command._command, "NOOP"))
         connectionValid &= write("200 Command OK");
+
       else if (checkCommand(command._command, "CWD")) {
         this->_currentPath = command._arg;
         connectionValid &= write("250 Directory Changed");
-      } else if (checkCommand(command._command, "STRU"))
+      }
+
+      else if (checkCommand(command._command, "STRU"))
         if (checkCommand(command._arg, "F"))
           connectionValid &= write("200 Command OK");
         else
           connectionValid &=
               write("504 Command not implemented for that parameter");
+
       else if (checkCommand(command._command, "MODE")) {
         if (checkCommand(command._arg, "S"))
           connectionValid &= write("200 Command OK");
@@ -385,7 +392,8 @@ void FTP::Connection::run(const std::atomic_bool &running) {
     }
   }
 }
-CommandVectorOpt FTP::Connection::parseCommands(std::string_view input) {
+CommandQueueOpt FTP::Connection::parseCommands(std::string_view input) {
+  this->_fragmentBuffer.clear();
   if (!input.ends_with("\r\n")) {
     const size_t idx = input.rfind("\r\n");
     if (idx != input.npos) {
@@ -400,11 +408,10 @@ CommandVectorOpt FTP::Connection::parseCommands(std::string_view input) {
   auto split =
       input | std::views::split(std::string_view{"\r\n"}) |
       std::views::transform([](auto &&str) { return std::string_view(str); });
-  std::vector<FTPCommand> commands{};
-  commands.reserve(std::ranges::distance(split));
+  std::queue<FTPCommand> commands{};
   for (const auto str : split)
     if (!str.empty())
-      commands.emplace_back(FTPCommand(str));
+      commands.emplace(FTPCommand(str));
 
   return commands;
 }
@@ -419,6 +426,8 @@ FTP::Connection::Command::Command(std::string_view input) {
       std::views::transform([](auto &&str) { return std::string_view(str); });
   int idx = 0;
   for (auto str : split) {
+    if (str.empty())
+      continue;
     if (idx == 0)
       this->_command = std::string{str};
     else if (idx == 1)

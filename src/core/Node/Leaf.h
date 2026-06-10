@@ -19,7 +19,7 @@ public:
 
     this->_objPath = path;
   }
-  const bool isExecutable() const { return this->_isExecutable; }
+  bool isExecutable() const { return this->_isExecutable; }
 
   constexpr const std::string_view getHash() const override {
     return this->_hash;

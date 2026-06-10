@@ -1,5 +1,5 @@
 CXX = g++
-CFLAGS =-O2 -march=native -funroll-loops -Wall -std=c++23 -lssl -lz -lcrypto
+CFLAGS =-O2 -march=native -funroll-loops -flto -fopt-info-vec -ffast-math -Wall -Wextra -Wpedantic -std=c++23 -lssl -lz -lcrypto
 
 INCLUDES := $(shell find . -name '*.cpp')
 OBJ := $(patsubst %.cpp,%.o,$(INCLUDES))

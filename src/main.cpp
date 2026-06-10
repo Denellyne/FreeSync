@@ -12,7 +12,7 @@ void sigHandler(const int sig) {
     break;
   }
 }
-int main(int argc, char *argv[]) {
+int main(void) {
   signal(SIGINT, sigHandler);
   try {
     FTP sv = FTP(running);
