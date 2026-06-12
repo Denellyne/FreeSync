@@ -64,7 +64,8 @@ public:
     int writeToSocket(const int fd, std::string_view &message);
     bool write(std::string message);
     bool writeDataSocket(const std::string message, const int fd);
-    bool handleLogin(CommandQueue &queue, std::string &user, std::string &pass);
+    bool handleLogin(CommandQueue &queue, std::string &user, std::string &pass,
+                     bool &isLoggedIn);
     bool passiveMode();
     bool checkCommand(const std::string_view buffer,
                       const std::string_view command) {

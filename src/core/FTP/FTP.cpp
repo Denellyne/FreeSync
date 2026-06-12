@@ -163,7 +163,7 @@ bool FTP::Connection::writeDataSocket(const std::string message, const int fd) {
   return true;
 }
 bool FTP::Connection::handleLogin(CommandQueue &queue, std::string &user,
-                                  std::string &pass) {
+                                  std::string &pass, bool &isLoggedIn) {
   bool isValid = true;
 
   while (!queue.empty() && isValid) {
@@ -172,6 +172,7 @@ bool FTP::Connection::handleLogin(CommandQueue &queue, std::string &user,
         write("431 Log-on unsuccessful. User and/or password invalid.");
         return false;
       }
+      isLoggedIn = true;
       write("230 User is logged in, may proceed.");
       return true;
     }
@@ -195,6 +196,15 @@ bool FTP::Connection::handleLogin(CommandQueue &queue, std::string &user,
       isValid &= write("530 Not logged in");
   }
 
+  if (!user.empty() && !pass.empty()) {
+    if (!FTP::isUserValid(user, pass)) {
+      write("431 Log-on unsuccessful. User and/or password invalid.");
+      return false;
+    }
+    isLoggedIn = true;
+    write("230 User is logged in, may proceed.");
+    return isValid;
+  }
   return isValid;
 }
 bool FTP::Connection::passiveMode() {
@@ -267,7 +277,7 @@ void FTP::Connection::run(const std::atomic_bool &running) {
     CommandQueue queue = vecOpt.value();
     while (!queue.empty() && connectionValid) {
       if (!isLoggedIn) {
-        isLoggedIn = handleLogin(queue, user, pass);
+        connectionValid = handleLogin(queue, user, pass, isLoggedIn);
         continue;
       }
       Command command = queue.front();
