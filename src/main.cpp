@@ -1,14 +1,15 @@
 #ifndef CLIENT
 #include "core/Networking/FSServer/FSServer.h"
+#include <csignal>
 #endif
 #ifdef CLIENT
 #include "core/Networking/FSClient/FSClient.h"
 #endif
-#include <csignal>
 #include <fcntl.h>
 #include <iostream>
 #include <stdexcept>
 #include <unistd.h>
+#ifndef CLIENT
 std::atomic_bool running = true;
 void sigHandler(const int sig) {
   switch (sig) {
@@ -17,10 +18,11 @@ void sigHandler(const int sig) {
     break;
   }
 }
+#endif
 int main(void) {
-  signal(SIGINT, sigHandler);
   try {
 #ifndef CLIENT
+    signal(SIGINT, sigHandler);
     FSServer sv = FSServer(running);
     sv.run();
 #endif

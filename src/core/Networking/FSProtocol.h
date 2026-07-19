@@ -2,11 +2,13 @@
 #include "../Encrypt/Encrypt.h"
 #include <cstring>
 #include <optional>
+#include <queue>
 #include <string>
 #include <sys/socket.h>
 using StringOpt = std::optional<SSLString>;
 #define PORT 20230
 #define BUFFERSIZE 512
+#define LENGTHSIZE 32
 
 enum FSCode {
   ERR = 100,  // Generic Error command followed by reason
@@ -34,6 +36,44 @@ enum FSCode {
               // session, either after a set ammount of times the key is used or
               // for a transfer, there only exists one AES key at a time
 };
+consteval int FSStrCode(const std::string_view code) {
+  if (code == "OK")
+    return 200;
+  else if (code == "LIST")
+    return 201;
+  else if (code == "DATA")
+    return 202;
+  else if (code == "TRNF")
+    return 203;
+  else if (code == "RDY")
+    return 204;
+  else if (code == "AESK")
+    return 205;
+  else if (code == "OKIV")
+    return 206;
+  else if (code == "RDY")
+    return 204;
+  else if (code == "AUTH")
+    return 300;
+  else if (code == "SIZE")
+    return 301;
+  else if (code == "RETR")
+    return 302;
+  else if (code == "STRU")
+    return 303;
+  else if (code == "PWD")
+    return 304;
+  else if (code == "CWD")
+    return 305;
+  else if (code == "DEL")
+    return 306;
+  else if (code == "ATTR")
+    return 307;
+  else if (code == "AES")
+    return 308;
+
+  return 100;
+}
 
 consteval std::string FSCodeStr(const FSCode code) {
   return std::to_string(code);
@@ -44,11 +84,25 @@ public:
   ~FSProtocol() = default;
   virtual void run() = 0;
 
+  struct Command {
+    Command() = delete;
+    Command(std::string_view input);
+
+    std::string _command, _arg;
+  };
+
+  using CommandQueue = std::queue<FSProtocol::Command>;
+  using CommandQueueOpt = std::optional<CommandQueue>;
+
 protected:
+  CommandQueueOpt parseCommands(std::string_view input);
+  Command Command(std::string_view input);
+
   bool writeToSocket(const int fd, SSLString &message);
   bool writeToSocketAES(const int fd, const std::string_view message);
   // virtual bool writeToSocket(std::string_view message, bool aes = true) = 0;
   // virtual StringOpt readSocket(bool aes = true) = 0;
+  constexpr bool readPacket(const int fd, void *data, uint32_t numBytes);
   StringOpt readSocket(const int fd);
   StringOpt readSocketRSA(const int fd);
   StringOpt readSocketAES(const int fd);
@@ -59,4 +113,5 @@ protected:
   AESPtr _aes = nullptr;
   RSAPtr _pub = nullptr;
   RSAPtr _private = nullptr;
+  std::string _fragmentBuffer = "";
 };

@@ -52,7 +52,6 @@ void FSServer::run() {
             this->_serverFD, (struct sockaddr *)&this->_sockAddr, &addrlen, 0);
         newSocket < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         continue;
       }
@@ -108,7 +107,9 @@ FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
 void FSServer::Connection::Connection::run() {
   while (this->_running.load()) {
     SSLString enc = readSocket(this->_fd).value();
+    std::cout << enc << '\n';
     SSLString str = this->_private->decryptBlob(enc).value();
+
     std::cout << str << '\0' << '\n';
     // std::println("{}", enc);
   }

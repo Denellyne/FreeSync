@@ -35,6 +35,7 @@ private:
   private:
     int _fd = -1;
     const std::atomic_bool &_running;
+    std::string _path = "/";
   };
   ThreadPool _pool{maxThreads()};
   std::atomic_bool &_running;

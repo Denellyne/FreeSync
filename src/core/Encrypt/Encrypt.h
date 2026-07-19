@@ -52,7 +52,6 @@ struct SSLString {
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
   SSLString(std::vector<unsigned char> &v) : _length(v.size()) {
-
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
         !this->_data) {
       std::cerr << "Unable to allocate memory for cipherText blob\n";
@@ -63,7 +62,6 @@ struct SSLString {
   }
 
   SSLString(const SSLString &other) : _length(other._length) {
-
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
         !this->_data) {
       std::cerr << "Unable to allocate memory for cipherText blob\n";
