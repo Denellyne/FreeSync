@@ -3,53 +3,87 @@
 #include <optional>
 #include <print>
 #include <sys/poll.h>
+#include <unistd.h>
 #include <vector>
 
+static inline constexpr std::array<unsigned char, LENGTHSIZE>
+toArray(unsigned n) {
+  std::array<unsigned char, LENGTHSIZE> res{'0'};
+  for (int i = 31; i >= 0; i--) {
+    res[i] = (n % 10) + '0';
+    n /= 10;
+  }
+  return res;
+}
+bool FSProtocol::writePrimitive(const int fd, void *data, const uint32_t size) {
+  uint32_t idx = 0;
+  do {
+    const uint32_t res = send(fd, (unsigned char *)data + idx, size - idx, 0);
+    if (res > 0)
+      idx += res;
+    else if (res < 0) {
+      if (errno == EINTR)
+        continue;
+
+      perror("Send");
+      return false;
+    }
+  } while (idx < size);
+
+  return true;
+}
+
 using FSCommand = struct FSProtocol::Command;
-bool FSProtocol::writeToSocket(const int fd, SSLString &data) {
+bool FSProtocol::writeToSocket(const int fd, const SSLString &data) {
   assert(fd >= 0);
   if (auto blob = this->_pub->encryptBlob(data); blob.has_value()) {
-    constexpr auto toArray = [](unsigned n) {
-      std::array<unsigned char, LENGTHSIZE> res{'0'};
-      for (int i = 31; i >= 0; i--) {
-        res[i] = (n % 10) + '0';
-        n /= 10;
-      }
-      return res;
-    };
-    constexpr auto sendPacket = [](const int fd, void *data,
-                                   const uint32_t size) {
-      unsigned char *ptr = (unsigned char *)data;
-      uint32_t idx = 0;
-      do {
-        const uint32_t res = send(fd, &ptr[idx], size - idx, 0);
-        if (res > 0)
-          idx += res;
-        else if (res < 0) {
-          if (errno == EINTR)
-            continue;
+    const SSLString str = blob.value();
 
-          perror("Send");
-          return false;
-        }
-      } while (idx < size);
-
-      return true;
-    };
-
-    SSLString str = blob.value();
     std::array<unsigned char, LENGTHSIZE> sizeArray = toArray(str._length);
+    std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
+    packet.resize(packet.size() + str._length, 0);
+    memcpy(&packet[LENGTHSIZE], str._data, str._length);
 
-    if (!sendPacket(fd, sizeArray.data(), LENGTHSIZE))
+    if (!writePrimitive(fd, packet.data(), packet.size())) {
+      perror("Unable to send data\n");
       return false;
-    if (!sendPacket(fd, &str._data, str._length))
-      return false;
+    }
     return true;
   }
 
   return false;
 }
 
+bool FSProtocol::writeToSocketAES(const int fd, const SSLString &data) {
+  assert(fd >= 0);
+  if (auto blob = this->_aes->encryptBlob(data); blob.has_value()) {
+    const SSLString str = blob.value();
+
+    std::array<unsigned char, LENGTHSIZE> sizeArray = toArray(str._length);
+    std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
+    packet.resize(packet.size() + str._length, 0);
+    memcpy(&packet[LENGTHSIZE], str._data, str._length);
+
+    if (!writePrimitive(fd, packet.data(), packet.size())) {
+      perror("Unable to send data\n");
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+StringOpt FSProtocol::readSocketAES(const int fd) {
+  assert(this->_private);
+  StringOpt strOpt = readSocket(fd);
+  if (!strOpt.has_value())
+    return std::nullopt;
+  if (auto sslOpt = this->_aes->decryptBlob(strOpt.value());
+      !sslOpt.has_value())
+    return std::nullopt;
+  else
+    return sslOpt;
+}
 StringOpt FSProtocol::readSocketRSA(const int fd) {
   assert(this->_private);
   StringOpt strOpt = readSocket(fd);
@@ -62,26 +96,25 @@ StringOpt FSProtocol::readSocketRSA(const int fd) {
     return sslOpt;
 }
 
-constexpr bool FSProtocol::readPacket(const int fd, void *data,
-                                      uint32_t numBytes) {
+bool FSProtocol::readPacket(const int fd, void *data, const uint32_t numBytes) {
   assert(fd >= 0);
-  memset(data, 0, numBytes);
-  uint32_t read = 0;
+  uint32_t bytesRead = 0;
 
-  unsigned char *dataPtr = (unsigned char *)data;
+  memset(data, 0, numBytes);
   do {
-    const uint32_t valRead = recv(fd, &dataPtr[read], numBytes - read, 0);
+    const uint32_t valRead =
+        read(fd, (unsigned char *)data + bytesRead, numBytes - bytesRead);
     if (valRead > 0)
-      read += valRead;
+      bytesRead += valRead;
     else if (valRead == 0)
-      break;
-    else if (errno == EINTR)
-      continue;
+      return false;
     else {
-      perror("Recv error");
+      if (errno == EINTR)
+        continue;
+      perror("Read error");
       return false;
     }
-  } while (numBytes > read);
+  } while (numBytes > bytesRead);
   return true;
 }
 StringOpt FSProtocol::readSocket(const int fd) {
@@ -98,11 +131,11 @@ StringOpt FSProtocol::readSocket(const int fd) {
   if (!readPacket(fd, packetSize.data(), LENGTHSIZE))
     return std::nullopt;
   const uint32_t size = toNumber(packetSize);
-  std::vector<unsigned char> data;
-  data.resize(size, 0);
-  if (!readPacket(fd, data.data(), size))
+  std::vector<unsigned char> data(size, 0);
+  if (!readPacket(fd, data.data(), size)) {
+    std::println("Unable to read packet\n");
     return std::nullopt;
-
+  }
   return SSLString(data);
 }
 

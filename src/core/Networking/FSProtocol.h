@@ -9,9 +9,11 @@ using StringOpt = std::optional<SSLString>;
 #define PORT 20230
 #define BUFFERSIZE 512
 #define LENGTHSIZE 32
+#define VALIDATIONLENGTH 48
 
 enum FSCode {
   ERR = 100,  // Generic Error command followed by reason
+  QUIT = 101, // Generic close connection command
   OK = 200,   // Generic OK Command
   LIST = 201, // Start of list of current directory
   DATA = 202, // Generic Data Command, eg: SIZE(301) file.txt -> DATA(202) 123
@@ -36,46 +38,89 @@ enum FSCode {
               // session, either after a set ammount of times the key is used or
               // for a transfer, there only exists one AES key at a time
 };
-consteval int FSStrCode(const std::string_view code) {
-  if (code == "OK")
-    return 200;
-  else if (code == "LIST")
-    return 201;
-  else if (code == "DATA")
-    return 202;
-  else if (code == "TRNF")
-    return 203;
-  else if (code == "RDY")
-    return 204;
-  else if (code == "AESK")
-    return 205;
-  else if (code == "OKIV")
-    return 206;
-  else if (code == "RDY")
-    return 204;
-  else if (code == "AUTH")
-    return 300;
-  else if (code == "SIZE")
-    return 301;
-  else if (code == "RETR")
-    return 302;
-  else if (code == "STRU")
-    return 303;
-  else if (code == "PWD")
-    return 304;
-  else if (code == "CWD")
-    return 305;
-  else if (code == "DEL")
-    return 306;
-  else if (code == "ATTR")
-    return 307;
-  else if (code == "AES")
-    return 308;
+constexpr std::string FSPrint(const FSCode code) {
 
-  return 100;
+  if (code == OK)
+    return "OK";
+  else if (code == QUIT)
+    return "QUIT";
+  else if (code == LIST)
+    return "LIST";
+  else if (code == DATA)
+    return "DATA";
+  else if (code == TRNF)
+    return "TRNF";
+  else if (code == RDY)
+    return "RDY";
+  else if (code == AESK)
+    return "AESK";
+  else if (code == OKIV)
+    return "OKIV";
+  else if (code == RDY)
+    return "RDY";
+  else if (code == AUTH)
+    return "AUTH";
+  else if (code == SIZE)
+    return "SIZE";
+  else if (code == RETR)
+    return "RETR";
+  else if (code == STRU)
+    return "STRU";
+  else if (code == PWD)
+    return "PWD";
+  else if (code == CWD)
+    return "CWD";
+  else if (code == DEL)
+    return "DEL";
+  else if (code == ATTR)
+    return "ATTR";
+  else if (code == AES)
+    return "AES";
+
+  return "ERR";
 }
 
-consteval std::string FSCodeStr(const FSCode code) {
+constexpr FSCode FSStrCode(const std::string_view command) {
+  const std::string_view code = command.substr(0, command.find(' '));
+  if (code == "200")
+    return OK;
+  else if (code == "101")
+    return QUIT;
+  else if (code == "201")
+    return LIST;
+  else if (code == "202")
+    return DATA;
+  else if (code == "203")
+    return TRNF;
+  else if (code == "204")
+    return RDY;
+  else if (code == "205")
+    return AESK;
+  else if (code == "206")
+    return OKIV;
+  else if (code == "300")
+    return AUTH;
+  else if (code == "301")
+    return SIZE;
+  else if (code == "302")
+    return RETR;
+  else if (code == "303")
+    return STRU;
+  else if (code == "304")
+    return PWD;
+  else if (code == "305")
+    return CWD;
+  else if (code == "306")
+    return DEL;
+  else if (code == "307")
+    return ATTR;
+  else if (code == "308")
+    return AES;
+
+  return ERR;
+}
+
+constexpr std::string FSCodeStr(const FSCode code) {
   return std::to_string(code);
 }
 
@@ -98,11 +143,12 @@ protected:
   CommandQueueOpt parseCommands(std::string_view input);
   Command Command(std::string_view input);
 
-  bool writeToSocket(const int fd, SSLString &message);
-  bool writeToSocketAES(const int fd, const std::string_view message);
+  bool writeToSocket(const int fd, const SSLString &message);
+  bool writeToSocketAES(const int fd, const SSLString &message);
+  bool writePrimitive(const int fd, void *data, const uint32_t size);
   // virtual bool writeToSocket(std::string_view message, bool aes = true) = 0;
   // virtual StringOpt readSocket(bool aes = true) = 0;
-  constexpr bool readPacket(const int fd, void *data, uint32_t numBytes);
+  bool readPacket(const int fd, void *data, uint32_t numBytes);
   StringOpt readSocket(const int fd);
   StringOpt readSocketRSA(const int fd);
   StringOpt readSocketAES(const int fd);

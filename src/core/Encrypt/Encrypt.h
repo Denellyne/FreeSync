@@ -7,6 +7,7 @@
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <optional>
+#include <print>
 #include <vector>
 #define AES_KEY_LENGTH 256
 struct SSLDeleter {
@@ -36,13 +37,31 @@ typedef std::unique_ptr<RSAKey> RSAPtr;
 
 struct SSLString {
   SSLString() = delete;
-  SSLString(unsigned char *data, const size_t length)
-      : _data(data), _length(length) {}
+  SSLString(unsigned char *data, const size_t length) : _length(length) {
+
+    if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
+        !this->_data) {
+      std::cerr << "Unable to allocate memory for cipherText blob\n";
+      ERR_print_errors_fp(stderr);
+      throw std::runtime_error("Unable to clone string\n");
+    }
+    memcpy(const_cast<unsigned char *>(this->_data), data, this->_length);
+  }
   SSLString(SSLString &&other) : _data(other._data), _length(other._length) {
     other._data = nullptr;
   }
 
-  explicit SSLString(std::string &v) : _length(v.length() + 1) {
+  explicit SSLString(std::string &v) : _length(v.length()) {
+    if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
+        !this->_data) {
+      std::cerr << "Unable to allocate memory for cipherText blob\n";
+      ERR_print_errors_fp(stderr);
+      throw std::runtime_error("Unable to clone string\n");
+    }
+    memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
+  }
+
+  explicit SSLString(std::string_view v) : _length(v.length()) {
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
         !this->_data) {
       std::cerr << "Unable to allocate memory for cipherText blob\n";

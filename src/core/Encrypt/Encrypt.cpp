@@ -243,7 +243,6 @@ RSACtxPtr RSAKey::loadDecryptCtx() {
 std::optional<SSLString> RSAKey::encryptBlob(const SSLString &data) {
 
   assert(this->_isPrivateKey == false);
-  std::cout << data << '\n';
   RSACtxPtr ctx = nullptr;
   if (ctx = loadEncryptCtx(); !ctx) {
     std::cerr << "Unable to get encrypted blob length\n";
@@ -258,7 +257,7 @@ std::optional<SSLString> RSAKey::encryptBlob(const SSLString &data) {
     return std::nullopt;
   }
 
-  std::cerr << "Info " << outlen << " " << inlen << '\n';
+  // std::cerr << "Info " << outlen << " " << inlen << '\n';
   if (unsigned char *out = (unsigned char *)OPENSSL_malloc(outlen); !out) {
     std::cerr << "Unable to allocate string of size " << outlen << '\n';
     ERR_print_errors_fp(stderr);

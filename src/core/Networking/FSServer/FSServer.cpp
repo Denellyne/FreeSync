@@ -1,4 +1,6 @@
 #include "FSServer.h"
+#include <cstring>
+#include <random>
 #include <thread>
 
 FSServer::FSServer(std::atomic_bool &running) : _running(running) {
@@ -48,8 +50,7 @@ void FSServer::run() {
     throw std::runtime_error("Failed to listen to incoming connections\n");
   socklen_t addrlen = sizeof(this->_sockAddr);
   while (this->_running.load()) {
-    if (const int newSocket = accept4(
-            this->_serverFD, (struct sockaddr *)&this->_sockAddr, &addrlen, 0);
+    if (const int newSocket = accept4(this->_serverFD, nullptr, nullptr, 0);
         newSocket < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -104,13 +105,48 @@ FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
     throw std::runtime_error("TCP_KEEPCNT error\n");
 }
 
-void FSServer::Connection::Connection::run() {
-  while (this->_running.load()) {
-    SSLString enc = readSocket(this->_fd).value();
-    std::cout << enc << '\n';
-    SSLString str = this->_private->decryptBlob(enc).value();
-
-    std::cout << str << '\0' << '\n';
-    // std::println("{}", enc);
+void FSServer::Connection::run() {
+  std::println("Initializing validation step");
+  if (!handleValidation()) {
+    const std::string command = FSCodeStr(QUIT);
+    this->writePrimitive(this->_fd, (void *)command.c_str(), command.length());
+    std::println("Validation step failed");
+    return;
+  } else {
+    const std::string command = FSCodeStr(OK) + "  ";
+    this->writePrimitive(this->_fd, (void *)command.c_str(), command.length());
+    std::println("Validation step success");
   }
+
+  while (this->_running.load()) {
+    if (!this->_aes) {
+      SSLString str = readSocketRSA(this->_fd).value();
+      std::cout << str << '\n';
+    }
+  }
+}
+bool FSServer::Connection::handleValidation() {
+  const std::string str = generateRandomString();
+  if (!writePrimitive(this->_fd, const_cast<char *>(str.c_str()),
+                      VALIDATIONLENGTH)) {
+    std::println("Unable to send primitive string");
+    return false;
+  }
+  if (StringOpt opt = readSocketRSA(this->_fd); !opt.has_value()) {
+    std::println("Unable to read cipher validation string");
+    return false;
+  } else
+    return !memcmp(str.c_str(), opt.value()._data, VALIDATIONLENGTH);
+}
+
+std::string FSServer::Connection::generateRandomString() {
+  static __thread std::mt19937 *generator = nullptr;
+  if (!generator)
+    generator = new std::mt19937(time(nullptr));
+
+  std::uniform_int_distribution<int> distribution(0, 255);
+  std::string res = "";
+  for (int i = 0; i < VALIDATIONLENGTH; i++)
+    res += distribution(*generator);
+  return res;
 }

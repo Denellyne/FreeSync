@@ -33,6 +33,9 @@ private:
     virtual void run() override;
 
   private:
+    std::string generateRandomString();
+    bool handleValidation();
+
     int _fd = -1;
     const std::atomic_bool &_running;
     std::string _path = "/";

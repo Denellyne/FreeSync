@@ -1,5 +1,6 @@
 #include "FSClient.h"
 #include <netinet/in.h>
+#include <print>
 
 FSClient::FSClient() {
   this->_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -29,7 +30,31 @@ FSClient::FSClient() {
 }
 
 void FSClient::run() {
-  while (true) {
+  volatile bool shouldRun = true;
+  {
+    std::array<unsigned char, VALIDATIONLENGTH> buf;
+    if (!readPacket(this->_fd, buf.data(), VALIDATIONLENGTH)) {
+      std::println("Unable to read primitive string");
+      return;
+    }
+    const SSLString str(buf.data(), VALIDATIONLENGTH);
+    if (!this->writeToSocket(this->_fd, str)) {
+      std::println("Unable to write validation string to socket");
+      return;
+    }
+    if (!readPacket(this->_fd, buf.data(), 4))
+      return;
+    else {
+      std::string command(buf.begin(), buf.begin() + 4);
+      std::println("{}", FSPrint(FSStrCode(command)));
+      if (FSStrCode(command) == QUIT) {
+        shouldRun = false;
+        std::println("Closing connection, failed to validate it");
+      }
+    }
+  }
+
+  while (shouldRun) {
     std::string str = "";
     std::getline(std::cin, str);
     SSLString s(str);
