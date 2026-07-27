@@ -48,7 +48,7 @@ void FSServer::run() {
   std::cout << "Server listening on port " << PORT << '\n';
   if (listen(this->_serverFD, 64) < 0)
     throw std::runtime_error("Failed to listen to incoming connections\n");
-  socklen_t addrlen = sizeof(this->_sockAddr);
+  // socklen_t addrlen = sizeof(this->_sockAddr);
   while (this->_running.load()) {
     if (const int newSocket = accept4(this->_serverFD, nullptr, nullptr, 0);
         newSocket < 0) {
@@ -105,30 +105,10 @@ FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
     throw std::runtime_error("TCP_KEEPCNT error\n");
 }
 
-void FSServer::Connection::run() {
-  std::println("Initializing validation step");
-  if (!handleValidation()) {
-    const std::string command = FSCodeStr(QUIT);
-    this->writePrimitive(this->_fd, (void *)command.c_str(), command.length());
-    std::println("Validation step failed");
-    return;
-  } else {
-    const std::string command = FSCodeStr(OK) + "  ";
-    this->writePrimitive(this->_fd, (void *)command.c_str(), command.length());
-    std::println("Validation step success");
-  }
-
-  while (this->_running.load()) {
-    if (!this->_aes) {
-      SSLString str = readSocketRSA(this->_fd).value();
-      std::cout << str << '\n';
-    }
-  }
-}
 bool FSServer::Connection::handleValidation() {
   const std::string str = generateRandomString();
   if (!writePrimitive(this->_fd, const_cast<char *>(str.c_str()),
-                      VALIDATIONLENGTH)) {
+                      VALIDATION_LENGTH)) {
     std::println("Unable to send primitive string");
     return false;
   }
@@ -136,17 +116,65 @@ bool FSServer::Connection::handleValidation() {
     std::println("Unable to read cipher validation string");
     return false;
   } else
-    return !memcmp(str.c_str(), opt.value()._data, VALIDATIONLENGTH);
+    return !memcmp(str.c_str(), opt.value()._data, VALIDATION_LENGTH);
 }
 
 std::string FSServer::Connection::generateRandomString() {
-  static __thread std::mt19937 *generator = nullptr;
+  static thread_local std::mt19937 *generator = nullptr;
   if (!generator)
     generator = new std::mt19937(time(nullptr));
 
   std::uniform_int_distribution<int> distribution(0, 255);
   std::string res = "";
-  for (int i = 0; i < VALIDATIONLENGTH; i++)
+  for (int i = 0; i < VALIDATION_LENGTH; i++)
     res += distribution(*generator);
   return res;
+}
+
+void FSServer::Connection::interpretCommand(const SSLString &command) {
+  const std::string_view codeView(
+      (const char *)(command._data),
+      (const char *)(command._data + COMMAND_LENGTH));
+  std::vector<unsigned char> dataView(command._length - COMMAND_LENGTH);
+  memcpy(dataView.data(), command._data + COMMAND_LENGTH,
+         command._length - COMMAND_LENGTH);
+  const FSCode code = FSStrCode(codeView);
+  switch (code) {
+  case AESK: {
+    this->_aes = std::make_unique<AESKey>(command._data + COMMAND_LENGTH);
+    std::println("Switched to AES encryption");
+  } break;
+  default:
+    break;
+  }
+}
+void FSServer::Connection::run() {
+  std::println("Initializing validation step");
+  if (!handleValidation()) {
+    const std::string command = FSCodeStr(QUIT);
+    if (!this->writePrimitive(this->_fd, (void *)command.c_str(),
+                              command.length()))
+      return;
+    std::println("Validation step failed");
+    return;
+  } else {
+    const std::string command = FSCodeStr(OK);
+    if (!this->writePrimitive(this->_fd, (void *)command.c_str(),
+                              command.length()))
+      return;
+    std::println("Validation step success");
+  }
+
+  while (this->_running.load()) {
+    if (!this->_aes) {
+      const SSLString command = readSocketRSA(this->_fd).value();
+      interpretCommand(command);
+      std::cout << command << '\n';
+      continue;
+    }
+    const SSLString command = readSocketAES(this->_fd).value();
+
+    // interpretCommand(command);
+    std::cout << command << '\n';
+  }
 }

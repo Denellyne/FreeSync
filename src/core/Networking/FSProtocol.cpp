@@ -6,19 +6,10 @@
 #include <unistd.h>
 #include <vector>
 
-static inline constexpr std::array<unsigned char, LENGTHSIZE>
-toArray(unsigned n) {
-  std::array<unsigned char, LENGTHSIZE> res{'0'};
-  for (int i = 31; i >= 0; i--) {
-    res[i] = (n % 10) + '0';
-    n /= 10;
-  }
-  return res;
-}
 bool FSProtocol::writePrimitive(const int fd, void *data, const uint32_t size) {
   uint32_t idx = 0;
   do {
-    const uint32_t res = send(fd, (unsigned char *)data + idx, size - idx, 0);
+    const ssize_t res = send(fd, (unsigned char *)data + idx, size - idx, 0);
     if (res > 0)
       idx += res;
     else if (res < 0) {
@@ -36,13 +27,13 @@ bool FSProtocol::writePrimitive(const int fd, void *data, const uint32_t size) {
 using FSCommand = struct FSProtocol::Command;
 bool FSProtocol::writeToSocket(const int fd, const SSLString &data) {
   assert(fd >= 0);
-  if (auto blob = this->_pub->encryptBlob(data); blob.has_value()) {
+  if (const auto blob = this->_pub->encryptBlob(data); blob.has_value()) {
     const SSLString str = blob.value();
 
-    std::array<unsigned char, LENGTHSIZE> sizeArray = toArray(str._length);
+    std::array<unsigned char, LENGTH_SIZE> sizeArray = toArray(str._length);
     std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
     packet.resize(packet.size() + str._length, 0);
-    memcpy(&packet[LENGTHSIZE], str._data, str._length);
+    memcpy(&packet[LENGTH_SIZE], str._data, str._length);
 
     if (!writePrimitive(fd, packet.data(), packet.size())) {
       perror("Unable to send data\n");
@@ -56,13 +47,13 @@ bool FSProtocol::writeToSocket(const int fd, const SSLString &data) {
 
 bool FSProtocol::writeToSocketAES(const int fd, const SSLString &data) {
   assert(fd >= 0);
-  if (auto blob = this->_aes->encryptBlob(data); blob.has_value()) {
+  if (const auto blob = this->_aes->encryptBlob(data); blob.has_value()) {
     const SSLString str = blob.value();
 
-    std::array<unsigned char, LENGTHSIZE> sizeArray = toArray(str._length);
+    std::array<unsigned char, LENGTH_SIZE> sizeArray = toArray(str._length);
     std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
     packet.resize(packet.size() + str._length, 0);
-    memcpy(&packet[LENGTHSIZE], str._data, str._length);
+    memcpy(&packet[LENGTH_SIZE], str._data, str._length);
 
     if (!writePrimitive(fd, packet.data(), packet.size())) {
       perror("Unable to send data\n");
@@ -74,7 +65,7 @@ bool FSProtocol::writeToSocketAES(const int fd, const SSLString &data) {
   return false;
 }
 StringOpt FSProtocol::readSocketAES(const int fd) {
-  assert(this->_private);
+  assert(fd >= 0);
   StringOpt strOpt = readSocket(fd);
   if (!strOpt.has_value())
     return std::nullopt;
@@ -85,6 +76,7 @@ StringOpt FSProtocol::readSocketAES(const int fd) {
     return sslOpt;
 }
 StringOpt FSProtocol::readSocketRSA(const int fd) {
+  assert(fd >= 0);
   assert(this->_private);
   StringOpt strOpt = readSocket(fd);
   if (!strOpt.has_value())
@@ -119,16 +111,9 @@ bool FSProtocol::readPacket(const int fd, void *data, const uint32_t numBytes) {
 }
 StringOpt FSProtocol::readSocket(const int fd) {
   assert(fd >= 0);
-  constexpr auto toNumber =
-      [](const std::array<unsigned char, LENGTHSIZE> &vec) {
-        uint32_t num = 0;
-        for (const auto c : vec)
-          num = (num * 10) + (c - '0');
-        return num;
-      };
-  std::array<unsigned char, LENGTHSIZE> packetSize{'0'};
+  std::array<unsigned char, LENGTH_SIZE> packetSize{'0'};
 
-  if (!readPacket(fd, packetSize.data(), LENGTHSIZE))
+  if (!readPacket(fd, packetSize.data(), LENGTH_SIZE))
     return std::nullopt;
   const uint32_t size = toNumber(packetSize);
   std::vector<unsigned char> data(size, 0);
@@ -139,29 +124,31 @@ StringOpt FSProtocol::readSocket(const int fd) {
   return SSLString(data);
 }
 
-FSProtocol::CommandQueueOpt FSProtocol::parseCommands(std::string_view input) {
-  this->_fragmentBuffer.clear();
-  if (!input.ends_with("\r\n")) {
-    const size_t idx = input.rfind("\r\n");
-    if (idx != input.npos) {
-      this->_fragmentBuffer = std::string{input.substr(idx + 2)};
-      input = input.substr(0, idx + 2);
-    } else {
-      std::cerr << "Incomplete input passed\n";
-      return std::nullopt;
-    }
-  }
-
-  auto split =
-      input | std::views::split(std::string_view{"\r\n"}) |
-      std::views::transform([](auto &&str) { return std::string_view(str); });
-  std::queue<FSCommand> commands{};
-  for (const auto str : split)
-    if (!str.empty())
-      commands.emplace(Command(str));
-
-  return commands;
-}
+// FSProtocol::CommandQueueOpt FSProtocol::parseCommands(std::string_view input)
+// {
+//   this->_fragmentBuffer.clear();
+//   if (!input.ends_with("\r\n")) {
+//     const size_t idx = input.rfind("\r\n");
+//     if (idx != input.npos) {
+//       this->_fragmentBuffer = std::string{input.substr(idx + 2)};
+//       input = input.substr(0, idx + 2);
+//     } else {
+//       std::cerr << "Incomplete input passed\n";
+//       return std::nullopt;
+//     }
+//   }
+//
+//   auto split =
+//       input | std::views::split(std::string_view{"\r\n"}) |
+//       std::views::transform([](auto &&str) { return std::string_view(str);
+//       });
+//   std::queue<FSCommand> commands{};
+//   for (const auto str : split)
+//     if (!str.empty())
+//       commands.emplace(Command(str));
+//
+//   return commands;
+// }
 
 FSProtocol::Command::Command(std::string_view input) {
   constexpr auto toUpper = [](std::string &str) {

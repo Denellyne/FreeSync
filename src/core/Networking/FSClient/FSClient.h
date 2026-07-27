@@ -8,7 +8,6 @@ class FSClient final : public FSProtocol {
 public:
   FSClient();
   ~FSClient() {
-    // SEND QUIT
     if (this->_fd != -1)
       close(this->_fd);
     this->_fd = -1;
@@ -17,4 +16,6 @@ public:
 
 private:
   int _fd = -1;
+  bool validationStep();
+  bool switchAES();
 };

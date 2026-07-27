@@ -13,7 +13,7 @@ public:
   FSServer() = delete;
   FSServer(std::atomic_bool &running);
   ~FSServer() {
-    std::println("Closing server");
+    std::println("Closing server...");
     if (this->_serverFD != -1)
       close(this->_serverFD);
     this->_serverFD = -1;
@@ -35,10 +35,11 @@ private:
   private:
     std::string generateRandomString();
     bool handleValidation();
+    bool handleAES();
+    void interpretCommand(const SSLString &command);
 
     int _fd = -1;
     const std::atomic_bool &_running;
-    std::string _path = "/";
   };
   ThreadPool _pool{maxThreads()};
   std::atomic_bool &_running;

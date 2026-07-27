@@ -1,15 +1,17 @@
 #pragma once
 #include "../Encrypt/Encrypt.h"
+#include <concepts>
 #include <cstring>
 #include <optional>
 #include <queue>
 #include <string>
 #include <sys/socket.h>
+#include <type_traits>
 using StringOpt = std::optional<SSLString>;
 #define PORT 20230
-#define BUFFERSIZE 512
-#define LENGTHSIZE 32
-#define VALIDATIONLENGTH 48
+#define BUFFER_SIZE 512
+#define VALIDATION_LENGTH 48
+#define COMMAND_LENGTH 3
 
 enum FSCode {
   ERR = 100,  // Generic Error command followed by reason
@@ -143,21 +145,43 @@ protected:
   CommandQueueOpt parseCommands(std::string_view input);
   Command Command(std::string_view input);
 
-  bool writeToSocket(const int fd, const SSLString &message);
-  bool writeToSocketAES(const int fd, const SSLString &message);
-  bool writePrimitive(const int fd, void *data, const uint32_t size);
+  [[nodiscard]] bool writeToSocket(const int fd, const SSLString &message);
+  [[nodiscard]] bool writeToSocketAES(const int fd, const SSLString &message);
+  [[nodiscard]] bool writePrimitive(const int fd, void *data,
+                                    const uint32_t size);
   // virtual bool writeToSocket(std::string_view message, bool aes = true) = 0;
   // virtual StringOpt readSocket(bool aes = true) = 0;
-  bool readPacket(const int fd, void *data, uint32_t numBytes);
-  StringOpt readSocket(const int fd);
-  StringOpt readSocketRSA(const int fd);
-  StringOpt readSocketAES(const int fd);
-  constexpr void clearBuffer() { memset(this->_buffer.data(), 0, BUFFERSIZE); }
+  [[nodiscard]] bool readPacket(const int fd, void *data, uint32_t numBytes);
+  [[nodiscard]] StringOpt readSocket(const int fd);
+  [[nodiscard]] StringOpt readSocketRSA(const int fd);
+  [[nodiscard]] StringOpt readSocketAES(const int fd);
+  // constexpr void clearBuffer() { memset(this->_buffer.data(), 0,
+  // BUFFER_SIZE); }
+  template <ByteSpan... Args>
+  SSLString generatePacket(FSCode code, Args... arg) {
+    uint32_t size = COMMAND_LENGTH;
+    for (const auto &vec : {arg...})
+      size += vec.size();
 
-  std::array<unsigned char, BUFFERSIZE> _buffer;
-  std::string _currentDir = "/";
+    std::vector<unsigned char> packet(size);
+    {
+      const std::string command = FSCodeStr(code);
+      memcpy(packet.data(), command.c_str(), COMMAND_LENGTH);
+    }
+
+    uint32_t idx = COMMAND_LENGTH;
+    for (const auto &vec : {arg...}) {
+      memcpy(packet.data() + idx, vec.data(), vec.size());
+      idx += vec.size();
+    }
+
+    return SSLString(packet);
+  }
+
+  // std::array<unsigned char, BUFFER_SIZE> _buffer;
+  // std::string _currentDir = "/";
   AESPtr _aes = nullptr;
   RSAPtr _pub = nullptr;
   RSAPtr _private = nullptr;
-  std::string _fragmentBuffer = "";
+  // std::string _fragmentBuffer = "";
 };

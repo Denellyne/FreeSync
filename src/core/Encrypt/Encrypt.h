@@ -10,6 +10,9 @@
 #include <print>
 #include <vector>
 #define AES_KEY_LENGTH 256
+#define IV_SIZE 12
+#define TAG_SIZE 16
+#define LENGTH_SIZE 32
 struct SSLDeleter {
   constexpr void operator()(EVP_PKEY *key) {
     if (key)
@@ -25,10 +28,20 @@ struct SSLDeleter {
   }
 };
 
+std::array<unsigned char, LENGTH_SIZE> toArray(unsigned n);
+
+uint32_t toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec);
+template <typename T>
+concept ByteSpan =
+    requires { typename T::element_type; } &&
+    std::same_as<std::remove_const_t<typename T::element_type>,
+                 unsigned char> &&
+    requires(T s) { []<typename U, std::size_t Ext>(std::span<U, Ext>) {}(s); };
 class AESKey;
 class RSAKey;
 typedef std::array<unsigned char, 32> AESKeyBuf;
-typedef std::array<unsigned char, 16> AESIV;
+typedef std::array<unsigned char, IV_SIZE> AESIV;
+typedef std::array<unsigned char, TAG_SIZE> AESTAG;
 typedef std::unique_ptr<EVP_PKEY, SSLDeleter> KeyPtr;
 typedef std::unique_ptr<EVP_PKEY_CTX, SSLDeleter> RSACtxPtr;
 typedef std::unique_ptr<EVP_CIPHER_CTX, SSLDeleter> AESCtxPtr;
@@ -38,7 +51,6 @@ typedef std::unique_ptr<RSAKey> RSAPtr;
 struct SSLString {
   SSLString() = delete;
   SSLString(unsigned char *data, const size_t length) : _length(length) {
-
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
         !this->_data) {
       std::cerr << "Unable to allocate memory for cipherText blob\n";
@@ -70,7 +82,7 @@ struct SSLString {
     }
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
-  SSLString(std::vector<unsigned char> &v) : _length(v.size()) {
+  SSLString(const std::vector<unsigned char> &v) : _length(v.size()) {
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
         !this->_data) {
       std::cerr << "Unable to allocate memory for cipherText blob\n";
@@ -116,10 +128,9 @@ struct SSLString {
 class CypherKey {
 public:
   virtual ~CypherKey() = default;
-  virtual std::optional<SSLString> encryptBlob(const std::string &data) = 0;
-
+  // virtual std::optional<SSLString> encryptBlob(const std::string &data) = 0;
   virtual std::optional<SSLString> encryptBlob(const SSLString &data) = 0;
-  virtual std::optional<SSLString> decryptBlob(std::string &data) = 0;
+  // virtual std::optional<SSLString> decryptBlob(std::string &data) = 0;
   virtual std::optional<SSLString> decryptBlob(SSLString &data) = 0;
 };
 
@@ -132,12 +143,17 @@ public:
       throw std::runtime_error("AES KEY\n");
     }
   }
+  AESKey(const std::span<unsigned char, 32> bytes) {
+    memcpy(this->_key.data(), bytes.data(), 32);
+  }
+  AESKey(const unsigned char *bytes) { memcpy(this->_key.data(), bytes, 32); }
+  ~AESKey() override = default;
 
-  virtual std::optional<SSLString> encryptBlob(const SSLString &data) override;
-  virtual std::optional<SSLString>
-  encryptBlob(const std::string &data) override;
-  virtual std::optional<SSLString> decryptBlob(std::string &data) override;
-  virtual std::optional<SSLString> decryptBlob(SSLString &data) override;
+  std::optional<SSLString> encryptBlob(const SSLString &data) override;
+  // std::optional<SSLString> encryptBlob(const std::string &data) override;
+  // std::optional<SSLString> decryptBlob(std::string &data) override;
+  std::optional<SSLString> decryptBlob(SSLString &data) override;
+  std::span<unsigned char, 32> getKey() { return this->_key; }
 
 private:
   AESCtxPtr loadDecryptCtx(AESIV &iv);
@@ -162,7 +178,7 @@ public:
         this->_key.swap(keyOpt);
     }
   }
-  virtual ~RSAKey() override = default;
+  ~RSAKey() override = default;
 
 private:
   KeyPtr loadPublicKey(const std::string_view path);
@@ -172,11 +188,10 @@ private:
   RSACtxPtr loadDecryptCtx();
 
 public:
-  virtual std::optional<SSLString>
-  encryptBlob(const std::string &data) override;
-  virtual std::optional<SSLString> encryptBlob(const SSLString &data) override;
-  virtual std::optional<SSLString> decryptBlob(SSLString &data) override;
-  virtual std::optional<SSLString> decryptBlob(std::string &data) override;
+  // std::optional<SSLString> encryptBlob(const std::string &data) override;
+  std::optional<SSLString> encryptBlob(const SSLString &data) override;
+  std::optional<SSLString> decryptBlob(SSLString &data) override;
+  // std::optional<SSLString> decryptBlob(std::string &data) override;
 
 private:
   KeyPtr _key = nullptr;
