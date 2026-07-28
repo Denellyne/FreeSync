@@ -105,7 +105,6 @@ std::optional<SSLString> AESKey::decryptBlob(SSLString &data) {
     }
     cLen += len;
 
-    std::cout << "a\n";
     return SSLString(plainText, cLen);
   }
 };

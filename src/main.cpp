@@ -1,3 +1,4 @@
+#include "core/Node/Tree.h"
 #include <fcntl.h>
 #include <iostream>
 #include <stdexcept>
@@ -15,6 +16,13 @@ void sigHandler(const int sig) {
 }
 int main(void) {
   try {
+    {
+      Tree tree = Tree(".", true);
+      if (!tree.writeMerkleTree()) {
+        std::println("Unable to save merkle tree");
+        return 1;
+      }
+    }
     signal(SIGINT, sigHandler);
     FSServer sv = FSServer(running);
     sv.run();

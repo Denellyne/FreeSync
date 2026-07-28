@@ -1,4 +1,5 @@
 #include "FSServer.h"
+#include "../../Node/LTree.h"
 #include <cstring>
 #include <random>
 #include <thread>
@@ -144,7 +145,22 @@ void FSServer::Connection::interpretCommand(const SSLString &command) {
     this->_aes = std::make_unique<AESKey>(command._data + COMMAND_LENGTH);
     std::println("Switched to AES encryption");
   } break;
+  case PWD: {
+    if (const auto current = Node::getHeadFile(); !current.has_value()) {
+      std::println("Unable to get current head file");
+      break;
+    } else {
+      std::array<char, 64> arr;
+      memcpy(arr.data(), current.value().data(), 64);
+      LTree tree = LTree(arr, "/FreeSync", true);
+      for (const auto c : tree.getChildren()) {
+        std::println("{}", c._fileName);
+      }
+    }
+
+  } break;
   default:
+    std::println("{}", FSPrint(code));
     break;
   }
 }
@@ -174,7 +190,7 @@ void FSServer::Connection::run() {
     }
     const SSLString command = readSocketAES(this->_fd).value();
 
-    // interpretCommand(command);
+    interpretCommand(command);
     std::cout << command << '\n';
   }
 }
