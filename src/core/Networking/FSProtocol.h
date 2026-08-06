@@ -23,9 +23,7 @@ enum FSCode {
   RDY = 204,  // Specifies the User is ready to start the action, You might want
               // to ask for the size of the file before starting to download
   AESK = 205, // Gives the AES-256 key to the other User
-  OKIV = 206, // Can be used in the same places as the OK but it also
-              // invalidates the AES Key, as such the next message sent to the
-              // Server needs to be an AESK(205)
+  INV = 206,  // Invalidates the aes encryption
 
   AUTH = 300, // Asks for Public Key of Client
   SIZE = 301, // Asks for file size
@@ -56,8 +54,8 @@ constexpr std::string FSPrint(const FSCode code) {
     return "RDY";
   else if (code == AESK)
     return "AESK";
-  else if (code == OKIV)
-    return "OKIV";
+  else if (code == INV)
+    return "INV";
   else if (code == RDY)
     return "RDY";
   else if (code == AUTH)
@@ -99,7 +97,7 @@ constexpr FSCode FSStrCode(const std::string_view command) {
   else if (code == "205")
     return AESK;
   else if (code == "206")
-    return OKIV;
+    return INV;
   else if (code == "300")
     return AUTH;
   else if (code == "301")

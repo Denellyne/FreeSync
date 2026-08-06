@@ -141,6 +141,9 @@ void FSServer::Connection::interpretCommand(const SSLString &command) {
          command._length - COMMAND_LENGTH);
   const FSCode code = FSStrCode(codeView);
   switch (code) {
+  case INV: {
+    this->_aes = nullptr;
+  } break;
   case AESK: {
     this->_aes = std::make_unique<AESKey>(command._data + COMMAND_LENGTH);
     std::println("Switched to AES encryption");

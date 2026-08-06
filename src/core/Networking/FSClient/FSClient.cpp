@@ -54,6 +54,7 @@ bool FSClient::validationStep() {
 }
 bool FSClient::switchAES() {
   this->_aes = std::make_unique<AESKey>();
+  this->_aesLifetime = 1;
   const SSLString packet = this->generatePacket(AESK, this->_aes->getKey());
   std::println("Packet generated");
   if (!this->writeToSocket(this->_fd, packet)) {
@@ -66,6 +67,15 @@ bool FSClient::switchAES() {
   return false;
 }
 
+bool FSClient::invalidateAES() {
+  const SSLString packet = this->generatePacket(INV, this->_aes->getKey());
+  std::println("Packet generated");
+  if (!this->writeToSocketAES(this->_fd, packet)) {
+    std::println("Unable to write AESKey to server");
+    return false;
+  }
+  return true;
+}
 void FSClient::run() {
   volatile bool shouldRun = this->validationStep();
   shouldRun = this->switchAES();
@@ -74,9 +84,16 @@ void FSClient::run() {
     std::string str = "";
     std::getline(std::cin, str);
     const SSLString s(str);
-    if (this->_aes)
+    if (this->_aes) {
+      this->_aesLifetime++;
+      if (!this->_aesLifetime)
+        shouldRun = this->invalidateAES() && this->switchAES();
+
+      if (!shouldRun)
+        break;
+
       shouldRun = this->writeToSocketAES(this->_fd, s);
-    else
+    } else
       shouldRun = this->writeToSocket(this->_fd, s);
   }
 }
