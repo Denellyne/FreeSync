@@ -43,8 +43,7 @@ bool FSClient::validationStep() {
   if (!readPacket(this->_fd, buf.data(), COMMAND_LENGTH))
     return false;
   else {
-    std::string command(buf.begin(), buf.begin() + COMMAND_LENGTH);
-    std::println("{}", FSPrint(FSStrCode(command)));
+    const std::string command(buf.begin(), buf.begin() + COMMAND_LENGTH);
     if (FSStrCode(command) == QUIT) {
       std::println("Closing connection, failed to validate it");
       return false;
@@ -76,6 +75,7 @@ bool FSClient::invalidateAES() {
   }
   return true;
 }
+
 void FSClient::run() {
   volatile bool shouldRun = this->validationStep();
   shouldRun = this->switchAES();
@@ -84,16 +84,25 @@ void FSClient::run() {
     std::string str = "";
     std::getline(std::cin, str);
     const SSLString s(str);
-    if (this->_aes) {
-      this->_aesLifetime++;
-      if (!this->_aesLifetime)
-        shouldRun = this->invalidateAES() && this->switchAES();
+    if (!this->_aes) {
+      std::println("Should be in AES, something terribly wrong has happend");
+      return;
+    }
+    this->_aesLifetime++;
+    if (!this->_aesLifetime)
+      shouldRun = this->invalidateAES() && this->switchAES();
 
-      if (!shouldRun)
-        break;
+    if (!shouldRun)
+      break;
 
-      shouldRun = this->writeToSocketAES(this->_fd, s);
-    } else
-      shouldRun = this->writeToSocket(this->_fd, s);
+    shouldRun = this->writeToSocketAES(this->_fd, s);
+    if (StringOpt msgOpt = readSocketAES(this->_fd); !msgOpt.has_value()) {
+      std::println("Unable to get the server answer, closing connection");
+      return;
+    } else {
+      const std::string command = msgOpt->toString();
+      std::println("{}", std::string(command.cbegin() + COMMAND_LENGTH + 1,
+                                     command.cend()));
+    }
   }
 }

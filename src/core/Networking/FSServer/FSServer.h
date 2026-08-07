@@ -36,10 +36,11 @@ private:
     std::string generateRandomString();
     bool handleValidation();
     bool handleAES();
-    void interpretCommand(const SSLString &command);
+    bool interpretCommand(const SSLString &command);
 
     int _fd = -1;
     const std::atomic_bool &_running;
+    std::string _cwd = "/FreeSync";
   };
   ThreadPool _pool{maxThreads()};
   std::atomic_bool &_running;

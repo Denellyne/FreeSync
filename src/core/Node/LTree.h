@@ -50,7 +50,7 @@ public:
   addFile(std::vector<unsigned char> &data,
           const std::filesystem::path &filePath, const bool isExecutable);
   std::expected<std::vector<Commit>, std::string> getAllCommits();
-  std::vector<LNode> &getChildren() { return this->_children; }
+  const std::vector<LNode> &getChildren() const { return this->_children; }
 
 private:
   [[nodiscard]] bool writeBlob();

@@ -132,7 +132,9 @@ std::string FSServer::Connection::generateRandomString() {
   return res;
 }
 
-void FSServer::Connection::interpretCommand(const SSLString &command) {
+bool FSServer::Connection::interpretCommand(const SSLString &command) {
+  if (command._length < COMMAND_LENGTH)
+    return false;
   const std::string_view codeView(
       (const char *)(command._data),
       (const char *)(command._data + COMMAND_LENGTH));
@@ -148,24 +150,41 @@ void FSServer::Connection::interpretCommand(const SSLString &command) {
     this->_aes = std::make_unique<AESKey>(command._data + COMMAND_LENGTH);
     std::println("Switched to AES encryption");
   } break;
-  case PWD: {
+  case LIST: {
     if (const auto current = Node::getHeadFile(); !current.has_value()) {
       std::println("Unable to get current head file");
       break;
     } else {
       std::array<char, 64> arr;
       memcpy(arr.data(), current.value().data(), 64);
-      LTree tree = LTree(arr, "/FreeSync", true);
-      for (const auto c : tree.getChildren()) {
-        std::println("{}", c._fileName);
+      const LTree tree = LTree(arr, "/FreeSync", true);
+      for (const auto child : tree.getChildren()) {
+        std::println("{}", child._fileName);
       }
     }
 
   } break;
-  default:
-    std::println("{}", FSPrint(code));
+  case PWD: {
+    const SSLString msg(FSCodeStr(OK) + ' ' + this->_cwd);
+    return writeToSocketAES(this->_fd, msg);
+  } break;
+  case OK:
+    break;
+
+  case QUIT:
+
+    return false;
+    break;
+  case ERR:
+    std::println("Error received");
+    return false;
     break;
   }
+  return true;
+  // default:
+  //   std::println("{}", FSPrint(code));
+  //   break;
+  // }
 }
 void FSServer::Connection::run() {
   std::println("Initializing validation step");
@@ -187,13 +206,15 @@ void FSServer::Connection::run() {
   while (this->_running.load()) {
     if (!this->_aes) {
       const SSLString command = readSocketRSA(this->_fd).value();
-      interpretCommand(command);
-      std::cout << command << '\n';
+      if (!interpretCommand(command))
+        return;
+      // std::cout << command << '\n';
       continue;
     }
     const SSLString command = readSocketAES(this->_fd).value();
 
-    interpretCommand(command);
-    std::cout << command << '\n';
+    if (!interpretCommand(command))
+      return;
+    // std::cout << command << '\n';
   }
 }

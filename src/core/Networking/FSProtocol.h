@@ -16,7 +16,7 @@ using StringOpt = std::optional<SSLString>;
 enum FSCode {
   ERR = 100,  // Generic Error command followed by reason
   QUIT = 101, // Generic close connection command
-  OK = 200,   // Generic OK Command
+  OK = 200,   // Generic OK Command may contain message
   LIST = 201, // Start of list of current directory
   DATA = 202, // Generic Data Command, eg: SIZE(301) file.txt -> DATA(202) 123
   TRNF = 203, // Start of blob
@@ -37,6 +37,7 @@ enum FSCode {
   AES = 308,  // Asks the User to generate a new AES key to be used for the
               // session, either after a set ammount of times the key is used or
               // for a transfer, there only exists one AES key at a time
+
 };
 constexpr std::string FSPrint(const FSCode code) {
 
