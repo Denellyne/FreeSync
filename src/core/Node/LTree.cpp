@@ -3,9 +3,11 @@
 #include "Leaf.h"
 #include "Node.h"
 #include <cassert>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <print>
 #include <stdexcept>
 #include <vector>
 
@@ -51,8 +53,8 @@ LTree::getTreeFromBlob(const std::string_view objPath,
       std::string(reinterpret_cast<char *>(data.data()), data.size());
   if (dataStr.contains("PARENT:"))
     dataStr.erase(0, dataStr.find_first_of('\n') + 1);
-  else
-    return std::unexpected(std::string("Invalid tree blob\n"));
+  // else
+  //   return std::unexpected(std::string("Invalid tree blob\n"));
 
   while (!dataStr.empty()) {
     const std::string entry = dataStr.substr(0, 6);
@@ -280,4 +282,27 @@ std::expected<std::vector<LTree::Commit>, std::string> LTree::getAllCommits() {
       return std::unexpected(std::string("Invalid tree blob\n"));
   }
   return commits;
+}
+std::optional<LTree> LTree::getChildTree(std::string_view path) const {
+  if (!path.empty() && path[0] == ' ')
+    path.remove_prefix(1);
+  if (!path.empty() && path[0] == '/')
+    path.remove_prefix(1);
+  std::println("{}", path);
+  std::array<char, 64> hash;
+  if (path.empty()) {
+    memcpy(hash.data(), this->_hash.data(), 64);
+    return LTree(hash, this->_filePath.string(), this->_root);
+  }
+  const std::string_view folder = path.substr(0, path.find_first_of('/'));
+  for (const auto &child : this->_children)
+    if (child._entry == DIRECTORY && child._fileName == folder) {
+      path.remove_prefix(folder.length());
+      memcpy(hash.data(), child._hash.data(), 64);
+      const LTree tree =
+          LTree(hash, this->getFileName() + '/' + child._fileName, false);
+      return tree.getChildTree(path);
+    }
+
+  return std::nullopt;
 }

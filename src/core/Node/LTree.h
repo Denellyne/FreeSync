@@ -51,6 +51,7 @@ public:
           const std::filesystem::path &filePath, const bool isExecutable);
   std::expected<std::vector<Commit>, std::string> getAllCommits();
   const std::vector<LNode> &getChildren() const { return this->_children; }
+  std::optional<LTree> getChildTree(std::string_view path) const;
 
 private:
   [[nodiscard]] bool writeBlob();

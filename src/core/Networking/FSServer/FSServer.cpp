@@ -157,22 +157,40 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) {
     } else {
       std::array<char, 64> arr;
       memcpy(arr.data(), current.value().data(), 64);
-      const LTree tree = LTree(arr, "/FreeSync", true);
-      for (const auto child : tree.getChildren()) {
-        std::println("{}", child._fileName);
+      LTree tree = LTree(arr, "/FreeSync", true);
+      const std::string_view path(
+          (const char *)(command._data + COMMAND_LENGTH),
+          (const char *)(command._data + command._length));
+      if (const auto treeOpt = tree.getChildTree(path); !treeOpt.has_value()) {
+        const SSLString msg(FSCodeStr(ERR) + " Unable to find folder");
+        return writeToSocketAES(this->_fd, msg);
+      } else {
+        std::string msgRaw = "";
+        std::string entry = "";
+        for (const auto &child : treeOpt.value().getChildren()) {
+          if (child._entry == DIRECTORY)
+            entry = "Directory - ";
+          else if (child._entry == REGULAR_FILE)
+            entry = "File - ";
+          else
+            entry = "Executable - ";
+          msgRaw += entry + child._fileName + '\n';
+        }
+
+        const SSLString msg(FSCodeStr(OK) + ' ' + msgRaw);
+        return writeToSocketAES(this->_fd, msg);
       }
     }
 
   } break;
-  case PWD: {
-    const SSLString msg(FSCodeStr(OK) + ' ' + this->_cwd);
-    return writeToSocketAES(this->_fd, msg);
-  } break;
+  // case PWD: {
+  //   const SSLString msg(FSCodeStr(OK) + ' ' + this->_cwd);
+  //   return writeToSocketAES(this->_fd, msg);
+  // } break;
   case OK:
     break;
 
   case QUIT:
-
     return false;
     break;
   case ERR:
