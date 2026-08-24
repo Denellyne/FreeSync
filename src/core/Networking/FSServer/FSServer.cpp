@@ -166,15 +166,17 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) {
         return writeToSocketAES(this->_fd, msg);
       } else {
         std::string msgRaw = "";
-        std::string entry = "";
         for (const auto &child : treeOpt.value().getChildren()) {
+          std::string entry = "File - ";
+          std::string fileSize = "0 - ";
           if (child._entry == DIRECTORY)
             entry = "Directory - ";
-          else if (child._entry == REGULAR_FILE)
-            entry = "File - ";
-          else
-            entry = "Executable - ";
-          msgRaw += entry + child._fileName + '\n';
+          else {
+            fileSize = std::to_string(child.getFileSize()) + " - ";
+            if (child._entry != REGULAR_FILE)
+              entry = "Executable - ";
+          }
+          msgRaw += entry + fileSize + child._fileName + '\n';
         }
 
         const SSLString msg(FSCodeStr(OK) + ' ' + msgRaw);

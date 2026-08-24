@@ -58,6 +58,7 @@ LTree::getTreeFromBlob(const std::string_view objPath,
 
   while (!dataStr.empty()) {
     const std::string entry = dataStr.substr(0, 6);
+    std::array<char, 6> entryArr;
     dataStr.erase(0, 7);
     const size_t fileNameIdx = dataStr.find_first_of('\0', 0);
     const std::string fileName = dataStr.substr(0, fileNameIdx);
@@ -284,9 +285,9 @@ std::expected<std::vector<LTree::Commit>, std::string> LTree::getAllCommits() {
   return commits;
 }
 std::optional<LTree> LTree::getChildTree(std::string_view path) const {
-  if (!path.empty() && path[0] == ' ')
+  if (!path.find(' '))
     path.remove_prefix(1);
-  if (!path.empty() && path[0] == '/')
+  if (!path.find('/'))
     path.remove_prefix(1);
   std::println("{}", path);
   std::array<char, 64> hash;
@@ -305,4 +306,13 @@ std::optional<LTree> LTree::getChildTree(std::string_view path) const {
     }
 
   return std::nullopt;
+}
+const unsigned LTree::LNode::getFileSize() const {
+  if (this->_entry == DIRECTORY)
+    return 0;
+  std::string path = OBJFOLDER;
+  path.append(this->_hash, 0, 2);
+  path += '/';
+  path.append(this->_hash, 2, 62);
+  return std::filesystem::file_size(path);
 }

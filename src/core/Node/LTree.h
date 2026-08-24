@@ -7,6 +7,8 @@ private:
     std::string _entry;
     std::string _fileName;
     std::string _hash;
+    unsigned _size = -1;
+    const unsigned getFileSize() const;
   };
 
 public:
@@ -52,6 +54,7 @@ public:
   std::expected<std::vector<Commit>, std::string> getAllCommits();
   const std::vector<LNode> &getChildren() const { return this->_children; }
   std::optional<LTree> getChildTree(std::string_view path) const;
+  std::string getBlobSize();
 
 private:
   [[nodiscard]] bool writeBlob();
