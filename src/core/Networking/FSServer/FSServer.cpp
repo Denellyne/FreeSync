@@ -143,6 +143,14 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) {
          command._length - COMMAND_LENGTH);
   const FSCode code = FSStrCode(codeView);
   switch (code) {
+  case DEL: {
+  } break;
+  case RETR: {
+  } break;
+  case STRU: {
+  } break;
+  case ATTR: {
+  } break;
   case INV: {
     this->_aes = nullptr;
   } break;
@@ -185,26 +193,20 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) {
     }
 
   } break;
-  // case PWD: {
-  //   const SSLString msg(FSCodeStr(OK) + ' ' + this->_cwd);
-  //   return writeToSocketAES(this->_fd, msg);
-  // } break;
   case OK:
     break;
 
   case QUIT:
     return false;
     break;
+
+  default:
   case ERR:
     std::println("Error received");
     return false;
     break;
   }
   return true;
-  // default:
-  //   std::println("{}", FSPrint(code));
-  //   break;
-  // }
 }
 void FSServer::Connection::run() {
   std::println("Initializing validation step");

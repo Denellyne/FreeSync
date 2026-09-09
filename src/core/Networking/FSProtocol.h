@@ -18,23 +18,14 @@ enum FSCode {
   QUIT = 101, // Generic close connection command
   OK = 200,   // Generic OK Command may contain message
   LIST = 201, // Start of list of current directory
-  DATA = 202, // Generic Data Command, eg: SIZE(301) file.txt -> DATA(202) 123
-  TRNF = 203, // Start of blob
-  RDY = 204,  // Specifies the User is ready to start the action, You might want
-              // to ask for the size of the file before starting to download
-  AESK = 205, // Gives the AES-256 key to the other User
-  INV = 206,  // Invalidates the aes encryption
-
+  AESK = 202, // Gives the AES-256 key to the other User
+  INV = 203,  // Invalidates the aes encryption
   AUTH = 300, // Asks for Public Key of Client
-  SIZE = 301, // Asks for file size
-  RETR = 302, // Asks to download file in current directory, RETR file.txt
-  STRU = 303, // Asks to store file in current directory, STRU file.txt
-  PWD = 304,  // Asks what the current directory is, PWD(304) -> DATA(202)
-              // /FreeSync
-  CWD = 305,  // Asks to change to the specified directory
-  DEL = 306,  // Asks to delete file
-  ATTR = 307, // Asks the attributes of a specific file
-  AES = 308,  // Asks the User to generate a new AES key to be used for the
+  RETR = 301, // Asks to download file in current directory, RETR file.txt
+  STRU = 302, // Asks to store file in current directory, STRU file.txt
+  DEL = 303,  // Asks to delete file
+  ATTR = 304, // Asks the attributes of a specific file
+  AES = 305,  // Asks the User to generate a new AES key to be used for the
               // session, either after a set ammount of times the key is used or
               // for a transfer, there only exists one AES key at a time
 
@@ -47,30 +38,16 @@ constexpr std::string FSPrint(const FSCode code) {
     return "QUIT";
   else if (code == LIST)
     return "LIST";
-  else if (code == DATA)
-    return "DATA";
-  else if (code == TRNF)
-    return "TRNF";
-  else if (code == RDY)
-    return "RDY";
   else if (code == AESK)
     return "AESK";
   else if (code == INV)
     return "INV";
-  else if (code == RDY)
-    return "RDY";
   else if (code == AUTH)
     return "AUTH";
-  else if (code == SIZE)
-    return "SIZE";
   else if (code == RETR)
     return "RETR";
   else if (code == STRU)
     return "STRU";
-  else if (code == PWD)
-    return "PWD";
-  else if (code == CWD)
-    return "CWD";
   else if (code == DEL)
     return "DEL";
   else if (code == ATTR)
@@ -90,32 +67,20 @@ constexpr FSCode FSStrCode(const std::string_view command) {
   else if (code == "201")
     return LIST;
   else if (code == "202")
-    return DATA;
-  else if (code == "203")
-    return TRNF;
-  else if (code == "204")
-    return RDY;
-  else if (code == "205")
     return AESK;
-  else if (code == "206")
+  else if (code == "203")
     return INV;
   else if (code == "300")
     return AUTH;
   else if (code == "301")
-    return SIZE;
-  else if (code == "302")
     return RETR;
-  else if (code == "303")
+  else if (code == "302")
     return STRU;
-  else if (code == "304")
-    return PWD;
-  else if (code == "305")
-    return CWD;
-  else if (code == "306")
+  else if (code == "303")
     return DEL;
-  else if (code == "307")
+  else if (code == "304")
     return ATTR;
-  else if (code == "308")
+  else if (code == "305")
     return AES;
 
   return ERR;
