@@ -1,7 +1,9 @@
 #include "Leaf.h"
 #include "../Compressor/Compressor.h"
+#include "../Encrypt/Encrypt.h"
 #include "Node.h"
 #include <cassert>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -128,4 +130,142 @@ std::expected<std::vector<unsigned char>, std::string> Leaf::getBlob() {
 
   file.read(reinterpret_cast<char *>(res.data()), length);
   return res;
+}
+
+std::expected<std::vector<unsigned char>, std::string>
+Leaf::getFinalDecompressBlob() {
+  std::vector<unsigned char> res;
+  std::ifstream file(this->_objPath, std::fstream::binary);
+  if (!file)
+    return std::unexpected("Invalid file");
+
+  file.seekg(0, file.end);
+  int length = file.tellg();
+  if (length < 6)
+    return std::unexpected("Invalid file contents");
+  char type[4];
+  file.read(type, 4);
+  if (!strcmp(type, "blob")) {
+    file.seekg(5, file.beg);
+    std::string size = "";
+    char c = file.get();
+    while (c != '\0') {
+      size += c;
+      c = file.get();
+    }
+    assert(!size.empty());
+    length = std::stoul(size);
+
+    res.resize(length);
+
+    file.read(reinterpret_cast<char *>(res.data()), length);
+    if (!decompressData(res))
+      return std::unexpected("Unable to decompress blob");
+    return res;
+  }
+  if (length - 6 < 64)
+    return std::unexpected(
+        "Invalid file contents, couldn't read leaf parent hash");
+  std::string parentHash;
+  parentHash.resize(64);
+  file.read(parentHash.data(), 64);
+  Leaf parent(this->getFilePath().string(), parentHash, this->_isExecutable);
+  if (auto dataOpt = parent.getFinalDecompressBlob(); !dataOpt.has_value())
+    return std::unexpected(dataOpt.error());
+  else {
+    std::string size = "";
+    char c = file.get();
+    while (c != '\0') {
+      size += c;
+      c = file.get();
+    }
+    assert(!size.empty());
+    length = std::stoul(size);
+
+    res.resize(length);
+
+    file.read(reinterpret_cast<char *>(res.data()), length);
+    if (!decompressData(res))
+      return std::unexpected("Unable to decompress diff blob");
+    std::vector<unsigned char> final = std::move(dataOpt.value());
+    if (!applyDiffsUncompressed(final, res))
+      return std::unexpected("Unable to apply diffs");
+    return final;
+  }
+}
+
+bool applyDiffsUncompressed(std::vector<unsigned char> &old,
+                            const std::vector<unsigned char> &diffs) {
+
+  const std::vector<unsigned char> original = std::move(old);
+  old.clear();
+  for (int idx = 0; idx < diffs.size();) {
+    if (diffs[idx++] == 'C') {
+      std::array<unsigned char, 32> beg, end;
+      strncpy((char *)beg.data(), (char *)&diffs[idx], 32);
+      idx += 32;
+      strncpy((char *)end.data(), (char *)&diffs[idx], 32);
+      idx += 32;
+      const uint32_t begIdx = toNumber(beg);
+      const uint32_t endIdx = toNumber(end);
+      old.insert(old.end(), original.begin() + begIdx,
+                 original.begin() + endIdx);
+    } else if (diffs[idx++] == 'I') {
+      std::array<unsigned char, 32> size;
+      strncpy((char *)size.data(), (char *)&diffs[idx], 32);
+      idx += 32;
+      const uint32_t length = toNumber(size);
+      old.insert(old.end(), diffs.begin() + idx, diffs.begin() + idx + length);
+      idx += length;
+    } else
+      return false;
+  }
+  return true;
+}
+
+std::expected<std::vector<unsigned char>, std::string>
+Leaf::diffFile(const std::vector<unsigned char> &newer) {
+  if (auto dataOpt = this->getFinalDecompressBlob(); !dataOpt.has_value())
+    return std::unexpected(dataOpt.error());
+  else {
+    std::vector<unsigned char> diffs;
+    const std::vector<unsigned char> original = std::move(dataOpt.value());
+
+    auto originalIt = original.cbegin();
+    auto newIt = newer.cbegin();
+    while (newIt != newer.cend()) {
+      if (originalIt == original.cend()) {
+        if (const uint32_t length = newer.cend() - newIt; length > 0) {
+          diffs.emplace_back('I');
+          const auto lenArr = toArray(length);
+          diffs.insert(diffs.end(), lenArr.cbegin(), lenArr.cend());
+          diffs.insert(diffs.end(), newIt, newer.cend());
+        }
+        return diffs;
+      }
+      if (*newIt == *originalIt) {
+        const auto beg = toArray(originalIt - original.cbegin());
+        while (originalIt != original.cend() && newIt != newer.cend() &&
+               *newIt == *originalIt) {
+          newIt++;
+          originalIt++;
+        }
+        const auto end = toArray(originalIt - original.cbegin());
+        diffs.emplace_back('C');
+        diffs.insert(diffs.end(), beg.cbegin(), beg.cend());
+        diffs.insert(diffs.end(), end.cbegin(), end.cend());
+      } else {
+        const auto beg = newIt;
+        while (newIt != newer.cend() && *newIt != *originalIt)
+          newIt++;
+
+        const uint32_t length = newer.cend() - newIt;
+        diffs.emplace_back('I');
+        const auto lenArr = toArray(length);
+        diffs.insert(diffs.end(), lenArr.cbegin(), lenArr.cend());
+        diffs.insert(diffs.end(), beg, beg + length);
+      }
+    }
+    return diffs;
+  }
 }

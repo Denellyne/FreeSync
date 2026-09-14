@@ -2,6 +2,11 @@
 #include "Node.h"
 #include <expected>
 #include <vector>
+
+[[nodiscard]] bool
+applyDiffsUncompressed(std::vector<unsigned char> &old,
+                       const std::vector<unsigned char> &diffs);
+
 class Leaf : public Node {
 public:
   Leaf(const std::string_view filePath);
@@ -34,7 +39,12 @@ public:
     return this->_filePath.filename().string();
   }
 
+  std::expected<std::vector<unsigned char>, std::string>
+  diffFile(const std::vector<unsigned char> &newer);
+
   std::expected<std::vector<unsigned char>, std::string> getBlob();
+  std::expected<std::vector<unsigned char>, std::string>
+  getFinalDecompressBlob();
   [[nodiscard]] bool writeFile(const std::string_view path,
                                const std::vector<unsigned char> &data);
 
