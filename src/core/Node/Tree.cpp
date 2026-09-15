@@ -64,6 +64,7 @@ std::unique_ptr<Node> Tree::newNode(const std::string_view filePath) {
 
 void Tree::hashTree() {
   this->_hash.reserve(this->_children.size() * 64);
+  std::sort(this->_children.begin(), this->_children.end());
   for (const auto &child : this->_children)
     this->_hash += child->getHash();
   this->_hash = Node::hash(this->_hash);

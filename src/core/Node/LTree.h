@@ -4,6 +4,7 @@
 class LTree : public Node {
 private:
   struct LNode {
+    auto operator<=>(const LNode &) const = default;
     std::string _entry;
     std::string _fileName;
     std::string _hash;

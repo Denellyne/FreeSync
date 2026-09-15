@@ -78,6 +78,26 @@ Leaf::Leaf(const std::string_view filePath, std::vector<unsigned char> &data,
   if (!this->writeBlob(data))
     throw std::runtime_error("Unable to write leaf blob\n");
 }
+
+Leaf::Leaf(const std::string_view filePath, std::vector<unsigned char> &data,
+           const std::string_view parentHash, const bool isExecutable) {
+
+  this->_filePath = filePath;
+  this->_isExecutable = isExecutable;
+
+  this->_hash = this->hash(data);
+  std::string path = OBJFOLDER;
+  path.append(this->_hash, 0, 2);
+  path += '/';
+  path.append(this->_hash, 2, 62);
+
+  this->_objPath = path;
+  if (!compressData(data))
+    throw std::runtime_error("Unable to create leaf node\n");
+
+  if (!this->writeDiffBlob(data, parentHash))
+    throw std::runtime_error("Unable to write leaf blob\n");
+}
 bool Leaf::writeFile(const std::string_view path,
                      const std::vector<unsigned char> &data) {
 
@@ -87,6 +107,23 @@ bool Leaf::writeFile(const std::string_view path,
   if (!file)
     return false;
 
+  file.write(reinterpret_cast<const char *>(data.data()), data.size());
+  file.flush();
+  return true;
+}
+bool Leaf::writeDiffBlob(const std::vector<unsigned char> &data,
+                         const std::string_view parentHash) {
+  fs::path path = this->_objPath;
+  fs::create_directories(path.parent_path());
+  std::ofstream file(path, std::fstream::binary);
+  if (!file)
+    return false;
+
+  file.write("diff ", 5);
+  file.write(parentHash.data(), 64);
+  const std::string stringSize = std::to_string(data.size());
+  file.write(stringSize.c_str(), stringSize.length());
+  file.put('\0');
   file.write(reinterpret_cast<const char *>(data.data()), data.size());
   file.flush();
   return true;
@@ -143,10 +180,11 @@ Leaf::getFinalDecompressBlob() {
   int length = file.tellg();
   if (length < 6)
     return std::unexpected("Invalid file contents");
-  char type[4];
+  char type[4]{'\0'};
+  file.seekg(0, file.beg);
   file.read(type, 4);
+  file.seekg(5, file.beg);
   if (!strcmp(type, "blob")) {
-    file.seekg(5, file.beg);
     std::string size = "";
     char c = file.get();
     while (c != '\0') {
@@ -163,7 +201,7 @@ Leaf::getFinalDecompressBlob() {
       return std::unexpected("Unable to decompress blob");
     return res;
   }
-  if (length - 6 < 64)
+  if (length - 5 < 64)
     return std::unexpected(
         "Invalid file contents, couldn't read leaf parent hash");
   std::string parentHash;
@@ -172,6 +210,7 @@ Leaf::getFinalDecompressBlob() {
   Leaf parent(this->getFilePath().string(), parentHash, this->_isExecutable);
   if (auto dataOpt = parent.getFinalDecompressBlob(); !dataOpt.has_value())
     return std::unexpected(dataOpt.error());
+
   else {
     std::string size = "";
     char c = file.get();
@@ -197,10 +236,13 @@ Leaf::getFinalDecompressBlob() {
 bool applyDiffsUncompressed(std::vector<unsigned char> &old,
                             const std::vector<unsigned char> &diffs) {
 
+  if (diffs.empty())
+    return true;
   const std::vector<unsigned char> original = std::move(old);
   old.clear();
   for (int idx = 0; idx < diffs.size();) {
-    if (diffs[idx++] == 'C') {
+    if (diffs[idx] == 'C') {
+      idx++;
       std::array<unsigned char, 32> beg, end;
       strncpy((char *)beg.data(), (char *)&diffs[idx], 32);
       idx += 32;
@@ -210,7 +252,8 @@ bool applyDiffsUncompressed(std::vector<unsigned char> &old,
       const uint32_t endIdx = toNumber(end);
       old.insert(old.end(), original.begin() + begIdx,
                  original.begin() + endIdx);
-    } else if (diffs[idx++] == 'I') {
+    } else if (diffs[idx] == 'I') {
+      idx++;
       std::array<unsigned char, 32> size;
       strncpy((char *)size.data(), (char *)&diffs[idx], 32);
       idx += 32;
@@ -230,6 +273,8 @@ Leaf::diffFile(const std::vector<unsigned char> &newer) {
   else {
     std::vector<unsigned char> diffs;
     const std::vector<unsigned char> original = std::move(dataOpt.value());
+    if (Node::hash(newer) == Node::hash(original))
+      return std::vector<unsigned char>{};
 
     auto originalIt = original.cbegin();
     auto newIt = newer.cbegin();
@@ -259,11 +304,10 @@ Leaf::diffFile(const std::vector<unsigned char> &newer) {
         while (newIt != newer.cend() && *newIt != *originalIt)
           newIt++;
 
-        const uint32_t length = newer.cend() - newIt;
         diffs.emplace_back('I');
-        const auto lenArr = toArray(length);
+        const auto lenArr = toArray(newIt - beg);
         diffs.insert(diffs.end(), lenArr.cbegin(), lenArr.cend());
-        diffs.insert(diffs.end(), beg, beg + length);
+        diffs.insert(diffs.end(), beg, newIt);
       }
     }
     return diffs;

@@ -1,5 +1,7 @@
 #include "core/Node/Tree.h"
 #include <fcntl.h>
+// #include "core/Node/LTree.h"
+// #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <unistd.h>
@@ -16,13 +18,25 @@ void sigHandler(const int sig) {
 }
 int main(void) {
   try {
-    {
-      Tree tree = Tree(".", true);
-      if (!tree.writeMerkleTree()) {
-        std::println("Unable to save merkle tree");
-        return 1;
-      }
+
+    // const auto current = Node::getHeadFile();
+    // std::array<char, 64> arr;
+    // memcpy(arr.data(), current.value().data(), 64);
+    // LTree tree(arr, "/FreeSync", true);
+    // std::vector<unsigned char> data;
+    // std::ifstream file("LICENSE", std::ifstream::binary);
+    // while (file.good())
+    //   data.emplace_back(file.get());
+    // std::cout << tree.getHash() << '\n';
+    // std::cout << tree.addFile(data, "/FreeSync/LICENSE", false).value() <<
+    // '\n'; bool a = tree.writeMerkleTree();
+
+    Tree tree = Tree(".", true);
+    if (!tree.writeMerkleTree()) {
+      std::println("Unable to save merkle tree");
+      return 1;
     }
+
     signal(SIGINT, sigHandler);
     FSServer sv = FSServer(running);
     sv.run();

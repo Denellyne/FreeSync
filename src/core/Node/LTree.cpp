@@ -14,7 +14,7 @@
 LTree::LTree(const std::array<char, 64> &hash, const std::string_view filePath,
              const bool root)
     : _root(root) {
-  this->_hash = std::string(hash.data());
+  this->_hash = std::string(hash.data(), 64);
 
   std::string path = OBJFOLDER;
   path.append(this->_hash, 0, 2);
@@ -73,9 +73,11 @@ LTree::getTreeFromBlob(const std::string_view objPath,
 }
 
 void LTree::hashTree() {
+  std::sort(this->_children.begin(), this->_children.end());
+  this->_hash.clear();
   this->_hash.reserve(this->_children.size() * 64);
   for (const auto &child : this->_children)
-    this->_hash += child._hash.data();
+    this->_hash += child._hash;
   this->_hash = Node::hash(this->_hash);
   assert(this->_hash.length() == 64);
 
@@ -178,19 +180,37 @@ LTree::addFile(std::vector<unsigned char> &data,
 
   if (filePath.parent_path() == this->_filePath) {
     const std::string fileName = filePath.filename();
+    bool newFile = true;
     for (auto it = this->_children.begin(); it != this->_children.end(); it++)
       if ((*it)._fileName == fileName) {
-        this->_children.erase(it);
+        newFile = false;
+        Leaf l(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
+        if (const auto dataOpt = l.diffFile(data); !dataOpt.has_value())
+          return std::unexpected(dataOpt.error());
+        else {
+          std::vector<unsigned char> diffs = std::move(dataOpt.value());
+          if (diffs.empty())
+            return this->_hash;
+          Leaf newLeaf(filePath.string(), diffs, it->_hash, isExecutable);
+          this->_children.erase(it);
+          std::string entry = REGULAR_FILE;
+          if (isExecutable)
+            entry = EXECUTABLE_FILE;
+          this->_children.emplace_back(LNode{entry, newLeaf.getFileName(),
+                                             std::string(newLeaf.getHash())});
+        }
         break;
       }
+    if (newFile) {
+      const Leaf leaf = Leaf(filePath.string(), data, isExecutable);
+      std::string entry = REGULAR_FILE;
+      if (isExecutable)
+        entry = EXECUTABLE_FILE;
 
-    const Leaf leaf = Leaf(filePath.string(), data, isExecutable);
-    std::string entry = REGULAR_FILE;
-    if (isExecutable)
-      entry = EXECUTABLE_FILE;
+      this->_children.emplace_back(
+          LNode(entry, leaf.getFileName(), leaf.getHash().data()));
+    }
 
-    this->_children.emplace_back(
-        LNode(entry, leaf.getFileName(), leaf.getHash().data()));
   } else if (isSubPath(filePath, this->_filePath)) {
     bool newDirectory = true;
     for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
@@ -207,6 +227,9 @@ LTree::addFile(std::vector<unsigned char> &data,
                     tree.value().addFile(data, filePath, isExecutable);
                 !newHash.has_value())
               return std::unexpected(newHash.error());
+            else {
+              it->_hash = newHash.value();
+            }
           } else
             return std::unexpected(tree.error());
 

@@ -12,6 +12,8 @@ public:
   Leaf(const std::string_view filePath);
   Leaf(const std::string_view filePath, std::vector<unsigned char> &data,
        const bool isExecutable);
+  Leaf(const std::string_view filePath, std::vector<unsigned char> &data,
+       const std::string_view parentHash, const bool isExecutable);
   Leaf(const std::string_view filePath, const std::string_view hash,
        const bool isExecutable)
       : _isExecutable(isExecutable) {
@@ -50,5 +52,7 @@ public:
 
 private:
   [[nodiscard]] bool writeBlob(const std::vector<unsigned char> &data);
+  [[nodiscard]] bool writeDiffBlob(const std::vector<unsigned char> &data,
+                                   const std::string_view parentHash);
   bool _isExecutable = false;
 };
