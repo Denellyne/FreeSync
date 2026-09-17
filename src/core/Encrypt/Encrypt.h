@@ -195,5 +195,7 @@ public:
 
 private:
   KeyPtr _key = nullptr;
+
+public:
   bool _isPrivateKey = false;
 };

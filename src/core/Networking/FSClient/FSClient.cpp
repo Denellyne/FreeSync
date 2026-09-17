@@ -22,8 +22,8 @@ FSClient::FSClient() {
                  connStatus);
     exit(EXIT_FAILURE);
   }
-  this->_pub = std::make_unique<RSAKey>(PUBKEY_PATH);
-  if (!this->_pub) {
+  this->_rsa = std::make_unique<RSAKey>(PUBKEY_PATH);
+  if (!this->_rsa) {
     std::println("Unable to load public key");
     exit(EXIT_FAILURE);
   }
@@ -75,6 +75,30 @@ bool FSClient::invalidateAES() {
   }
   return true;
 }
+std::expected<bool, std::string> FSClient::validateCommand(SSLString &s) {
+  const FSCode c = FSStrCode(std::string_view((char *)s._data, s._length));
+  switch (c) {
+
+  case RETR:
+  case STRU:
+    break;
+  case ERR:
+  case OK:
+  case AESK:
+  case INV:
+  case AUTH:
+  case AES:
+    return std::unexpected("The command passed is prohibited to users");
+    break;
+  case QUIT:
+  case LIST:
+  case DEL:
+  case ATTR:
+    break;
+  }
+
+  return true;
+}
 
 void FSClient::run() {
   volatile bool shouldRun = this->validationStep();
@@ -83,7 +107,13 @@ void FSClient::run() {
   while (shouldRun) {
     std::string str = "";
     std::getline(std::cin, str);
-    const SSLString s(str);
+    SSLString s(str);
+    if (auto valOpt = validateCommand(s);
+        s._length < 3 || !valOpt.has_value()) {
+      std::println("{}", valOpt.error());
+      continue;
+    }
+
     if (!this->_aes) {
       std::println("Should be in AES, something terribly wrong has happend");
       return;

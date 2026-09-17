@@ -1,6 +1,7 @@
 #pragma once
 #include "../FSProtocol.h"
 #include <contracts>
+#include <expected>
 #include <print>
 #include <unistd.h>
 #define PUBKEY_PATH "certs/pub.pem"
@@ -21,4 +22,7 @@ private:
   bool validationStep();
   bool switchAES();
   bool invalidateAES() pre(this->_aes);
+  std::expected<bool, std::string> validateCommand(SSLString &s);
+  bool handleDownload();
+  bool handleUpload();
 };

@@ -145,7 +145,6 @@ protected:
   // std::array<unsigned char, BUFFER_SIZE> _buffer;
   // std::string _currentDir = "/";
   AESPtr _aes = nullptr;
-  RSAPtr _pub = nullptr;
-  RSAPtr _private = nullptr;
+  RSAPtr _rsa = nullptr;
   // std::string _fragmentBuffer = "";
 };

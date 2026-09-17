@@ -49,6 +49,8 @@ public:
   getFinalDecompressBlob();
   [[nodiscard]] bool writeFile(const std::string_view path,
                                const std::vector<unsigned char> &data);
+  static std::vector<unsigned char> readBlobData(std::ifstream &file);
+  Leaf getParentLeaf(std::ifstream &file);
 
 private:
   [[nodiscard]] bool writeBlob(const std::vector<unsigned char> &data);

@@ -9,7 +9,7 @@ private:
     std::string _fileName;
     std::string _hash;
     unsigned _size = -1;
-    const unsigned getFileSize() const;
+    unsigned getFileSize() const;
   };
 
 public:

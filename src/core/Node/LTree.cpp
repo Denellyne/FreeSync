@@ -58,7 +58,6 @@ LTree::getTreeFromBlob(const std::string_view objPath,
 
   while (!dataStr.empty()) {
     const std::string entry = dataStr.substr(0, 6);
-    std::array<char, 6> entryArr;
     dataStr.erase(0, 7);
     const size_t fileNameIdx = dataStr.find_first_of('\0', 0);
     const std::string fileName = dataStr.substr(0, fileNameIdx);
@@ -188,7 +187,7 @@ LTree::addFile(std::vector<unsigned char> &data,
         if (const auto dataOpt = l.diffFile(data); !dataOpt.has_value())
           return std::unexpected(dataOpt.error());
         else {
-          std::vector<unsigned char> diffs = std::move(dataOpt.value());
+          std::vector<unsigned char> diffs = dataOpt.value();
           if (diffs.empty())
             return this->_hash;
           Leaf newLeaf(filePath.string(), diffs, it->_hash, isExecutable);
@@ -330,7 +329,7 @@ std::optional<LTree> LTree::getChildTree(std::string_view path) const {
 
   return std::nullopt;
 }
-const unsigned LTree::LNode::getFileSize() const {
+unsigned LTree::LNode::getFileSize() const {
   if (this->_entry == DIRECTORY)
     return 0;
   std::string path = OBJFOLDER;

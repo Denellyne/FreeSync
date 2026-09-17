@@ -77,8 +77,8 @@ void FSServer::handleConnection(const int fd, const std::atomic_bool &running) {
 FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
                                  bool &valid)
     : _fd(fd), _running(running) {
-  this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
-  if (!this->_private) {
+  this->_rsa = std::make_unique<RSAKey>(PKEY_PATH, true);
+  if (!this->_rsa) {
     std::println("Unable to load private key");
     valid = false;
   }

@@ -26,8 +26,8 @@ bool FSProtocol::writePrimitive(const int fd, void *data, const uint32_t size) {
 
 using FSCommand = struct FSProtocol::Command;
 bool FSProtocol::writeToSocket(const int fd, const SSLString &data) {
-  assert(fd >= 0);
-  if (const auto blob = this->_pub->encryptBlob(data); blob.has_value()) {
+  assert(fd >= 0 && !this->_rsa->_isPrivateKey);
+  if (const auto blob = this->_rsa->encryptBlob(data); blob.has_value()) {
     const SSLString str = blob.value();
 
     std::array<unsigned char, LENGTH_SIZE> sizeArray = toArray(str._length);
@@ -77,11 +77,11 @@ StringOpt FSProtocol::readSocketAES(const int fd) {
 }
 StringOpt FSProtocol::readSocketRSA(const int fd) {
   assert(fd >= 0);
-  assert(this->_private);
+  assert(this->_rsa->_isPrivateKey);
   StringOpt strOpt = readSocket(fd);
   if (!strOpt.has_value())
     return std::nullopt;
-  if (auto sslOpt = this->_private->decryptBlob(strOpt.value());
+  if (auto sslOpt = this->_rsa->decryptBlob(strOpt.value());
       !sslOpt.has_value())
     return std::nullopt;
   else

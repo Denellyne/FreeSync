@@ -171,7 +171,6 @@ std::expected<std::vector<unsigned char>, std::string> Leaf::getBlob() {
 
 std::expected<std::vector<unsigned char>, std::string>
 Leaf::getFinalDecompressBlob() {
-  std::vector<unsigned char> res;
   std::ifstream file(this->_objPath, std::fstream::binary);
   if (!file)
     return std::unexpected("Invalid file");
@@ -185,18 +184,7 @@ Leaf::getFinalDecompressBlob() {
   file.read(type, 4);
   file.seekg(5, file.beg);
   if (!strcmp(type, "blob")) {
-    std::string size = "";
-    char c = file.get();
-    while (c != '\0') {
-      size += c;
-      c = file.get();
-    }
-    assert(!size.empty());
-    length = std::stoul(size);
-
-    res.resize(length);
-
-    file.read(reinterpret_cast<char *>(res.data()), length);
+    std::vector<unsigned char> res = Leaf::readBlobData(file);
     if (!decompressData(res))
       return std::unexpected("Unable to decompress blob");
     return res;
@@ -204,26 +192,13 @@ Leaf::getFinalDecompressBlob() {
   if (length - 5 < 64)
     return std::unexpected(
         "Invalid file contents, couldn't read leaf parent hash");
-  std::string parentHash;
-  parentHash.resize(64);
-  file.read(parentHash.data(), 64);
-  Leaf parent(this->getFilePath().string(), parentHash, this->_isExecutable);
+
+  Leaf parent = this->getParentLeaf(file);
   if (auto dataOpt = parent.getFinalDecompressBlob(); !dataOpt.has_value())
     return std::unexpected(dataOpt.error());
 
   else {
-    std::string size = "";
-    char c = file.get();
-    while (c != '\0') {
-      size += c;
-      c = file.get();
-    }
-    assert(!size.empty());
-    length = std::stoul(size);
-
-    res.resize(length);
-
-    file.read(reinterpret_cast<char *>(res.data()), length);
+    std::vector<unsigned char> res = Leaf::readBlobData(file);
     if (!decompressData(res))
       return std::unexpected("Unable to decompress diff blob");
     std::vector<unsigned char> final = std::move(dataOpt.value());
@@ -312,4 +287,29 @@ Leaf::diffFile(const std::vector<unsigned char> &newer) {
     }
     return diffs;
   }
+}
+
+std::vector<unsigned char> Leaf::readBlobData(std::ifstream &file) {
+
+  std::vector<unsigned char> res;
+  std::string size = "";
+  char c = file.get();
+  while (c != '\0') {
+    size += c;
+    c = file.get();
+  }
+  assert(!size.empty());
+  uint32_t length = std::stoul(size);
+
+  res.resize(length);
+
+  file.read(reinterpret_cast<char *>(res.data()), length);
+  return res;
+}
+
+Leaf Leaf::getParentLeaf(std::ifstream &file) {
+  std::string parentHash;
+  parentHash.resize(64);
+  file.read(parentHash.data(), 64);
+  return Leaf(this->getFilePath().string(), parentHash, this->_isExecutable);
 }
