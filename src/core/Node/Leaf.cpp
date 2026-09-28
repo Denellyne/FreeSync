@@ -223,18 +223,29 @@ bool applyDiffsUncompressed(std::vector<unsigned char> &old,
       idx += 32;
       strncpy((char *)end.data(), (char *)&diffs[idx], 32);
       idx += 32;
-      const uint32_t begIdx = toNumber(beg);
-      const uint32_t endIdx = toNumber(end);
-      old.insert(old.end(), original.begin() + begIdx,
-                 original.begin() + endIdx);
+      if (const auto begIdxOpt = toNumber(beg); !begIdxOpt.has_value())
+        return false;
+      else if (const auto endIdxOpt = toNumber(end); !endIdxOpt.has_value())
+        return false;
+      else {
+        const uint32_t begIdx = begIdxOpt.value();
+        const uint32_t endIdx = endIdxOpt.value();
+        old.insert(old.end(), original.begin() + begIdx,
+                   original.begin() + endIdx);
+      }
     } else if (diffs[idx] == 'I') {
       idx++;
       std::array<unsigned char, 32> size;
       strncpy((char *)size.data(), (char *)&diffs[idx], 32);
       idx += 32;
-      const uint32_t length = toNumber(size);
-      old.insert(old.end(), diffs.begin() + idx, diffs.begin() + idx + length);
-      idx += length;
+      if (const auto lengthOpt = toNumber(size); !lengthOpt.has_value())
+        return false;
+      else {
+        const uint32_t length = lengthOpt.value();
+        old.insert(old.end(), diffs.begin() + idx,
+                   diffs.begin() + idx + length);
+        idx += length;
+      }
     } else
       return false;
   }

@@ -10,6 +10,8 @@
 #include <print>
 #include <vector>
 #define AES_KEY_LENGTH 256
+#define AES_KEY_BYTES 32
+#define RSA_SIGNING_LENGTH 256
 #define IV_SIZE 12
 #define TAG_SIZE 16
 #define LENGTH_SIZE 32
@@ -28,9 +30,10 @@ struct SSLDeleter {
   }
 };
 
-std::array<unsigned char, LENGTH_SIZE> toArray(unsigned n);
+std::array<unsigned char, LENGTH_SIZE> toArray(uint32_t n);
 
-uint32_t toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec);
+std::optional<uint32_t>
+toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec);
 template <typename T>
 concept ByteSpan =
     requires { typename T::element_type; } &&
@@ -47,17 +50,24 @@ typedef std::unique_ptr<EVP_PKEY_CTX, SSLDeleter> RSACtxPtr;
 typedef std::unique_ptr<EVP_CIPHER_CTX, SSLDeleter> AESCtxPtr;
 typedef std::unique_ptr<AESKey> AESPtr;
 typedef std::unique_ptr<RSAKey> RSAPtr;
+typedef std::shared_ptr<RSAKey> RSASPtr;
 
 struct SSLString {
   SSLString() = delete;
-  SSLString(unsigned char *data, const size_t length) : _length(length) {
-    if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
-        !this->_data) {
-      std::cerr << "Unable to allocate memory for cipherText blob\n";
-      ERR_print_errors_fp(stderr);
-      throw std::runtime_error("Unable to clone string\n");
+  SSLString(unsigned char *data, const size_t length,
+            const bool isSSLAllocated = true)
+      : _length(length) {
+    if (isSSLAllocated)
+      this->_data = data;
+    else {
+      if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
+          !this->_data) {
+        std::cerr << "Unable to allocate memory for cipherText blob\n";
+        ERR_print_errors_fp(stderr);
+        throw std::runtime_error("Unable to clone string\n");
+      }
+      memcpy(const_cast<unsigned char *>(this->_data), data, this->_length);
     }
-    memcpy(const_cast<unsigned char *>(this->_data), data, this->_length);
   }
   SSLString(SSLString &&other) : _data(other._data), _length(other._length) {
     other._data = nullptr;
@@ -164,6 +174,20 @@ private:
 
 class RSAKey final : public CypherKey {
 public:
+  RSAKey(const std::vector<unsigned char> &key, bool isPrivateKey = false)
+      : _isPrivateKey(isPrivateKey) {
+    if (this->_isPrivateKey) {
+      if (auto keyOpt = loadPrivateKey(key); !keyOpt)
+        throw std::runtime_error("Unable to load private key\n");
+      else
+        this->_key.swap(keyOpt);
+    } else {
+      if (auto keyOpt = loadPublicKey(key); !keyOpt)
+        throw std::runtime_error("Unable to load public key\n");
+      else
+        this->_key.swap(keyOpt);
+    }
+  }
   RSAKey(const std::string_view path, bool isPrivateKey = false)
       : _isPrivateKey(isPrivateKey) {
     if (this->_isPrivateKey) {
@@ -183,6 +207,8 @@ public:
 private:
   KeyPtr loadPublicKey(const std::string_view path);
   KeyPtr loadPrivateKey(const std::string_view path);
+  KeyPtr loadPublicKey(const std::vector<unsigned char> &key);
+  KeyPtr loadPrivateKey(const std::vector<unsigned char> &key);
 
   RSACtxPtr loadEncryptCtx();
   RSACtxPtr loadDecryptCtx();
@@ -191,6 +217,9 @@ public:
   // std::optional<SSLString> encryptBlob(const std::string &data) override;
   std::optional<SSLString> encryptBlob(const SSLString &data) override;
   std::optional<SSLString> decryptBlob(SSLString &data) override;
+  std::optional<SSLString> signBlob(const SSLString &data);
+  bool validateBlob(const SSLString &raw, const SSLString &sig);
+
   // std::optional<SSLString> decryptBlob(std::string &data) override;
 
 private:

@@ -22,24 +22,58 @@ FSClient::FSClient() {
                  connStatus);
     exit(EXIT_FAILURE);
   }
-  this->_rsa = std::make_unique<RSAKey>(PUBKEY_PATH);
-  if (!this->_rsa) {
-    std::println("Unable to load public key");
+  this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
+  if (!this->_private) {
+    std::println("Unable to load private key");
     exit(EXIT_FAILURE);
   }
 }
 
 bool FSClient::validationStep() {
-  std::array<unsigned char, VALIDATION_LENGTH> buf;
-  if (!readPacket(this->_fd, buf.data(), VALIDATION_LENGTH)) {
-    std::println("Unable to read primitive string");
+
+  std::array<unsigned char, LENGTH_SIZE> serverKeyLength;
+  if (!readPacket(this->_fd, serverKeyLength.data(), LENGTH_SIZE)) {
+    std::println("Unable to read serverKeyLength");
     return false;
   }
-  const SSLString str(buf.data(), VALIDATION_LENGTH);
-  if (!this->writeToSocket(this->_fd, str)) {
-    std::println("Unable to write validation string to socket");
+  auto clientKeyLengthOpt = toNumber(serverKeyLength);
+  if (!clientKeyLengthOpt.has_value()) {
+    std::println("Unable to get key length");
     return false;
   }
+  const long clientKeyLength = clientKeyLengthOpt.value();
+  std::vector<unsigned char> key(clientKeyLength);
+  if (!readPacket(this->_fd, key.data(), clientKeyLength)) {
+    std::println("Unable to read key");
+    return false;
+  }
+  this->_public = std::make_unique<RSAKey>(key);
+  if (!this->_public) {
+    std::println("Unable to load public key");
+    return false;
+  }
+  if (FILE *fp = fopen(PUBKEY_PATH, "r"); !fp) {
+    std::println("Unable to open own public key file");
+    return false;
+  } else {
+    fseek(fp, 0, SEEK_END);
+    const long length = ftell(fp);
+    key.resize(length);
+    rewind(fp);
+    if (fread(key.data(), sizeof(unsigned char), length, fp) < length) {
+      std::println("Unable to read own public key");
+      fclose(fp);
+      return false;
+    }
+    fclose(fp);
+    std::array<unsigned char, LENGTH_SIZE> lengthArr = toArray(length);
+    key.insert(key.begin(), lengthArr.begin(), lengthArr.end());
+    if (!writePrimitive(this->_fd, key.data(), LENGTH_SIZE + length)) {
+      std::println("Unable to send primitive string");
+      return false;
+    }
+  }
+  std::array<unsigned char, COMMAND_LENGTH> buf;
   if (!readPacket(this->_fd, buf.data(), COMMAND_LENGTH))
     return false;
   else {
@@ -62,8 +96,6 @@ bool FSClient::switchAES() {
   }
   std::println("Switched to AES encryption");
   return true; // Check if received OK
-
-  return false;
 }
 
 bool FSClient::invalidateAES() {
@@ -88,6 +120,7 @@ std::expected<bool, std::string> FSClient::validateCommand(SSLString &s) {
   case INV:
   case AUTH:
   case AES:
+    // case PUBK:
     return std::unexpected("The command passed is prohibited to users");
     break;
   case QUIT:

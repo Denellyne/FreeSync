@@ -4,7 +4,6 @@
 #include <expected>
 #include <print>
 #include <unistd.h>
-#define PUBKEY_PATH "certs/pub.pem"
 
 class FSClient final : public FSProtocol {
 public:

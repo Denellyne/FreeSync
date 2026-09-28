@@ -1,7 +1,10 @@
 #include "FSServer.h"
 #include "../../Node/LTree.h"
 #include <cstring>
-#include <random>
+#include <fcntl.h>
+#include <stdexcept>
+#include <sys/mman.h>
+#include <sys/random.h>
 #include <thread>
 
 FSServer::FSServer(std::atomic_bool &running) : _running(running) {
@@ -77,8 +80,8 @@ void FSServer::handleConnection(const int fd, const std::atomic_bool &running) {
 FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
                                  bool &valid)
     : _fd(fd), _running(running) {
-  this->_rsa = std::make_unique<RSAKey>(PKEY_PATH, true);
-  if (!this->_rsa) {
+  this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
+  if (!this->_private) {
     std::println("Unable to load private key");
     valid = false;
   }
@@ -106,31 +109,98 @@ FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
     throw std::runtime_error("TCP_KEEPCNT error\n");
 }
 
-bool FSServer::Connection::handleValidation() {
-  const std::string str = generateRandomString();
-  if (!writePrimitive(this->_fd, const_cast<char *>(str.c_str()),
-                      VALIDATION_LENGTH)) {
-    std::println("Unable to send primitive string");
-    return false;
+bool FSServer::Connection::checkIfAuthorized(
+    const std::vector<unsigned char> &key) {
+  for (const auto &file :
+       std::filesystem::directory_iterator(CLIENTS_CERTS_PATH)) {
+    if (file.is_directory())
+      continue;
+
+    if (int fd = open(file.path().c_str(), O_RDONLY, 0); fd < 0) {
+      std::cerr << "Unable to open file " << file << "\n";
+      return false;
+    } else {
+      unsigned char *buf = (unsigned char *)mmap(
+          NULL, file.file_size(), PROT_READ, MAP_FILE | MAP_SHARED, fd, 0);
+      if (key.size() == file.file_size() &&
+          !memcmp(key.data(), buf, key.size())) {
+        munmap(buf, file.file_size());
+        close(fd);
+        return true;
+      }
+      munmap(buf, file.file_size());
+      close(fd);
+    }
   }
-  if (StringOpt opt = readSocketRSA(this->_fd); !opt.has_value()) {
-    std::println("Unable to read cipher validation string");
+  return false;
+}
+
+bool FSServer::Connection::handleValidation() {
+  // const std::string str = generateRandomString();
+  if (FILE *fp = fopen(PUBKEY_PATH, "r"); !fp) {
+    std::println("Unable to open own public key file");
     return false;
-  } else
-    return !memcmp(str.c_str(), opt.value()._data, VALIDATION_LENGTH);
+  } else {
+    fseek(fp, 0, SEEK_END);
+    const long length = ftell(fp);
+    std::vector<unsigned char> key(length);
+    rewind(fp);
+    if (fread(key.data(), sizeof(unsigned char), length, fp) < length) {
+      std::println("Unable to read own public key");
+      fclose(fp);
+      return false;
+    }
+    fclose(fp);
+    std::array<unsigned char, LENGTH_SIZE> lengthArr = toArray(length);
+    key.insert(key.begin(), lengthArr.begin(), lengthArr.end());
+    if (!writePrimitive(this->_fd, key.data(), LENGTH_SIZE + length)) {
+      std::println("Unable to send primitive string");
+      return false;
+    }
+    key.clear();
+    if (!readPacket(this->_fd, lengthArr.data(), LENGTH_SIZE)) {
+      std::println("Unable to read key length");
+      return false;
+    }
+    auto clientKeyLengthOpt = toNumber(lengthArr);
+    if (!clientKeyLengthOpt.has_value()) {
+      std::println("Unable to get key length");
+      return false;
+    }
+    const long clientKeyLength = clientKeyLengthOpt.value();
+    key.resize(clientKeyLength);
+    if (!readPacket(this->_fd, key.data(), clientKeyLength)) {
+      std::println("Unable to read key");
+      return false;
+    }
+    if (!checkIfAuthorized(key)) {
+      std::println("Key is not authorized");
+      return false;
+    }
+    this->_public = std::make_unique<RSAKey>(key);
+    if (!this->_public) {
+      std::println("Unable to load public key");
+      return false;
+    }
+
+    return true;
+  }
 }
 
-std::string FSServer::Connection::generateRandomString() {
-  static thread_local std::mt19937 *generator = nullptr;
-  if (!generator)
-    generator = new std::mt19937(time(nullptr));
-
-  std::uniform_int_distribution<int> distribution(0, 255);
-  std::string res = "";
-  for (int i = 0; i < VALIDATION_LENGTH; i++)
-    res += distribution(*generator);
-  return res;
-}
+// std::string FSServer::Connection::generateRandomString() {
+//
+//   std::string res = "";
+//   res.resize(VALIDATION_LENGTH + 1);
+//   res[VALIDATION_LENGTH] = '\0';
+//   ssize_t idx = 0;
+//   while (idx < VALIDATION_LENGTH) {
+//     const ssize_t bytes = getrandom(&res[idx], VALIDATION_LENGTH, 0);
+//     if (bytes < 0)
+//       throw std::runtime_error("Unable to generatate random string");
+//     idx += bytes;
+//   }
+//   return res;
+// }
 
 bool FSServer::Connection::interpretCommand(const SSLString &command) {
   if (command._length < COMMAND_LENGTH)
@@ -138,9 +208,13 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) {
   const std::string_view codeView(
       (const char *)(command._data),
       (const char *)(command._data + COMMAND_LENGTH));
-  std::vector<unsigned char> dataView(command._length - COMMAND_LENGTH);
-  memcpy(dataView.data(), command._data + COMMAND_LENGTH,
-         command._length - COMMAND_LENGTH);
+  const uint32_t dataViewLength = command._length - COMMAND_LENGTH > 0
+                                      ? command._length - COMMAND_LENGTH
+                                      : 0;
+  std::vector<unsigned char> dataView(dataViewLength);
+  if (dataViewLength > 0)
+    memcpy(dataView.data(), command._data + COMMAND_LENGTH,
+           command._length - COMMAND_LENGTH);
   const FSCode code = FSStrCode(codeView);
   switch (code) {
   case DEL: {
@@ -155,6 +229,8 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) {
     this->_aes = nullptr;
   } break;
   case AESK: {
+    if (command._length < AES_KEY_BYTES + COMMAND_LENGTH)
+      return false;
     this->_aes = std::make_unique<AESKey>(command._data + COMMAND_LENGTH);
     std::println("Switched to AES encryption");
   } break;
@@ -227,16 +303,27 @@ void FSServer::Connection::run() {
 
   while (this->_running.load()) {
     if (!this->_aes) {
-      const SSLString command = readSocketRSA(this->_fd).value();
-      if (!interpretCommand(command))
+      if (const auto commandOpt = readSocketRSA(this->_fd);
+          !commandOpt.has_value())
         return;
+      else {
+        const SSLString command = commandOpt.value();
+        if (!interpretCommand(command))
+          return;
+      }
       // std::cout << command << '\n';
       continue;
     }
-    const SSLString command = readSocketAES(this->_fd).value();
-
-    if (!interpretCommand(command))
+    if (const auto commandOpt = readSocketAES(this->_fd);
+        !commandOpt.has_value())
       return;
+    else {
+      const SSLString command = commandOpt.value();
+      if (!interpretCommand(command))
+        return;
+    }
+    // std::cout << command << '\n';
+    continue;
     // std::cout << command << '\n';
   }
 }

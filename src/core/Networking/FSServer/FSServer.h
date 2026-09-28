@@ -2,11 +2,11 @@
 #include "../FSProtocol.h"
 #include "../ThreadPool/ThreadPool.hpp"
 #include <atomic>
+#include <future>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <print>
 #include <unistd.h>
-#define PKEY_PATH "certs/priv.pem"
 
 class FSServer {
 public:
@@ -20,6 +20,13 @@ public:
   }
   void run();
   static void handleConnection(const int fd, const std::atomic_bool &running);
+  struct Request {
+    const enum { ADD, DELETE } type;
+    bool complete = false;
+    char id = -1;
+    const std::array<char, 64> hash;
+    const std::string path;
+  };
 
 private:
   class Connection final : public FSProtocol {
@@ -33,10 +40,11 @@ private:
     virtual void run() override;
 
   private:
-    std::string generateRandomString();
+    // std::string generateRandomString();
     bool handleValidation();
     bool handleAES();
     bool interpretCommand(const SSLString &command);
+    bool checkIfAuthorized(const std::vector<unsigned char> &key);
 
     int _fd = -1;
     const std::atomic_bool &_running;

@@ -1,7 +1,10 @@
 #include "Encrypt.h"
 #include <openssl/aes.h>
+#include <optional>
 
 std::optional<SSLString> AESKey::encryptBlob(const SSLString &data) {
+  if (data._length == 0)
+    return std::nullopt;
   AESIV iv;
   AESTAG tag;
   if (auto ivOpt = getIV(); !ivOpt.has_value()) {
@@ -65,6 +68,9 @@ std::optional<SSLString> AESKey::encryptBlob(const SSLString &data) {
 std::optional<SSLString> AESKey::decryptBlob(SSLString &data) {
   AESIV iv{};
   AESTAG tag{};
+  if (data._length < IV_SIZE + TAG_SIZE)
+    return std::nullopt;
+
   const uint32_t size = data._length - IV_SIZE - TAG_SIZE;
   memcpy(iv.data(), data._data, IV_SIZE);
   memcpy(tag.data(), data._data + IV_SIZE + size, TAG_SIZE);
@@ -193,6 +199,31 @@ KeyPtr RSAKey::loadPrivateKey(const std::string_view path) {
   ERR_print_errors_fp(stderr);
   return nullptr;
 }
+KeyPtr RSAKey::loadPublicKey(const std::vector<unsigned char> &key) {
+  BIO *bp(BIO_new_mem_buf((void *)key.data(), key.size()));
+  if (!bp) {
+    std::cerr << "Unable to load public key from buffer\n";
+    ERR_print_errors_fp(stderr);
+    return nullptr;
+  }
+
+  KeyPtr keyPtr = KeyPtr(PEM_read_bio_PUBKEY(bp, nullptr, nullptr, nullptr));
+  BIO_free(bp);
+  return keyPtr;
+}
+KeyPtr RSAKey::loadPrivateKey(const std::vector<unsigned char> &key) {
+  BIO *bp(BIO_new_mem_buf((void *)key.data(), key.size()));
+  if (!bp) {
+    std::cerr << "Unable to load private key from buffer\n";
+    ERR_print_errors_fp(stderr);
+    return nullptr;
+  }
+
+  KeyPtr keyPtr =
+      KeyPtr(PEM_read_bio_PrivateKey(bp, nullptr, nullptr, nullptr));
+  BIO_free(bp);
+  return keyPtr;
+}
 RSACtxPtr RSAKey::loadEncryptCtx() {
   assert(this->_key != nullptr);
   if (EVP_PKEY_CTX *ctxRaw = EVP_PKEY_CTX_new(this->_key.get(), nullptr);
@@ -259,6 +290,8 @@ RSACtxPtr RSAKey::loadDecryptCtx() {
 }
 
 std::optional<SSLString> RSAKey::encryptBlob(const SSLString &data) {
+  if (data._length == 0)
+    return std::nullopt;
   assert(this->_isPrivateKey == false);
   RSACtxPtr ctx = nullptr;
   if (ctx = loadEncryptCtx(); !ctx) {
@@ -388,7 +421,7 @@ std::optional<SSLString> RSAKey::decryptBlob(SSLString &data) {
 //     return SSLString(out, outlen);
 // }
 
-std::array<unsigned char, LENGTH_SIZE> toArray(unsigned n) {
+std::array<unsigned char, LENGTH_SIZE> toArray(uint32_t n) {
   std::array<unsigned char, LENGTH_SIZE> res{'0'};
   for (int i = 31; i >= 0; i--) {
     res[i] = (n % 10) + '0';
@@ -396,9 +429,93 @@ std::array<unsigned char, LENGTH_SIZE> toArray(unsigned n) {
   }
   return res;
 }
-uint32_t toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec) {
+std::optional<uint32_t>
+toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec) {
   uint32_t num = 0;
   for (const auto c : vec)
     num = (num * 10) + (c - '0');
   return num;
+}
+
+bool RSAKey::validateBlob(const SSLString &raw, const SSLString &sig) {
+  assert(!this->_isPrivateKey && this->_key);
+  EVP_MD_CTX *m_RSAVerifyCtx = EVP_MD_CTX_create();
+  if (!m_RSAVerifyCtx) {
+    ERR_print_errors_fp(stderr);
+    std::cerr << "Unable to initialize allocate context\n";
+    return false;
+  }
+
+  if (EVP_DigestVerifyInit(m_RSAVerifyCtx, NULL, EVP_sha256(), NULL,
+                           this->_key.get()) <= 0) {
+    EVP_MD_CTX_free(m_RSAVerifyCtx);
+    ERR_print_errors_fp(stderr);
+    std::cerr << "Unable to initialize verifier context\n";
+    return false;
+  }
+  if (EVP_DigestVerifyUpdate(m_RSAVerifyCtx, raw._data, raw._length) <= 0) {
+    EVP_MD_CTX_free(m_RSAVerifyCtx);
+    ERR_print_errors_fp(stderr);
+    std::cerr << "Unable to update verify digest\n";
+    return false;
+  }
+
+  if (const int AuthStatus =
+          EVP_DigestVerifyFinal(m_RSAVerifyCtx, sig._data, sig._length);
+      AuthStatus == 1) {
+    EVP_MD_CTX_free(m_RSAVerifyCtx);
+    return true;
+  }
+  std::cerr << "The packet is invalid\n";
+  EVP_MD_CTX_free(m_RSAVerifyCtx);
+  return false;
+}
+std::optional<SSLString> RSAKey::signBlob(const SSLString &data) {
+  assert(this->_isPrivateKey && this->_key);
+  if (unsigned char *out = (unsigned char *)OPENSSL_malloc(RSA_SIGNING_LENGTH);
+      !out) {
+    std::cerr << "Unable to allocate string of size 512\n";
+    ERR_print_errors_fp(stderr);
+    return std::nullopt;
+  } else {
+    EVP_MD_CTX *m_RSASignCtx = EVP_MD_CTX_create();
+    if (!m_RSASignCtx) {
+      OPENSSL_free(out);
+      ERR_print_errors_fp(stderr);
+      std::cerr << "Unable to initialize signing context\n";
+      return std::nullopt;
+    }
+    if (EVP_DigestSignInit(m_RSASignCtx, NULL, EVP_sha256(), NULL,
+                           this->_key.get()) <= 0) {
+      EVP_MD_CTX_free(m_RSASignCtx);
+      OPENSSL_free(out);
+      ERR_print_errors_fp(stderr);
+      std::cerr << "Unable to initialize sigining digest\n";
+      return std::nullopt;
+    }
+    if (EVP_DigestSignUpdate(m_RSASignCtx, data._data, data._length) <= 0) {
+      EVP_MD_CTX_free(m_RSASignCtx);
+      OPENSSL_free(out);
+      ERR_print_errors_fp(stderr);
+      std::cerr << "Unable to initialize sign packet\n";
+      return std::nullopt;
+    }
+    if (size_t encLength = 0;
+        EVP_DigestSignFinal(m_RSASignCtx, NULL, &encLength) <= 0 ||
+        encLength != RSA_SIGNING_LENGTH) {
+      EVP_MD_CTX_free(m_RSASignCtx);
+      OPENSSL_free(out);
+      ERR_print_errors_fp(stderr);
+      std::cerr << "Unable to finish updating signature size\n";
+      return std::nullopt;
+    } else if (EVP_DigestSignFinal(m_RSASignCtx, out, &encLength) <= 0) {
+      EVP_MD_CTX_free(m_RSASignCtx);
+      OPENSSL_free(out);
+      ERR_print_errors_fp(stderr);
+      std::cerr << "Unable to finish signing packet\n";
+      return std::nullopt;
+    }
+    EVP_MD_CTX_free(m_RSASignCtx);
+    return SSLString(out, RSA_SIGNING_LENGTH);
+  }
 }

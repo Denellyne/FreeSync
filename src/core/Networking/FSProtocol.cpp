@@ -26,14 +26,22 @@ bool FSProtocol::writePrimitive(const int fd, void *data, const uint32_t size) {
 
 using FSCommand = struct FSProtocol::Command;
 bool FSProtocol::writeToSocket(const int fd, const SSLString &data) {
-  assert(fd >= 0 && !this->_rsa->_isPrivateKey);
-  if (const auto blob = this->_rsa->encryptBlob(data); blob.has_value()) {
+  assert(fd >= 0 && this->_public && this->_private &&
+         !this->_public->_isPrivateKey);
+  if (const auto blob = this->_public->encryptBlob(data); blob.has_value()) {
     const SSLString str = blob.value();
 
     std::array<unsigned char, LENGTH_SIZE> sizeArray = toArray(str._length);
     std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
     packet.resize(packet.size() + str._length, 0);
     memcpy(&packet[LENGTH_SIZE], str._data, str._length);
+    const auto sigOpt = this->_private->signBlob(data);
+    if (!sigOpt.has_value())
+      return false;
+    const SSLString sig = sigOpt.value();
+    const size_t packetLength = packet.size();
+    packet.resize(packet.size() + sig._length, 0);
+    memcpy(&packet[packetLength], sig._data, sig._length);
 
     if (!writePrimitive(fd, packet.data(), packet.size())) {
       perror("Unable to send data\n");
@@ -47,6 +55,10 @@ bool FSProtocol::writeToSocket(const int fd, const SSLString &data) {
 
 bool FSProtocol::writeToSocketAES(const int fd, const SSLString &data) {
   assert(fd >= 0);
+  if (this->_aes == nullptr) {
+    std::println("No AES Key available");
+    return false;
+  }
   if (const auto blob = this->_aes->encryptBlob(data); blob.has_value()) {
     const SSLString str = blob.value();
 
@@ -54,6 +66,13 @@ bool FSProtocol::writeToSocketAES(const int fd, const SSLString &data) {
     std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
     packet.resize(packet.size() + str._length, 0);
     memcpy(&packet[LENGTH_SIZE], str._data, str._length);
+    const auto sigOpt = this->_private->signBlob(data);
+    if (!sigOpt.has_value())
+      return false;
+    const SSLString sig = sigOpt.value();
+    const size_t packetLength = packet.size();
+    packet.resize(packet.size() + sig._length, 0);
+    memcpy(&packet[packetLength], sig._data, sig._length);
 
     if (!writePrimitive(fd, packet.data(), packet.size())) {
       perror("Unable to send data\n");
@@ -69,23 +88,41 @@ StringOpt FSProtocol::readSocketAES(const int fd) {
   StringOpt strOpt = readSocket(fd);
   if (!strOpt.has_value())
     return std::nullopt;
+  std::vector<unsigned char> sig(RSA_SIGNING_LENGTH);
+  if (!readPacket(fd, sig.data(), RSA_SIGNING_LENGTH))
+    return std::nullopt;
+
   if (auto sslOpt = this->_aes->decryptBlob(strOpt.value());
       !sslOpt.has_value())
     return std::nullopt;
-  else
-    return sslOpt;
+  else {
+    const SSLString ssl = sslOpt.value();
+    const SSLString signature = SSLString(sig);
+    if (!this->_public->validateBlob(ssl, signature))
+      return std::nullopt;
+    return ssl;
+  }
 }
 StringOpt FSProtocol::readSocketRSA(const int fd) {
   assert(fd >= 0);
-  assert(this->_rsa->_isPrivateKey);
+  assert(this->_private->_isPrivateKey);
   StringOpt strOpt = readSocket(fd);
   if (!strOpt.has_value())
     return std::nullopt;
-  if (auto sslOpt = this->_rsa->decryptBlob(strOpt.value());
+  std::vector<unsigned char> sig(RSA_SIGNING_LENGTH);
+  if (!readPacket(fd, sig.data(), RSA_SIGNING_LENGTH))
+    return std::nullopt;
+
+  if (auto sslOpt = this->_private->decryptBlob(strOpt.value());
       !sslOpt.has_value())
     return std::nullopt;
-  else
-    return sslOpt;
+  else {
+    const SSLString ssl = sslOpt.value();
+    const SSLString signature = SSLString(sig);
+    if (!this->_public->validateBlob(ssl, signature))
+      return std::nullopt;
+    return ssl;
+  }
 }
 
 bool FSProtocol::readPacket(const int fd, void *data, const uint32_t numBytes) {
@@ -115,13 +152,17 @@ StringOpt FSProtocol::readSocket(const int fd) {
 
   if (!readPacket(fd, packetSize.data(), LENGTH_SIZE))
     return std::nullopt;
-  const uint32_t size = toNumber(packetSize);
-  std::vector<unsigned char> data(size, 0);
-  if (!readPacket(fd, data.data(), size)) {
-    std::println("Unable to read packet\n");
+  if (const auto sizeOpt = toNumber(packetSize); !sizeOpt.has_value())
     return std::nullopt;
+  else {
+    const uint32_t size = sizeOpt.value();
+    std::vector<unsigned char> data(size, 0);
+    if (!readPacket(fd, data.data(), size)) {
+      std::println("Unable to read packet\n");
+      return std::nullopt;
+    }
+    return SSLString(data);
   }
-  return SSLString(data);
 }
 
 // FSProtocol::CommandQueueOpt FSProtocol::parseCommands(std::string_view input)

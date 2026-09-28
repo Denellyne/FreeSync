@@ -12,6 +12,9 @@ using StringOpt = std::optional<SSLString>;
 #define BUFFER_SIZE 512
 #define VALIDATION_LENGTH 48
 #define COMMAND_LENGTH 3
+#define PUBKEY_PATH "certs/pub.pem"
+#define PKEY_PATH "certs/priv.pem"
+#define CLIENTS_CERTS_PATH "clients/"
 
 enum FSCode {
   ERR = 100,  // Generic Error command followed by reason
@@ -28,6 +31,7 @@ enum FSCode {
   AES = 305,  // Asks the User to generate a new AES key to be used for the
               // session, either after a set ammount of times the key is used or
               // for a transfer, there only exists one AES key at a time
+  // PUBK = 306, // Sends the public key
 
 };
 constexpr std::string FSPrint(const FSCode code) {
@@ -54,6 +58,8 @@ constexpr std::string FSPrint(const FSCode code) {
     return "ATTR";
   else if (code == AES)
     return "AES";
+  // else if (code == PUBK)
+  //   return "PUBK";
 
   return "ERR";
 }
@@ -82,6 +88,8 @@ constexpr FSCode FSStrCode(const std::string_view command) {
     return ATTR;
   else if (code == "305")
     return AES;
+  // else if (code == "306")
+  //   return PUBK;
 
   return ERR;
 }
@@ -145,6 +153,7 @@ protected:
   // std::array<unsigned char, BUFFER_SIZE> _buffer;
   // std::string _currentDir = "/";
   AESPtr _aes = nullptr;
-  RSAPtr _rsa = nullptr;
+  RSAPtr _private = nullptr;
+  RSAPtr _public = nullptr;
   // std::string _fragmentBuffer = "";
 };
