@@ -4,20 +4,19 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <iostream>
+#include <netinet/tcp.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-template <typename T>
-FSManager<T>::FSManager(const std::string_view ip, const int port,
-                        const int backlog) {
-
-  this->_serverfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (0 >= this->_serverfd) {
+FSManager::FSManager(const std::string_view ip, const int port,
+                     const int backlog) {
+  this->_serverFD = socket(AF_INET, SOCK_STREAM, 0);
+  if (0 >= this->_serverFD) {
     std::cerr << "socket creation error\n";
     return;
   }
-  if (int opt = 1; setsockopt(this->_serverfd, SOL_SOCKET, SO_REUSEADDR,
+  if (int opt = 1; setsockopt(this->_serverFD, SOL_SOCKET, SO_REUSEADDR,
                               (char *)&opt, sizeof opt) < 0) {
     std::cerr << "setSocketopt error\n";
     return;
@@ -28,26 +27,62 @@ FSManager<T>::FSManager(const std::string_view ip, const int port,
   serverAddr.sin_port = htons(port);
   inet_pton(AF_INET, ip.data(), &serverAddr.sin_addr);
 
-  if (bind(this->_serverfd, (struct sockaddr *)&serverAddr,
+  if (bind(this->_serverFD, (struct sockaddr *)&serverAddr,
            sizeof(serverAddr)) < 0) {
     std::cerr << "bind error\n";
     return;
   }
 
-  if (listen(this->_serverfd, backlog) < 0) {
+  if (listen(this->_serverFD, backlog) < 0) {
     std::cerr << "listen error\n";
     return;
   }
 
-  this->_private = std::make_shared<RSAKey>(PKEY_PATH, true);
-  if (!this->_private) {
-    std::println("Unable to load private key");
-    return;
-  }
   this->_isOk = true;
 }
+bool FSManager::Connection::process() {
+  // if (!this->_public) {
+  //   if (!this->handleValidation())
+  //     return false;
+  //   return true;
+  // } else if (!this->_aes) {
+  //   StringOpt opt = readSocketRSA(this->_fd);
+  //   if (!opt.has_value())
+  //     return false;
+  //   SSLString command = opt.value();
+  //   if (command._length < COMMAND_LENGTH)
+  //     return false;
+  //   const std::string_view codeView(
+  //       (const char *)(command._data),
+  //       (const char *)(command._data + COMMAND_LENGTH));
+  //   const uint32_t dataViewLength = command._length - COMMAND_LENGTH > 0
+  //                                       ? command._length - COMMAND_LENGTH
+  //                                       : 0;
+  //   std::vector<unsigned char> dataView(dataViewLength);
+  //   if (dataViewLength > 0)
+  //     memcpy(dataView.data(), command._data + COMMAND_LENGTH,
+  //            command._length - COMMAND_LENGTH);
+  //   const FSCode code = FSStrCode(codeView);
+  //   if (code != AESK)
+  //     return false;
+  //   if (command._length < AES_KEY_BYTES + COMMAND_LENGTH)
+  //     return false;
+  //   this->_aes = std::make_unique<AESKey>(command._data + COMMAND_LENGTH);
+  //   return true;
+  // }
 
-template <typename T> bool FSManager<T>::Connection::handleValidation() {
+  constexpr unsigned bufsize = 1024;
+  std::array<unsigned char, bufsize> message;
+  bool x = readPacket(this->_fd, message.data(), bufsize);
+  if (!x) {
+    std::cout << "a\n";
+    return false;
+  }
+  std::cout << "b\n";
+
+  return true;
+}
+bool FSManager::Connection::handleValidation() {
   std::vector<unsigned char> key;
   std::array<unsigned char, LENGTH_SIZE> lengthArr;
   if (!readPacket(this->_fd, lengthArr.data(), LENGTH_SIZE)) {
@@ -78,8 +113,7 @@ template <typename T> bool FSManager<T>::Connection::handleValidation() {
   return true;
 }
 
-template <typename T>
-bool FSManager<T>::Connection::checkIfAuthorized(
+bool FSManager::Connection::checkIfAuthorized(
     const std::vector<unsigned char> &key) {
   for (const auto &file :
        std::filesystem::directory_iterator(CLIENTS_CERTS_PATH)) {
@@ -104,37 +138,42 @@ bool FSManager<T>::Connection::checkIfAuthorized(
   }
   return false;
 }
-template <typename T> void FSManager<T>::run(const std::atomic_bool &running) {
-  std::vector<FSManager::Connection> clientList;
+
+void FSManager::run(const std::atomic_bool &running) {
+  std::vector<std::unique_ptr<FSManager::Connection>> clientList;
   int clientFd = -1;
+  struct timeval tv;
   while (running.load()) {
+    tv.tv_sec = 0;
+    tv.tv_usec = 1000000;
     fd_set readfds;
     FD_ZERO(&readfds);
-    FD_SET(this->_serverfd, &readfds);
-    int maxfd = this->_serverfd;
-    for (const auto sd : clientList) {
-      FD_SET(sd, &readfds);
-      if (sd > maxfd)
-        maxfd = sd;
+    FD_SET(this->_serverFD, &readfds);
+    int maxfd = this->_serverFD;
+    for (const auto &client : clientList) {
+      FD_SET(client->getFd(), &readfds);
+      if (client->getFd() > maxfd)
+        maxfd = client->getFd();
     }
 
     int sd = 0;
     if (sd > maxfd)
       maxfd = sd;
 
-    if (const int activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);
+    if (const int activity = select(maxfd + 1, &readfds, NULL, NULL, &tv);
         activity < 0) {
-      // std::cerr << "select error\n";
+      std::cerr << "select error\n";
       continue;
     }
-    if (FD_ISSET(this->_serverfd, &readfds)) {
-      clientFd = accept(this->_serverfd, (struct sockaddr *)NULL, NULL);
+    if (FD_ISSET(this->_serverFD, &readfds)) {
+      clientFd = accept(this->_serverFD, (struct sockaddr *)NULL, NULL);
       if (clientFd < 0) {
-        // std::cerr << "accept error\n";
         continue;
       }
 
-      clientList.emplace_back(clientFd);
+      clientList.emplace_back(
+          std::make_unique<FSManager::Connection>(clientFd));
+
       // std::cout << "new client connected\n";
       // std::cout << "new connection, socket fd is " << clientFd
       //           << ", ip is: " << inet_ntoa(this->_serverAddr.sin_addr)
@@ -143,28 +182,26 @@ template <typename T> void FSManager<T>::run(const std::atomic_bool &running) {
 
     for (int i = 0; i < clientList.size(); i++) {
       constexpr unsigned bufsize = 1024;
-      std::array<unsigned char, bufsize> message;
-      sd = clientList[i];
+      sd = clientList[i]->getFd();
       if (FD_ISSET(sd, &readfds)) {
-        if (const size_t valread = read(sd, message.data(), bufsize);
-            valread == 0) {
+        if (!clientList[i]->process()) {
           // std::cout << "client disconnected\n";
-
-          getpeername(sd, (struct sockaddr *)&this->_serverAddr,
-                      (socklen_t *)&this->_serverAddr);
+          // getpeername(sd, (struct sockaddr *)&this->_serverAddr,
+          //             (socklen_t *)&this->_serverAddr);
           // std::cout << "host disconnected, ip: "
           //           << inet_ntoa(this->_serverAddr.sin_addr)
           //           << ", port: " << ntohs(this->_serverAddr.sin_port) <<
           //           "\n";
+
           close(sd);
-          this->_files.erase(i);
           clientList.erase(clientList.cbegin() + i);
-        } else {
-          auto &[nodePtr, file] = this->_files[i];
-          if (std::fwrite(message.data(), sizeof(unsigned char), valread,
-                          file) < valread)
-            std::cerr << "Error occurred\n";
-        }
+          removeDeadConnection(clientList[i]->getNode());
+        } // else {
+        //   auto &[nodePtr, file] = this->_files[i];
+        //   if (std::fwrite(message.data(), sizeof(unsigned char), valread,
+        //                   file) < valread)
+        //     std::cerr << "Error occurred\n";
+        // }
       }
     }
   }

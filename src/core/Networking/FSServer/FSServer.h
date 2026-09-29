@@ -1,8 +1,8 @@
 #pragma once
+#include "../FSManager/FSManager.h"
 #include "../FSProtocol.h"
 #include "../ThreadPool/ThreadPool.hpp"
 #include <atomic>
-#include <future>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <print>
@@ -19,21 +19,18 @@ public:
     this->_serverFD = -1;
   }
   void run();
-  static void handleConnection(const int fd, const std::atomic_bool &running);
-  struct Request {
-    const enum { ADD, DELETE } type;
-    bool complete = false;
-    char id = -1;
-    const std::array<char, 64> hash;
-    const std::string path;
-  };
+  static void handleConnection(const int fd, const std::atomic_bool &running,
+                               FSManager &manager);
 
 private:
   class Connection final : public FSProtocol {
   public:
     Connection() = delete;
-    Connection(const int fd, const std::atomic_bool &running, bool &valid);
+    Connection(const int fd, const std::atomic_bool &running, bool &valid,
+               FSManager &manager);
     ~Connection() {
+      if (this->_requestId > 0)
+        this->_manager.removeDeadConnection(this->_requestId);
       std::println("Closing connection of sock:{}", this->_fd);
       close(const_cast<int &>(this->_fd));
     }
@@ -47,9 +44,12 @@ private:
     bool checkIfAuthorized(const std::vector<unsigned char> &key);
 
     int _fd = -1;
+    uintptr_t _requestId = 0;
     const std::atomic_bool &_running;
+    FSManager &_manager;
   };
   ThreadPool _pool{maxThreads()};
+  FSManager _manager;
   std::atomic_bool &_running;
   int _serverFD = -1;
   struct sockaddr_in _sockAddr;

@@ -1,5 +1,6 @@
 #pragma once
 #include "../Encrypt/Encrypt.h"
+#include <chrono>
 #include <concepts>
 #include <cstring>
 #include <optional>
@@ -9,6 +10,7 @@
 #include <type_traits>
 using StringOpt = std::optional<SSLString>;
 #define PORT 20230
+#define FSMANAGER_PORT 20231
 #define BUFFER_SIZE 512
 #define VALIDATION_LENGTH 48
 #define COMMAND_LENGTH 3
@@ -98,6 +100,13 @@ constexpr std::string FSCodeStr(const FSCode code) {
   return std::to_string(code);
 }
 
+struct Request {
+  const std::array<char, 64> hash;
+  const std::string path;
+  const enum { ADD, DELETE } type;
+  int id = -1;
+  bool complete = false;
+};
 class FSProtocol {
 public:
   ~FSProtocol() = default;

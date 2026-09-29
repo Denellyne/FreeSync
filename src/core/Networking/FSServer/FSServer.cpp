@@ -49,6 +49,9 @@ FSServer::FSServer(std::atomic_bool &running) : _running(running) {
 }
 
 void FSServer::run() {
+  const std::function<void()> fn =
+      std::bind(&FSManager::run, &this->_manager, std::ref(this->_running));
+  this->_pool.enqueue(fn);
   std::cout << "Server listening on port " << PORT << '\n';
   if (listen(this->_serverFD, 64) < 0)
     throw std::runtime_error("Failed to listen to incoming connections\n");
@@ -63,14 +66,16 @@ void FSServer::run() {
 
       perror("Accept");
     } else
-      this->_pool.enqueue(
-          std::bind(handleConnection, newSocket, std::ref(this->_running)));
+      this->_pool.enqueue(std::bind(handleConnection, newSocket,
+                                    std::ref(this->_running),
+                                    std::ref(this->_manager)));
   }
 }
 
-void FSServer::handleConnection(const int fd, const std::atomic_bool &running) {
+void FSServer::handleConnection(const int fd, const std::atomic_bool &running,
+                                FSManager &manager) {
   bool valid = true;
-  Connection con(fd, running, valid);
+  Connection con(fd, running, valid, manager);
   if (valid)
     con.run();
 }
@@ -78,8 +83,8 @@ void FSServer::handleConnection(const int fd, const std::atomic_bool &running) {
 // Connection
 
 FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
-                                 bool &valid)
-    : _fd(fd), _running(running) {
+                                 bool &valid, FSManager &manager)
+    : _fd(fd), _running(running), _manager(manager) {
   this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
   if (!this->_private) {
     std::println("Unable to load private key");
