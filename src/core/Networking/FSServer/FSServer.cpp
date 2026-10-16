@@ -2,6 +2,7 @@
 #include "../../Node/LTree.h"
 #include <cstring>
 #include <fcntl.h>
+#include <span>
 #include <stdexcept>
 #include <sys/mman.h>
 #include <sys/random.h>
@@ -49,9 +50,9 @@ FSServer::FSServer(std::atomic_bool &running) : _running(running) {
 }
 
 void FSServer::run() {
-  const std::function<void()> fn =
-      std::bind(&FSManager::run, &this->_manager, std::ref(this->_running));
-  this->_pool.enqueue(fn);
+
+  this->_pool.enqueue(
+      std::bind(&FSManager::run, &this->_manager, std::ref(this->_running)));
   std::cout << "Server listening on port " << PORT << '\n';
   if (listen(this->_serverFD, 64) < 0)
     throw std::runtime_error("Failed to listen to incoming connections\n");
@@ -216,17 +217,58 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) {
   const uint32_t dataViewLength = command._length - COMMAND_LENGTH > 0
                                       ? command._length - COMMAND_LENGTH
                                       : 0;
-  std::vector<unsigned char> dataView(dataViewLength);
+  std::span<const unsigned char> dataView;
   if (dataViewLength > 0)
-    memcpy(dataView.data(), command._data + COMMAND_LENGTH,
-           command._length - COMMAND_LENGTH);
+    dataView = std::span<const unsigned char>(command._data + COMMAND_LENGTH,
+                                              command._length - COMMAND_LENGTH);
+
   const FSCode code = FSStrCode(codeView);
   switch (code) {
   case DEL: {
   } break;
   case RETR: {
+
+    if (const auto current = Node::getHeadFile(); !current.has_value()) {
+      std::println("Unable to get current head file");
+      break;
+    } else {
+      std::array<char, 64> arr;
+      memcpy(arr.data(), current.value().data(), 64);
+      LTree tree = LTree(arr, "/FreeSync", true);
+      std::span<const unsigned char> dataView = std::span<const unsigned char>(
+          command._data + COMMAND_LENGTH + 1, dataViewLength - 1);
+      if (auto treeOpt =
+              tree.getChild(std::string{dataView.cbegin(), dataView.cend()});
+          !treeOpt.has_value()) {
+        const SSLString msg(FSCodeStr(ERR) + ' ' + treeOpt.error());
+        return writeToSocketAES(this->_fd, msg);
+      } else {
+        std::vector<unsigned char> data = treeOpt.value();
+
+        const SSLString msg(FSCodeStr(OK) + ' ' +
+                            std::string{data.begin(), data.end()});
+        return writeToSocketAES(this->_fd, msg);
+      }
+    }
   } break;
   case STRU: {
+    std::span<const unsigned char> dataView = std::span<const unsigned char>(
+        command._data + COMMAND_LENGTH + 1, dataViewLength - 1);
+    auto split = std::string{dataView.cbegin(), dataView.cend()} |
+                 std::views::split(std::string_view{" "});
+    // Change this if it becomes too slow
+    std::vector<Request> requests;
+
+    for (const auto &path : split)
+      requests.emplace_back(
+          Request(std::string(path.cbegin(), path.cend()), Request::ADD));
+
+    const uint64_t id = this->_manager.addNewNode(std::move(requests));
+    const std::array<unsigned char, PTR_SIZE> numberArray = ptrToArray(id);
+    const SSLString msg(FSCodeStr(OK) + ' ' +
+                        std::string{numberArray.begin(), numberArray.end()});
+    return writeToSocketAES(this->_fd, msg);
+
   } break;
   case ATTR: {
   } break;

@@ -30,7 +30,7 @@ private:
                FSManager &manager);
     ~Connection() {
       if (this->_requestId > 0)
-        this->_manager.removeDeadConnection(this->_requestId);
+        const bool _ = this->_manager.removeDeadConnection(this->_requestId);
       std::println("Closing connection of sock:{}", this->_fd);
       close(const_cast<int &>(this->_fd));
     }
@@ -44,7 +44,7 @@ private:
     bool checkIfAuthorized(const std::vector<unsigned char> &key);
 
     int _fd = -1;
-    uintptr_t _requestId = 0;
+    uint64_t _requestId = 0;
     const std::atomic_bool &_running;
     FSManager &_manager;
   };

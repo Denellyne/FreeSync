@@ -1,4 +1,5 @@
 #pragma once
+#include "../Compressor/Compressor.h"
 #include "../Encrypt/Encrypt.h"
 #include <chrono>
 #include <concepts>
@@ -17,6 +18,7 @@ using StringOpt = std::optional<SSLString>;
 #define PUBKEY_PATH "certs/pub.pem"
 #define PKEY_PATH "certs/priv.pem"
 #define CLIENTS_CERTS_PATH "clients/"
+#define FSMANAGER_PACKET 64 * 1024
 
 enum FSCode {
   ERR = 100,  // Generic Error command followed by reason
@@ -101,11 +103,29 @@ constexpr std::string FSCodeStr(const FSCode code) {
 }
 
 struct Request {
-  const std::array<char, 64> hash;
-  const std::string path;
-  const enum { ADD, DELETE } type;
+  enum OP { ADD, DELETE } type;
+  Request(const std::string_view path, const Request::OP t)
+      : path(path), type(t) {}
+  Request(const Request &) = delete;
+  Request &operator=(const Request &) = delete;
+
+  Request(Request &&) noexcept = default;
+  Request &operator=(Request &&other) noexcept {
+    std::swap(this->path, other.path);
+    std::swap(this->id, other.id);
+    std::swap(this->complete, other.complete);
+    std::swap(this->type, other.type);
+    std::swap(this->_file, other._file);
+    return *this;
+  }
+  std::string path;
   int id = -1;
-  bool complete = false;
+  bool complete = type == DELETE;
+  DiskFile _file{};
+  const int64_t timestamp =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count();
 };
 class FSProtocol {
 public:

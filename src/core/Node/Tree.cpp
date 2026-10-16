@@ -118,9 +118,11 @@ bool Tree::writeBlob() {
             children->getHash().data();
   }
 
-  if (!compressData(data))
+  DiskFile dFile = compressData(
+      std::span<unsigned char>((unsigned char *)data.data(), data.length()));
+  if (!dFile)
     return false;
-  file.write(data.data(), data.size());
+  file.write((char *)dFile.toSpan().data(), dFile.toSpan().size());
   file.flush();
 
   return true;

@@ -8,7 +8,6 @@ private:
     std::string _entry;
     std::string _fileName;
     std::string _hash;
-    unsigned _size = -1;
     unsigned getFileSize() const;
   };
 
@@ -50,12 +49,15 @@ public:
   getTreeFromBlob(const std::string_view objPath,
                   const std::string_view filePath, const bool root = false);
   [[nodiscard]] std::expected<std::string, std::string>
-  addFile(std::vector<unsigned char> &data,
+  addFile(const std::span<unsigned char> data,
           const std::filesystem::path &filePath, const bool isExecutable);
+  std::expected<std::vector<unsigned char>, std::string>
+  getChild(const std::filesystem::path &filePath) const;
   std::expected<std::vector<Commit>, std::string> getAllCommits();
   const std::vector<LNode> &getChildren() const { return this->_children; }
   std::optional<LTree> getChildTree(std::string_view path) const;
   std::string getBlobSize();
+  bool commit() { return this->writeHeadFile(); }
 
 private:
   [[nodiscard]] bool writeBlob();

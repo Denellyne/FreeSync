@@ -3,16 +3,15 @@
 #include <expected>
 #include <vector>
 
-[[nodiscard]] bool
-applyDiffsUncompressed(std::vector<unsigned char> &old,
-                       const std::vector<unsigned char> &diffs);
+[[nodiscard]] bool applyDiffsUncompressed(std::vector<unsigned char> &old,
+                                          const std::span<unsigned char> diffs);
 
 class Leaf : public Node {
 public:
   Leaf(const std::string_view filePath);
-  Leaf(const std::string_view filePath, std::vector<unsigned char> &data,
+  Leaf(const std::string_view filePath, std::span<unsigned char> data,
        const bool isExecutable);
-  Leaf(const std::string_view filePath, std::vector<unsigned char> &data,
+  Leaf(const std::string_view filePath, std::span<unsigned char> data,
        const std::string_view parentHash, const bool isExecutable);
   Leaf(const std::string_view filePath, const std::string_view hash,
        const bool isExecutable)
@@ -42,19 +41,20 @@ public:
   }
 
   std::expected<std::vector<unsigned char>, std::string>
-  diffFile(const std::vector<unsigned char> &newer);
+  diffFile(const std::span<unsigned char> newer);
 
   std::expected<std::vector<unsigned char>, std::string> getBlob();
   std::expected<std::vector<unsigned char>, std::string>
   getFinalDecompressBlob();
   [[nodiscard]] bool writeFile(const std::string_view path,
-                               const std::vector<unsigned char> &data);
-  static std::vector<unsigned char> readBlobData(std::ifstream &file);
-  Leaf getParentLeaf(std::ifstream &file);
+                               const std::span<unsigned char> data);
+
+  static std::span<unsigned char> readBlobData(std::span<unsigned char> data);
+  Leaf getParentLeaf(const std::span<unsigned char> data);
 
 private:
-  [[nodiscard]] bool writeBlob(const std::vector<unsigned char> &data);
-  [[nodiscard]] bool writeDiffBlob(const std::vector<unsigned char> &data,
+  [[nodiscard]] bool writeBlob(const std::span<unsigned char> data);
+  [[nodiscard]] bool writeDiffBlob(const std::span<unsigned char> data,
                                    const std::string_view parentHash);
   bool _isExecutable = false;
 };

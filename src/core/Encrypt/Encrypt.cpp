@@ -421,19 +421,75 @@ std::optional<SSLString> RSAKey::decryptBlob(SSLString &data) {
 //     return SSLString(out, outlen);
 // }
 
-std::array<unsigned char, LENGTH_SIZE> toArray(uint32_t n) {
-  std::array<unsigned char, LENGTH_SIZE> res{'0'};
-  for (int i = 31; i >= 0; i--) {
-    res[i] = (n % 10) + '0';
+std::array<unsigned char, PTR_SIZE> ptrToArray(uint64_t n) {
+  std::array<unsigned char, PTR_SIZE> res{'0'};
+  for (size_t i = 64; i > 0; i--) {
+    res[i - 1] = (n % 10) + '0';
     n /= 10;
   }
   return res;
 }
+std::array<unsigned char, LENGTH_SIZE> toArray(uint32_t n) {
+  std::array<unsigned char, LENGTH_SIZE> res{'0'};
+  for (size_t i = 32; i > 0; i--) {
+    res[i - 1] = (n % 10) + '0';
+    n /= 10;
+  }
+  return res;
+}
+
+std::optional<uint64_t> ptrToNumber(const std::span<const unsigned char> &vec) {
+  if (vec.size() < LENGTH_SIZE)
+    return std::nullopt;
+  uint64_t num = 0;
+  for (const auto c : vec) {
+    if (c < '0' || c > '9')
+      return std::nullopt;
+    num = (num * 10) + (c - '0');
+  }
+  return num;
+}
+std::optional<uint64_t> ptrToNumber(const SSLString &str) {
+  uint64_t num = 0;
+  if (str._length == 0)
+    return std::nullopt;
+  for (size_t i = 0; i < str._length; i++) {
+    if (str[i] < '0' || str[i] > '9')
+      return std::nullopt;
+    num = (num * 10) + (str[i] - '0');
+  }
+  return num;
+}
+std::optional<uint32_t> toNumber(const std::span<const unsigned char> &vec) {
+  if (vec.size() < LENGTH_SIZE)
+    return std::nullopt;
+  uint32_t num = 0;
+  for (const auto c : vec) {
+    if (c < '0' || c > '9')
+      return std::nullopt;
+    num = (num * 10) + (c - '0');
+  }
+  return num;
+}
 std::optional<uint32_t>
 toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec) {
   uint32_t num = 0;
-  for (const auto c : vec)
+  for (const auto c : vec) {
+    if (c < '0' || c > '9')
+      return std::nullopt;
     num = (num * 10) + (c - '0');
+  }
+  return num;
+}
+std::optional<uint32_t> toNumber(const SSLString &str) {
+  uint32_t num = 0;
+  if (str._length == 0)
+    return std::nullopt;
+  for (size_t i = 0; i < str._length; i++) {
+    if (str[i] < '0' || str[i] > '9')
+      return std::nullopt;
+    num = (num * 10) + (str[i] - '0');
+  }
   return num;
 }
 

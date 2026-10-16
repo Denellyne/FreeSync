@@ -23,7 +23,7 @@ LTree::LTree(const std::array<char, 64> &hash, const std::string_view filePath,
   this->_objPath = path;
   if (const auto val = getTreeFromBlob(this->_objPath.c_str(), filePath);
       val.has_value()) {
-    this->_children = val->_children;
+    this->_children = std::move(val->_children);
     this->_filePath = val->_filePath;
   } else
     throw std::runtime_error(val.error());
@@ -32,37 +32,39 @@ LTree::LTree(const std::array<char, 64> &hash, const std::string_view filePath,
 std::expected<LTree, std::string>
 LTree::getTreeFromBlob(const std::string_view objPath,
                        const std::string_view filePath, const bool root) {
-  std::vector<unsigned char> data;
   LTree tree;
   tree._root = root;
   tree._objPath = objPath;
   tree._filePath = filePath;
-  std::ifstream file(tree._objPath, std::fstream::binary);
-  if (!file)
-    return std::unexpected(std::string("Unable to open file\n"));
-
-  file.seekg(0, file.end);
-  const int length = file.tellg();
-  data.resize(length);
-  file.seekg(0, file.beg);
-  file.read(reinterpret_cast<char *>(data.data()), length);
-  if (!decompressData(data))
-    return std::unexpected("Unable to decompress data\n");
+  Decompressor decomp(tree._objPath.string());
+  std::span<unsigned char> data = decomp.getData();
 
   std::string dataStr =
-      std::string(reinterpret_cast<char *>(data.data()), data.size());
-  if (dataStr.contains("PARENT:"))
-    dataStr.erase(0, dataStr.find_first_of('\n') + 1);
+      std::string(reinterpret_cast<const char *>(data.data()), data.size());
+  if (dataStr.starts_with("PARENT:")) {
+    const size_t newline = dataStr.find('\n');
+
+    if (newline == std::string::npos)
+      return std::unexpected("Missing new line after Parent header");
+
+    dataStr.erase(0, newline + 1);
+  }
   // else
   //   return std::unexpected(std::string("Invalid tree blob\n"));
 
   while (!dataStr.empty()) {
-    const std::string entry = dataStr.substr(0, 6);
+    const std::string entry(dataStr.substr(0, 6));
     dataStr.erase(0, 7);
-    const size_t fileNameIdx = dataStr.find_first_of('\0', 0);
-    const std::string fileName = dataStr.substr(0, fileNameIdx);
+    const size_t fileNameIdx = dataStr.find('\0');
+    if (fileNameIdx == std::string::npos)
+      return std::unexpected("Unabled to find filename delimiter");
+    const std::string fileName(dataStr.substr(0, fileNameIdx));
     dataStr.erase(0, fileName.length() + 1);
-    const std::string hash = dataStr.substr(0, 64);
+    if (dataStr.size() < 64) {
+      std::println("{}", dataStr);
+      return std::unexpected("DataStr doesn't have the length of a hash");
+    }
+    const std::string hash(dataStr.substr(0, 64));
     dataStr.erase(0, 64);
     tree._children.emplace_back(LNode{entry, fileName, hash});
   }
@@ -107,9 +109,11 @@ bool LTree::writeBlob() {
   for (const auto &children : this->_children)
     data += children._entry + ' ' + children._fileName + '\0' + children._hash;
 
-  if (!compressData(data))
+  DiskFile dFile = compressData(
+      std::span<unsigned char>((unsigned char *)data.data(), data.length()));
+  if (!dFile)
     return false;
-  file.write(data.data(), data.size());
+  file.write((char *)dFile.toSpan().data(), dFile.toSpan().size());
 
   return true;
 }
@@ -154,9 +158,8 @@ bool LTree::writeTree() {
         isExecutable = true;
       Leaf leaf = Leaf(filePath, child._hash, isExecutable);
       if (auto data = leaf.getBlob(); data.has_value()) {
-        std::vector<unsigned char> &vec = data.value();
-        if (!decompressData(vec) ||
-            !leaf.writeFile(leaf.getFilePath().string(), vec))
+        Decompressor decomp(leaf.getFilePath().string());
+        if (!leaf.writeFile(leaf.getFilePath().string(), decomp.getData()))
           return false;
       } else
         return false;
@@ -167,8 +170,45 @@ bool LTree::writeTree() {
   return true;
 }
 
+std::expected<std::vector<unsigned char>, std::string>
+LTree::getChild(const std::filesystem::path &filePath) const {
+
+  constexpr auto isSubPath = [](const fs::path &path, const fs::path &base) {
+    const auto mismatchPair =
+        std::mismatch(path.begin(), path.end(), base.begin(), base.end());
+    return mismatchPair.second == base.end();
+  };
+
+  if (filePath.parent_path() == this->_filePath) {
+    const std::string fileName = filePath.filename();
+    for (auto it = this->_children.begin(); it != this->_children.end(); it++)
+      if ((*it)._fileName == fileName) {
+        Leaf l(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
+        return l.getFinalDecompressBlob();
+      }
+
+  } else if (isSubPath(filePath, this->_filePath)) {
+    for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
+      if ((*it)._entry == DIRECTORY) {
+        const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
+        if (isSubPath(filePath, p)) {
+          std::string obj = OBJFOLDER;
+
+          obj.append((*it)._hash, 0, 2);
+          obj += '/';
+          obj.append((*it)._hash, 2, 62);
+          if (auto tree = getTreeFromBlob(obj, p); tree.has_value())
+            return tree->getChild(filePath);
+          else
+            return std::unexpected(tree.error());
+        }
+      }
+    }
+  }
+  return std::unexpected("Unable to find file");
+}
 std::expected<std::string, std::string>
-LTree::addFile(std::vector<unsigned char> &data,
+LTree::addFile(const std::span<unsigned char> data,
                const std::filesystem::path &filePath, const bool isExecutable) {
 
   constexpr auto isSubPath = [](const fs::path &path, const fs::path &base) {
@@ -275,27 +315,17 @@ std::expected<std::vector<LTree::Commit>, std::string> LTree::getAllCommits() {
       LTree::Commit(obj, std::filesystem::last_write_time(obj))};
   while (true) {
     obj = OBJFOLDER;
-    std::vector<unsigned char> data;
 
-    std::ifstream file((commits.cend() - 1)->_objPath, std::fstream::binary);
-    if (!file)
-      return std::unexpected(std::string("Unable to open file\n"));
+    Decompressor decomp((commits.cend() - 1)->_objPath);
+    const std::span<unsigned char> data = decomp.getData();
 
-    file.seekg(0, file.end);
-    const int length = file.tellg();
-    data.resize(length);
-    file.seekg(0, file.beg);
-    file.read(reinterpret_cast<char *>(data.data()), length);
-    if (!decompressData(data))
-      return std::unexpected("Unable to decompress data\n");
-
-    const std::string dataStr =
-        std::string(reinterpret_cast<char *>(data.data()), data.size());
+    const std::string_view dataStr =
+        std::string_view(reinterpret_cast<char *>(data.data()), data.size());
 
     if (dataStr.contains("NOPARENT"))
       break;
     else if (dataStr.contains("PARENT:")) {
-      const std::string hash = dataStr.substr(7, 64);
+      const std::string hash = std::string(dataStr.substr(7, 64));
       obj.append(hash, 0, 2);
       obj += '/';
       obj.append(hash, 2, 62);
@@ -311,7 +341,6 @@ std::optional<LTree> LTree::getChildTree(std::string_view path) const {
     path.remove_prefix(1);
   if (!path.find('/'))
     path.remove_prefix(1);
-  std::println("{}", path);
   std::array<char, 64> hash;
   if (path.empty()) {
     memcpy(hash.data(), this->_hash.data(), 64);
@@ -330,6 +359,7 @@ std::optional<LTree> LTree::getChildTree(std::string_view path) const {
   return std::nullopt;
 }
 unsigned LTree::LNode::getFileSize() const {
+  assert(!this->_hash.empty());
   if (this->_entry == DIRECTORY)
     return 0;
   std::string path = OBJFOLDER;

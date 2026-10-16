@@ -7,7 +7,6 @@
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <optional>
-#include <print>
 #include <vector>
 #define AES_KEY_LENGTH 256
 #define AES_KEY_BYTES 32
@@ -15,6 +14,7 @@
 #define IV_SIZE 12
 #define TAG_SIZE 16
 #define LENGTH_SIZE 32
+#define PTR_SIZE 64
 struct SSLDeleter {
   constexpr void operator()(EVP_PKEY *key) {
     if (key)
@@ -30,10 +30,17 @@ struct SSLDeleter {
   }
 };
 
+struct SSLString;
 std::array<unsigned char, LENGTH_SIZE> toArray(uint32_t n);
+std::array<unsigned char, PTR_SIZE> ptrToArray(uint64_t n);
 
 std::optional<uint32_t>
 toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec);
+std::optional<uint32_t> toNumber(const SSLString &str);
+std::optional<uint64_t> ptrToNumber(const SSLString &str);
+
+std::optional<uint32_t> toNumber(const std::span<const unsigned char> &vec);
+std::optional<uint64_t> ptrToNumber(const std::span<const unsigned char> &vec);
 template <typename T>
 concept ByteSpan =
     requires { typename T::element_type; } &&
@@ -101,6 +108,15 @@ struct SSLString {
     }
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
+  SSLString(const std::span<unsigned char> v) : _length(v.size()) {
+    if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
+        !this->_data) {
+      std::cerr << "Unable to allocate memory for cipherText blob\n";
+      ERR_print_errors_fp(stderr);
+      throw std::runtime_error("Unable to clone string\n");
+    }
+    memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
+  }
 
   SSLString(const SSLString &other) : _length(other._length) {
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
@@ -121,7 +137,7 @@ struct SSLString {
                reinterpret_cast<char *>(const_cast<unsigned char *>(str._data)),
                str._length);
   }
-  std::string toString() {
+  std::string toString() const {
     std::string str;
     str.resize(this->_length, 0);
     memcpy(str.data(), this->_data, this->_length);
@@ -129,7 +145,16 @@ struct SSLString {
   }
 
   SSLString &operator=(const SSLString &) = delete;
-  SSLString &operator=(SSLString &&) = delete;
+  SSLString &operator=(SSLString &&other) {
+    if (this->_data)
+      OPENSSL_free(const_cast<unsigned char *>(this->_data));
+
+    this->_data = other._data;
+    const_cast<size_t &>(this->_length) = other._length;
+    const_cast<size_t &>(other._length) = 0;
+    other._data = nullptr;
+    return *this;
+  }
   operator unsigned char const *() const { return this->_data; }
   const unsigned char *_data = nullptr;
   const size_t _length = 0;

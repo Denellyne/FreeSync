@@ -37,6 +37,7 @@ int main(void) {
       return 1;
     }
 
+    signal(SIGPIPE, SIG_IGN);
     signal(SIGINT, sigHandler);
     FSServer sv = FSServer(running);
     sv.run();

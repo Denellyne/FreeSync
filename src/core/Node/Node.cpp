@@ -9,6 +9,26 @@
 #include <optional>
 #include <sstream>
 
+std::string Node::hash(const std::span<unsigned char> data) {
+
+  std::array<uint8_t, 32> hash{};
+  EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+  const EVP_MD *md = EVP_sha256();
+
+  EVP_DigestInit_ex(mdctx, md, nullptr);
+  EVP_DigestUpdate(mdctx, data.data(), data.size());
+  EVP_DigestFinal_ex(mdctx, hash.data(), nullptr);
+
+  EVP_MD_CTX_free(mdctx);
+  std::ostringstream ss;
+  ss << std::hex << std::setfill('0');
+  for (unsigned int i = 0; i < 32; ++i) {
+    ss << std::setw(2) << static_cast<unsigned>(hash[i]);
+  }
+
+  assert(ss.str().length() == 64);
+  return ss.str();
+}
 std::string Node::hash(const std::vector<unsigned char> &data) {
 
   std::array<uint8_t, 32> hash{};

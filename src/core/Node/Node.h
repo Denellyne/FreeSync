@@ -22,9 +22,11 @@ public:
   constexpr virtual const std::string getFileName() const = 0;
   static std::optional<std::string> getHeadFile();
 
-protected:
   static std::string hash(const std::vector<unsigned char> &data);
+  static std::string hash(const std::span<unsigned char> data);
   static std::string hash(const std::string_view data);
+
+protected:
   fs::path _filePath = "";
   fs::path _objPath = "";
   std::string _hash = "";
