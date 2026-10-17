@@ -8,13 +8,13 @@
 
 class Leaf : public Node {
 public:
-  Leaf(const std::string_view filePath);
+  Leaf(const std::string_view filePath) noexcept;
   Leaf(const std::string_view filePath, std::span<unsigned char> data,
-       const bool isExecutable);
+       const bool isExecutable, const bool isCompressed = false) noexcept;
   Leaf(const std::string_view filePath, std::span<unsigned char> data,
-       const std::string_view parentHash, const bool isExecutable);
+       const std::string_view parentHash, const bool isExecutable) noexcept;
   Leaf(const std::string_view filePath, const std::string_view hash,
-       const bool isExecutable)
+       const bool isExecutable) noexcept
       : _isExecutable(isExecutable) {
     this->_hash = hash;
     this->_filePath = filePath;
@@ -25,36 +25,38 @@ public:
 
     this->_objPath = path;
   }
-  bool isExecutable() const { return this->_isExecutable; }
+  bool isExecutable() const noexcept { return this->_isExecutable; }
 
-  constexpr const std::string_view getHash() const override {
+  constexpr const std::string_view getHash() const noexcept override {
     return this->_hash;
   }
-  constexpr const fs::path &getFilePath() const override {
+  constexpr const fs::path &getFilePath() const noexcept override {
     return this->_filePath;
   }
-  constexpr const fs::path &getObjPath() const override {
+  constexpr const fs::path &getObjPath() const noexcept override {
     return this->_objPath;
   }
-  constexpr const std::string getFileName() const override {
+  constexpr const std::string getFileName() const noexcept override {
     return this->_filePath.filename().string();
   }
 
   std::expected<std::vector<unsigned char>, std::string>
-  diffFile(const std::span<unsigned char> newer);
+  diffFile(const std::span<unsigned char> newer,
+           const bool isCompressed = false) noexcept;
 
-  std::expected<std::vector<unsigned char>, std::string> getBlob();
+  std::expected<std::vector<unsigned char>, std::string> getBlob() noexcept;
   std::expected<std::vector<unsigned char>, std::string>
-  getFinalDecompressBlob();
+  getFinalDecompressBlob() noexcept;
   [[nodiscard]] bool writeFile(const std::string_view path,
-                               const std::span<unsigned char> data);
+                               const std::span<unsigned char> data) noexcept;
 
-  static std::span<unsigned char> readBlobData(std::span<unsigned char> data);
-  Leaf getParentLeaf(const std::span<unsigned char> data);
+  static std::span<unsigned char>
+  readBlobData(std::span<unsigned char> data) noexcept;
+  Leaf getParentLeaf(const std::span<unsigned char> data) noexcept;
 
 private:
-  [[nodiscard]] bool writeBlob(const std::span<unsigned char> data);
+  [[nodiscard]] bool writeBlob(const std::span<unsigned char> data) noexcept;
   [[nodiscard]] bool writeDiffBlob(const std::span<unsigned char> data,
-                                   const std::string_view parentHash);
+                                   const std::string_view parentHash) noexcept;
   bool _isExecutable = false;
 };

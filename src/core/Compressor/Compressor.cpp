@@ -1,30 +1,29 @@
 #include "Compressor.h"
 #include "../Networking/FSProtocol.h"
-#include "../TempFile/TempFile.hpp"
 #include <print>
 
-bool compressData(std::string &data) {
-  if (data.empty())
-    return true;
-
-  std::string tmp = "";
-  tmp.resize(compressBound(data.size()));
-
-  uLongf size = tmp.size();
-
-  int res = compress2(reinterpret_cast<unsigned char *>(&tmp[0]), &size,
-                      reinterpret_cast<unsigned char *>(&data[0]), data.size(),
-                      Z_BEST_COMPRESSION);
-
-  if (res != Z_OK)
-    return false;
-
-  tmp.resize(size);
-  data = std::move(tmp);
-  return true;
-}
-bool Compressor::compressData(std::vector<unsigned char> &vec) {
-  unsigned char out[FSMANAGER_PACKET];
+// bool compressData(std::string &data) {
+//   if (data.empty())
+//     return true;
+//
+//   std::string tmp = "";
+//   tmp.resize(compressBound(data.size()));
+//
+//   uLongf size = tmp.size();
+//
+//   int res = compress2(reinterpret_cast<unsigned char *>(&tmp[0]), &size,
+//                       reinterpret_cast<unsigned char *>(&data[0]),
+//                       data.size(), COMPRESSION_LEVEL);
+//
+//   if (res != Z_OK)
+//     return false;
+//
+//   tmp.resize(size);
+//   data = std::move(tmp);
+//   return true;
+// }
+bool Compressor::compressData(std::vector<unsigned char> &vec) noexcept {
+  alignas(32) unsigned char out[FSMANAGER_PACKET];
 
   vec.clear();
   vec.reserve(FSMANAGER_PACKET);
@@ -41,7 +40,7 @@ bool Compressor::compressData(std::vector<unsigned char> &vec) {
   _strm.avail_out = FSMANAGER_PACKET;
 
   const int flush = this->_data.empty() ? Z_FINISH : Z_NO_FLUSH;
-  const int ret = deflate(&_strm, flush);
+  const int ret = zng_deflate(&_strm, flush);
 
   if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR)
     return false;
@@ -58,12 +57,12 @@ bool compressData(std::vector<unsigned char> &data) {
   if (data.empty())
     return true;
 
-  std::vector<unsigned char> tmp(compressBound(data.size()));
+  std::vector<unsigned char> tmp(zng_compressBound(data.size()));
 
   uLongf size = tmp.size();
 
-  int res = compress2(tmp.data(), &size, data.data(), data.size(),
-                      Z_BEST_COMPRESSION);
+  int res = zng_compress2(tmp.data(), &size, data.data(), data.size(),
+                          COMPRESSION_LEVEL);
 
   if (res != Z_OK)
     return false;
@@ -72,17 +71,17 @@ bool compressData(std::vector<unsigned char> &data) {
   data = std::move(tmp);
   return true;
 }
-bool Decompressor::decompressData() {
-  TempFile f;
+bool Decompressor::decompressData() noexcept {
+  DiskFile f;
 
   if (this->_data.empty())
     return true;
 
-  z_stream zs{};
-  if (inflateInit2(&zs, 15 + 32) != Z_OK)
+  zng_stream zs{};
+  if (zng_inflateInit2(&zs, 15 + 32) != Z_OK)
     return false;
 
-  constexpr size_t CHUNK = 16 * 1024;
+  constexpr size_t CHUNK = 64 * 1024;
   std::span<const unsigned char> remaining = this->_data;
   int ret = Z_OK;
 
@@ -95,160 +94,173 @@ bool Decompressor::decompressData() {
       remaining = remaining.subspan(chunkSize);
     }
 
-    unsigned char buf[CHUNK];
+    alignas(32) unsigned char buf[CHUNK];
     zs.next_out = buf;
     zs.avail_out = CHUNK;
 
-    ret = inflate(&zs, Z_NO_FLUSH);
+    ret = zng_inflate(&zs, Z_NO_FLUSH);
 
-    if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR) {
-      inflateEnd(&zs);
+    if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR) [[unlikely]] {
+      zng_inflateEnd(&zs);
       return false;
     }
 
     const size_t produced = CHUNK - zs.avail_out;
     if (produced > 0) {
       if (!f.write(std::span<const unsigned char>(buf, produced))) {
-        inflateEnd(&zs);
+        zng_inflateEnd(&zs);
         return false;
       }
-    } else if (ret == Z_BUF_ERROR) {
-      inflateEnd(&zs);
+    } else if (ret == Z_BUF_ERROR) [[unlikely]] {
+      zng_inflateEnd(&zs);
       return false;
     }
 
   } while (ret != Z_STREAM_END);
 
-  inflateEnd(&zs);
+  zng_inflateEnd(&zs);
 
-  f.sync();
-  this->_file = DiskFile(f.getFilePath());
+  this->_file = std::move(f);
   this->_data = this->_file.toSpan();
   return true;
 }
 
-bool decompressData(std::vector<unsigned char> &data) {
-  if (data.empty())
-    return true;
+// bool decompressData(std::vector<unsigned char> &data) {
+//   if (data.empty())
+//     return true;
+//
+//   z_stream zs{};
+//   zs.next_in = data.data();
+//   zs.avail_in = data.size();
+//
+//   if (inflateInit2(&zs, 15 + 32) != Z_OK)
+//     return false;
+//
+//   std::vector<unsigned char> out;
+//   constexpr size_t CHUNK = 64 * 1024;
+//
+//   int ret;
+//   do {
+//     size_t start = out.size();
+//     out.resize(start + CHUNK);
+//
+//     zs.next_out = out.data() + start;
+//     zs.avail_out = CHUNK;
+//
+//     ret = inflate(&zs, Z_NO_FLUSH);
+//
+//     if (ret == Z_STREAM_ERROR || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR)
+//         [[unlikely]] {
+//       inflateEnd(&zs);
+//       return false;
+//     }
+//
+//     out.resize(start + (CHUNK - zs.avail_out));
+//
+//   } while (ret != Z_STREAM_END);
+//
+//   inflateEnd(&zs);
+//
+//   data.swap(out);
+//   return true;
+// }
 
-  z_stream zs{};
-  zs.next_in = data.data();
-  zs.avail_in = data.size();
-
-  if (inflateInit2(&zs, 15 + 32) != Z_OK)
-    return false;
-
-  std::vector<unsigned char> out;
-  constexpr size_t CHUNK = 16 * 1024;
-
-  int ret;
-  do {
-    size_t start = out.size();
-    out.resize(start + CHUNK);
-
-    zs.next_out = out.data() + start;
-    zs.avail_out = CHUNK;
-
-    ret = inflate(&zs, Z_NO_FLUSH);
-
-    if (ret == Z_STREAM_ERROR || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR) {
-      inflateEnd(&zs);
-      return false;
-    }
-
-    out.resize(start + (CHUNK - zs.avail_out));
-
-  } while (ret != Z_STREAM_END);
-
-  inflateEnd(&zs);
-
-  data.swap(out);
-  return true;
-}
-
-DiskFile compressData(std::string_view path) {
+DiskFile compressData(std::string_view path) noexcept {
   DiskFile file(path);
   Compressor comp(file.toSpan());
-  TempFile f;
+  if (!comp) {
+    std::println("Unable to initialize compressor");
+    return DiskFile(true);
+  }
+  DiskFile out;
   while (!comp._finished) {
     std::vector<unsigned char> vec;
-    if (!comp.compressData(vec) || !f.write(vec))
-      std::println("faah");
+    if (!comp.compressData(vec) || !out.write(vec)) {
+      std::println("Unable to either write to file or compress chunk");
+      return DiskFile(true);
+    }
   }
-  f.sync();
 
-  return DiskFile(f.getFilePath());
+  return out;
 }
 
-DiskFile compressData(DiskFile &file) {
+DiskFile compressData(DiskFile &file) noexcept {
   Compressor comp(file.toSpan());
-  TempFile f;
+  if (!comp) {
+    std::println("Unable to initialize compressor");
+    return DiskFile(true);
+  }
+  DiskFile out;
   while (!comp._finished) {
     std::vector<unsigned char> vec;
-    if (!comp.compressData(vec) || !f.write(vec))
-      std::println("faah");
+    if (!comp.compressData(vec) || !out.write(vec)) {
+      std::println("Unable to either write to file or compress chunk");
+      return DiskFile(true);
+    }
   }
 
-  f.sync();
-  return DiskFile(f.getFilePath());
+  return out;
 }
-DiskFile compressData(std::span<unsigned char> data) {
+DiskFile compressData(std::span<unsigned char> data) noexcept {
   Compressor comp(data);
-  TempFile f;
+  if (!comp) {
+    std::println("Unable to initialize compressor");
+    return DiskFile(true);
+  }
+  DiskFile out;
   while (!comp._finished) {
     std::vector<unsigned char> vec;
-    if (!comp.compressData(vec) || !f.write(vec))
-      std::println("faah");
+    if (!comp.compressData(vec) || !out.write(vec)) {
+      std::println("Unable to either write to file or compress chunk");
+      return DiskFile(true);
+    }
   }
 
-  f.sync();
-  return DiskFile(f.getFilePath());
+  return out;
 }
 
-DiskFile decompressData(std::span<unsigned char> data) {
-  TempFile f;
+DiskFile decompressData(std::span<unsigned char> data) noexcept {
+  DiskFile out;
   if (data.empty()) {
-
-    std::println("B");
-    return DiskFile(f.getFilePath());
+    std::println("Nothing to decompress, vector is empty");
+    return DiskFile(true);
   }
 
-  z_stream zs{};
+  zng_stream zs{};
   zs.next_in = data.data();
   zs.avail_in = data.size();
 
-  if (inflateInit2(&zs, 15 + 32) != Z_OK) {
-    std::println("C");
-    return DiskFile(f.getFilePath());
+  if (zng_inflateInit2(&zs, 15 + 32) != Z_OK) {
+    std::println("Unable to initialize decompression");
+    return DiskFile(true);
   }
 
-  constexpr size_t CHUNK = 16 * 1024;
+  constexpr size_t CHUNK = 64 * 1024;
 
   int ret;
   do {
-    unsigned char out[CHUNK];
+    unsigned char buf[CHUNK];
 
-    zs.next_out = out;
+    zs.next_out = buf;
     zs.avail_out = CHUNK;
 
-    ret = inflate(&zs, Z_NO_FLUSH);
+    ret = zng_inflate(&zs, Z_NO_FLUSH);
     const size_t produced = CHUNK - zs.avail_out;
 
-    if (ret != Z_OK && ret != Z_STREAM_END) {
-      std::println("A");
-      inflateEnd(&zs);
-      return DiskFile(f.getFilePath());
+    if (ret != Z_OK && ret != Z_STREAM_END) [[unlikely]] {
+      std::println("Error decompressing");
+      zng_inflateEnd(&zs);
+      return DiskFile(true);
     }
 
-    if (!f.write(std::span<const unsigned char>(out, produced))) {
-      inflateEnd(&zs);
-      return DiskFile(f.getFilePath());
+    if (!out.write(std::span<const unsigned char>(buf, produced))) {
+      zng_inflateEnd(&zs);
+      return DiskFile(true);
     }
 
   } while (ret != Z_STREAM_END);
 
-  inflateEnd(&zs);
+  zng_inflateEnd(&zs);
 
-  f.sync();
-  return DiskFile(f.getFilePath());
+  return out;
 }

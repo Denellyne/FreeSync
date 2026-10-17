@@ -13,7 +13,7 @@
 #include <unistd.h>
 
 FSManager::FSManager(const std::string_view ip, const int port,
-                     const int backlog) {
+                     const int backlog) noexcept {
   this->_serverFD = socket(AF_INET, SOCK_STREAM, 0);
   if (0 >= this->_serverFD) {
     std::cerr << "socket creation error\n";
@@ -43,7 +43,7 @@ FSManager::FSManager(const std::string_view ip, const int port,
 
   this->_isOk = true;
 }
-FSManager::Connection::processStatus FSManager::Connection::process() {
+FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
   if (!this->_public) {
     if (!this->handleValidation()) {
       std::println("Unable to validate user");
@@ -114,10 +114,8 @@ FSManager::Connection::processStatus FSManager::Connection::process() {
     } else {
       SSLString ssl = sslOpt.value();
       const std::span<const unsigned char> view{ssl._data, ssl._length};
-      if (FSStrCode(std::string_view((char *)view.data(), 3)) == FSCode::OK) {
-        this->_file.sync();
+      if (FSStrCode(std::string_view((char *)view.data(), 3)) == FSCode::OK)
         return FINISHED;
-      }
 
       if (!this->_file.write(view)) {
         std::println("Unable to write to temporary file");
@@ -128,7 +126,7 @@ FSManager::Connection::processStatus FSManager::Connection::process() {
     }
   }
 }
-bool FSManager::Connection::confirmFile() {
+bool FSManager::Connection::confirmFile() noexcept {
   Decompressor decom(this->_file.getFilePath());
   const std::string hash = Node::hash(decom.getData());
   if (StringOpt msgOpt = readSocketAES(this->_fd); !msgOpt.has_value()) {
@@ -160,7 +158,7 @@ bool FSManager::Connection::confirmFile() {
   return true;
 }
 
-bool FSManager::Connection::handleValidation() {
+bool FSManager::Connection::handleValidation() noexcept {
   if (FILE *fp = fopen(PUBKEY_PATH, "r"); !fp) {
     std::println("Unable to open own public key file");
     return false;
@@ -169,13 +167,14 @@ bool FSManager::Connection::handleValidation() {
     const long length = ftell(fp);
     std::vector<unsigned char> key(length);
     rewind(fp);
-    if (fread(key.data(), sizeof(unsigned char), length, fp) < length) {
+    if (fread(key.data(), sizeof(unsigned char), length, fp) < (size_t)length) {
       std::println("Unable to read own public key");
       fclose(fp);
       return false;
     }
     fclose(fp);
-    std::array<unsigned char, LENGTH_SIZE> lengthArr = toArray(length);
+    alignas(32) std::array<unsigned char, LENGTH_SIZE> lengthArr =
+        toArray(length);
     key.insert(key.begin(), lengthArr.begin(), lengthArr.end());
     if (!writePrimitive(this->_fd, key.data(), LENGTH_SIZE + length)) {
       std::println("Unable to send primitive string");
@@ -212,7 +211,7 @@ bool FSManager::Connection::handleValidation() {
 }
 
 bool FSManager::Connection::checkIfAuthorized(
-    const std::vector<unsigned char> &key) {
+    const std::vector<unsigned char> &key) noexcept {
   for (const auto &file :
        std::filesystem::directory_iterator(CLIENTS_CERTS_PATH)) {
     if (file.is_directory())
@@ -237,7 +236,7 @@ bool FSManager::Connection::checkIfAuthorized(
   return false;
 }
 
-void FSManager::run(const std::atomic_bool &running) {
+void FSManager::run(const std::atomic_bool &running) noexcept {
   std::vector<std::unique_ptr<FSManager::Connection>> clientList;
   int clientFd = -1;
   struct timeval tv;
@@ -297,7 +296,8 @@ void FSManager::run(const std::atomic_bool &running) {
             clientList.erase(clientList.cbegin() + i);
           } else {
             bool acquired = false;
-            for (auto &req : nodeOpt.value()->_data) {
+            auto &nodeData = nodeOpt.value()->_data;
+            for (auto &req : nodeData) {
               if (req.id == -1) {
                 acquired = true;
                 req.id = sd;
@@ -333,7 +333,7 @@ void FSManager::run(const std::atomic_bool &running) {
                   errorFound = true;
                   break;
                 }
-                req._file = DiskFile(clientList[i]->getFilePath());
+                req._file = clientList[i]->releaseFile();
               }
 
               allDone &= req.complete;
@@ -348,9 +348,8 @@ void FSManager::run(const std::atomic_bool &running) {
                 memcpy(arr.data(), current.value().data(), 64);
                 LTree tree = LTree(arr, "/FreeSync", true);
                 for (const auto &req : node->_data) {
-                  Decompressor decom(req._file.getFilePath());
-                  if (const auto result =
-                          tree.addFile(decom.getData(), req.path, false);
+                  if (const auto result = tree.addFile(req._file.toSpan(),
+                                                       req.path, false, true);
                       !result.has_value()) {
                     errorFound = true;
                     break;

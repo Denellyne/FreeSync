@@ -1,10 +1,9 @@
 #include "FSClient.h"
 #include "../../Compressor/Compressor.h"
 #include "../../Node/Node.h"
-#include <cmath>
+#include <cassert>
 #include <fcntl.h>
 #include <filesystem>
-#include <fstream>
 #include <netinet/in.h>
 #include <print>
 #include <sys/mman.h>
@@ -39,13 +38,13 @@ FSClient::FSManagerSocket::FSManagerSocket(const std::string &path,
   }
 }
 
-bool FSClient::FSManagerSocket::validationStep() {
-  std::array<unsigned char, LENGTH_SIZE> serverKeyLength;
+bool FSClient::FSManagerSocket::validationStep() noexcept {
+  alignas(32) std::array<unsigned char, LENGTH_SIZE> serverKeyLength;
   if (!readPacket(this->_fd, serverKeyLength.data(), LENGTH_SIZE)) {
     std::println("Unable to read serverKeyLength");
     return false;
   }
-  auto clientKeyLengthOpt = toNumber(serverKeyLength);
+  const auto clientKeyLengthOpt = toNumber(serverKeyLength);
   if (!clientKeyLengthOpt.has_value()) {
     std::println("Unable to get key length");
     return false;
@@ -69,13 +68,14 @@ bool FSClient::FSManagerSocket::validationStep() {
     const long length = ftell(fp);
     key.resize(length);
     rewind(fp);
-    if (fread(key.data(), sizeof(unsigned char), length, fp) < length) {
+    if (fread(key.data(), sizeof(unsigned char), length, fp) < (size_t)length) {
       std::println("Unable to read own public key");
       fclose(fp);
       return false;
     }
     fclose(fp);
-    std::array<unsigned char, LENGTH_SIZE> lengthArr = toArray(length);
+    alignas(32) std::array<unsigned char, LENGTH_SIZE> lengthArr =
+        toArray(length);
     key.insert(key.begin(), lengthArr.begin(), lengthArr.end());
     if (!writePrimitive(this->_fd, key.data(), LENGTH_SIZE + length)) {
       std::println("Unable to send primitive string");
@@ -83,9 +83,10 @@ bool FSClient::FSManagerSocket::validationStep() {
     }
   }
   std::array<unsigned char, COMMAND_LENGTH> buf;
-  if (!readPacket(this->_fd, buf.data(), COMMAND_LENGTH))
+  if (!readPacket(this->_fd, buf.data(), COMMAND_LENGTH)) {
+    std::println("Unable to read server answer");
     return false;
-  else {
+  } else {
     const std::string command(buf.begin(), buf.begin() + COMMAND_LENGTH);
     if (FSStrCode(command) == QUIT) {
       std::println("Closing connection, failed to validate it");
@@ -94,8 +95,13 @@ bool FSClient::FSManagerSocket::validationStep() {
   }
   return true;
 }
-bool FSClient::FSManagerSocket::switchAES() {
+bool FSClient::FSManagerSocket::switchAES() noexcept {
   this->_aes = std::make_unique<AESKey>();
+  if (!this->_aes) {
+    std::println("Unable to generate AES key");
+    return false;
+  }
+
   const SSLString packet = this->generatePacket(AESK, this->_aes->getKey());
   std::println("Packet generated");
   if (!this->writeToSocket(this->_fd, packet)) {
@@ -106,7 +112,7 @@ bool FSClient::FSManagerSocket::switchAES() {
   return true; // Check if received OK
 }
 
-FSClient::FSClient() {
+FSClient::FSClient() noexcept {
   this->_fd = socket(AF_INET, SOCK_STREAM, 0);
 
   if (this->_fd < 0) {
@@ -133,9 +139,9 @@ FSClient::FSClient() {
   }
 }
 
-bool FSClient::validationStep() {
+bool FSClient::validationStep() noexcept {
 
-  std::array<unsigned char, LENGTH_SIZE> serverKeyLength;
+  alignas(32) std::array<unsigned char, LENGTH_SIZE> serverKeyLength;
   if (!readPacket(this->_fd, serverKeyLength.data(), LENGTH_SIZE)) {
     std::println("Unable to read serverKeyLength");
     return false;
@@ -164,13 +170,14 @@ bool FSClient::validationStep() {
     const long length = ftell(fp);
     key.resize(length);
     rewind(fp);
-    if (fread(key.data(), sizeof(unsigned char), length, fp) < length) {
+    if (fread(key.data(), sizeof(unsigned char), length, fp) < (size_t)length) {
       std::println("Unable to read own public key");
       fclose(fp);
       return false;
     }
     fclose(fp);
-    std::array<unsigned char, LENGTH_SIZE> lengthArr = toArray(length);
+    alignas(32) std::array<unsigned char, LENGTH_SIZE> lengthArr =
+        toArray(length);
     key.insert(key.begin(), lengthArr.begin(), lengthArr.end());
     if (!writePrimitive(this->_fd, key.data(), LENGTH_SIZE + length)) {
       std::println("Unable to send primitive string");
@@ -189,8 +196,12 @@ bool FSClient::validationStep() {
   }
   return true;
 }
-bool FSClient::switchAES() {
+bool FSClient::switchAES() noexcept {
   this->_aes = std::make_unique<AESKey>();
+  if (!this->_aes) {
+    std::println("Unable to generate AES key");
+    return false;
+  }
   this->_aesLifetime = 1;
   const SSLString packet = this->generatePacket(AESK, this->_aes->getKey());
   std::println("Packet generated");
@@ -202,7 +213,8 @@ bool FSClient::switchAES() {
   return true; // Check if received OK
 }
 
-bool FSClient::invalidateAES() {
+bool FSClient::invalidateAES() noexcept {
+  assert(this->_aes);
   const SSLString packet = this->generatePacket(INV, this->_aes->getKey());
   std::println("Packet generated");
   if (!this->writeToSocketAES(this->_fd, packet)) {
@@ -212,7 +224,7 @@ bool FSClient::invalidateAES() {
   return true;
 }
 std::expected<bool, std::string>
-FSClient::validateCommand(const SSLString &command) {
+FSClient::validateCommand(const SSLString &command) noexcept {
   const FSCode c =
       FSStrCode(std::string_view((char *)command._data, command._length));
   switch (c) {
@@ -259,7 +271,7 @@ FSClient::validateCommand(const SSLString &command) {
   return true;
 }
 
-bool FSClient::processCommand(const SSLString &command) {
+bool FSClient::processCommand(const SSLString &command) noexcept {
 
   const FSCode c =
       FSStrCode(std::string_view((char *)command._data, command._length));
@@ -352,7 +364,7 @@ bool FSClient::processCommand(const SSLString &command) {
   }
   return true;
 }
-void FSClient::FSManagerSocket::run() {
+void FSClient::FSManagerSocket::run() noexcept {
   if (!validationStep() || !switchAES()) {
     std::println("Unable to validate server");
     return;
@@ -422,12 +434,13 @@ void FSClient::FSManagerSocket::run() {
   }
 }
 
-void FSClient::sendFile(const std::string &path, const uint64_t nodeId) {
+void FSClient::sendFile(const std::string &path,
+                        const uint64_t nodeId) noexcept {
   FSManagerSocket manager(path, nodeId);
   manager.run();
 }
 
-void FSClient::run() {
+void FSClient::run() noexcept {
   volatile bool shouldRun = this->validationStep();
   shouldRun = this->switchAES();
 

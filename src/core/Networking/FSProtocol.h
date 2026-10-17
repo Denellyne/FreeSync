@@ -2,7 +2,6 @@
 #include "../Compressor/Compressor.h"
 #include "../Encrypt/Encrypt.h"
 #include <chrono>
-#include <concepts>
 #include <cstring>
 #include <optional>
 #include <queue>
@@ -38,7 +37,7 @@ enum FSCode {
   // PUBK = 306, // Sends the public key
 
 };
-constexpr std::string FSPrint(const FSCode code) {
+constexpr std::string FSPrint(const FSCode code) noexcept {
 
   if (code == OK)
     return "OK";
@@ -68,8 +67,11 @@ constexpr std::string FSPrint(const FSCode code) {
   return "ERR";
 }
 
-constexpr FSCode FSStrCode(const std::string_view command) {
-  const std::string_view code = command.substr(0, command.find(' '));
+constexpr FSCode FSStrCode(const std::string_view command) noexcept {
+  if (command.length() < 3 || (command.length() > 3 && command[3] != ' '))
+    return ERR;
+
+  const std::string_view code = command.substr(0, command.find_first_of(' '));
   if (code == "200")
     return OK;
   else if (code == "101")
@@ -98,14 +100,14 @@ constexpr FSCode FSStrCode(const std::string_view command) {
   return ERR;
 }
 
-constexpr std::string FSCodeStr(const FSCode code) {
+constexpr std::string FSCodeStr(const FSCode code) noexcept {
   return std::to_string(code);
 }
 
 struct Request {
-  enum OP { ADD, DELETE } type;
-  Request(const std::string_view path, const Request::OP t)
-      : path(path), type(t) {}
+  enum OP { ADD, DELETE } type = ADD;
+  Request(const std::string_view path, const Request::OP t) noexcept
+      : type(t), path(path) {}
   Request(const Request &) = delete;
   Request &operator=(const Request &) = delete;
 
@@ -146,13 +148,16 @@ protected:
   CommandQueueOpt parseCommands(std::string_view input);
   Command Command(std::string_view input);
 
-  [[nodiscard]] bool writeToSocket(const int fd, const SSLString &message);
-  [[nodiscard]] bool writeToSocketAES(const int fd, const SSLString &message);
+  [[nodiscard]] bool writeToSocket(const int fd,
+                                   const SSLString &message) noexcept;
+  [[nodiscard]] bool writeToSocketAES(const int fd,
+                                      const SSLString &message) noexcept;
   [[nodiscard]] bool writePrimitive(const int fd, void *data,
-                                    const uint32_t size);
+                                    const uint32_t size) noexcept;
   // virtual bool writeToSocket(std::string_view message, bool aes = true) = 0;
   // virtual StringOpt readSocket(bool aes = true) = 0;
-  [[nodiscard]] bool readPacket(const int fd, void *data, uint32_t numBytes);
+  [[nodiscard]] bool readPacket(const int fd, void *data,
+                                uint32_t numBytes) noexcept;
   [[nodiscard]] StringOpt readSocket(const int fd);
   [[nodiscard]] StringOpt readSocketRSA(const int fd);
   [[nodiscard]] StringOpt readSocketAES(const int fd);

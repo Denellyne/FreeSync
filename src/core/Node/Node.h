@@ -15,19 +15,22 @@
 namespace fs = std::filesystem;
 class Node {
 public:
-  virtual ~Node() = default;
-  constexpr virtual const std::string_view getHash() const = 0;
-  constexpr virtual const fs::path &getFilePath() const = 0;
-  constexpr virtual const fs::path &getObjPath() const = 0;
-  constexpr virtual const std::string getFileName() const = 0;
-  static std::optional<std::string> getHeadFile();
+  virtual ~Node() noexcept = default;
+  constexpr virtual const std::string_view getHash() const noexcept = 0;
+  constexpr virtual const fs::path &getFilePath() const noexcept = 0;
+  constexpr virtual const fs::path &getObjPath() const noexcept = 0;
+  constexpr virtual const std::string getFileName() const noexcept = 0;
+  static std::optional<std::string> getHeadFile() noexcept;
 
-  static std::string hash(const std::vector<unsigned char> &data);
-  static std::string hash(const std::span<unsigned char> data);
-  static std::string hash(const std::string_view data);
+  static std::string hash(const std::vector<unsigned char> &data) noexcept;
+  static std::string hash(const std::span<unsigned char> data) noexcept;
+  static std::string hash(const std::string_view data) noexcept;
+
+  operator bool() const noexcept { return !this->_error; }
 
 protected:
   fs::path _filePath = "";
   fs::path _objPath = "";
   std::string _hash = "";
+  bool _error = false;
 };

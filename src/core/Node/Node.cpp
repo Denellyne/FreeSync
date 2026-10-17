@@ -9,9 +9,9 @@
 #include <optional>
 #include <sstream>
 
-std::string Node::hash(const std::span<unsigned char> data) {
+std::string Node::hash(const std::span<unsigned char> data) noexcept {
 
-  std::array<uint8_t, 32> hash{};
+  alignas(32) std::array<uint8_t, 32> hash{};
   EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
   const EVP_MD *md = EVP_sha256();
 
@@ -22,16 +22,15 @@ std::string Node::hash(const std::span<unsigned char> data) {
   EVP_MD_CTX_free(mdctx);
   std::ostringstream ss;
   ss << std::hex << std::setfill('0');
-  for (unsigned int i = 0; i < 32; ++i) {
+  for (size_t i = 0; i < 32; ++i)
     ss << std::setw(2) << static_cast<unsigned>(hash[i]);
-  }
 
   assert(ss.str().length() == 64);
   return ss.str();
 }
-std::string Node::hash(const std::vector<unsigned char> &data) {
+std::string Node::hash(const std::vector<unsigned char> &data) noexcept {
 
-  std::array<uint8_t, 32> hash{};
+  alignas(32) std::array<uint8_t, 32> hash{};
   EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
   const EVP_MD *md = EVP_sha256();
 
@@ -42,16 +41,15 @@ std::string Node::hash(const std::vector<unsigned char> &data) {
   EVP_MD_CTX_free(mdctx);
   std::ostringstream ss;
   ss << std::hex << std::setfill('0');
-  for (unsigned int i = 0; i < 32; ++i) {
+  for (size_t i = 0; i < 32; ++i)
     ss << std::setw(2) << static_cast<unsigned>(hash[i]);
-  }
 
   assert(ss.str().length() == 64);
   return ss.str();
 }
-std::string Node::hash(const std::string_view data) {
+std::string Node::hash(const std::string_view data) noexcept {
 
-  std::array<uint8_t, 32> hash{};
+  alignas(32) std::array<uint8_t, 32> hash{};
   EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
   const EVP_MD *md = EVP_sha256();
 
@@ -62,23 +60,20 @@ std::string Node::hash(const std::string_view data) {
   EVP_MD_CTX_free(mdctx);
   std::ostringstream ss;
   ss << std::hex << std::setfill('0');
-  for (unsigned int i = 0; i < 32; ++i) {
+  for (size_t i = 0; i < 32; ++i)
     ss << std::setw(2) << static_cast<unsigned>(hash[i]);
-  }
 
   assert(ss.str().length() == 64);
   return ss.str();
 }
-std::optional<std::string> Node::getHeadFile() {
+std::optional<std::string> Node::getHeadFile() noexcept {
 
   if (!std::filesystem::exists(HEADFILE))
     return "NOPARENT";
   std::string data;
   std::ifstream file(HEADFILE, std::fstream::binary);
-  if (!file) {
-    throw std::runtime_error("Unable to create leaf node\n");
+  if (!file)
     return std::nullopt;
-  }
 
   file.seekg(0, file.end);
   const int length = file.tellg();

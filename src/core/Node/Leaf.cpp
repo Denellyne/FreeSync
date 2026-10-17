@@ -7,20 +7,26 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <zlib.h>
+#include <zlib-ng.h>
 
-Leaf::Leaf(const std::string_view filePath) {
+Leaf::Leaf(const std::string_view filePath) noexcept {
 
-  if (!fs::exists(filePath)) {
+  if (!fs::exists(filePath)) [[unlikely]] {
     std::string err = "Passed file doesn't exist ";
     err += filePath;
     err += '\n';
-    throw std::runtime_error(err);
-  } else if (!fs::is_regular_file(filePath)) {
+    {
+      this->_error = true;
+      return;
+    }
+  } else if (!fs::is_regular_file(filePath)) [[unlikely]] {
     std::string err = "Passed path isn't a file ";
     err += filePath;
     err += '\n';
-    throw std::runtime_error(err);
+    {
+      this->_error = true;
+      return;
+    }
   }
   this->_filePath = filePath;
   if (const fs::perms permissions = fs::status(this->_filePath).permissions();
@@ -39,12 +45,55 @@ Leaf::Leaf(const std::string_view filePath) {
 
   this->_objPath = path;
 
-  if (!this->writeBlob(compressData(file).toSpan()))
-    throw std::runtime_error("Unable to write leaf blob\n");
+  if (!this->writeBlob(compressData(file).toSpan())) [[unlikely]] {
+    this->_error = true;
+    return;
+  }
 }
 
 Leaf::Leaf(const std::string_view filePath, const std::span<unsigned char> data,
-           const bool isExecutable) {
+           const bool isExecutable, const bool isCompressed) noexcept {
+
+  this->_filePath = filePath;
+  this->_isExecutable = isExecutable;
+
+  if (isCompressed) {
+    DiskFile file = decompressData(data);
+    if (!file) {
+      this->_error = true;
+      return;
+    }
+    this->_hash = this->hash(file.toSpan());
+    std::string path = OBJFOLDER;
+    path.append(this->_hash, 0, 2);
+    path += '/';
+    path.append(this->_hash, 2, 62);
+
+    this->_objPath = path;
+    if (!this->writeBlob(data)) [[unlikely]] {
+      this->_error = true;
+      return;
+    }
+  } else {
+    this->_hash = this->hash(data);
+    std::string path = OBJFOLDER;
+    path.append(this->_hash, 0, 2);
+    path += '/';
+    path.append(this->_hash, 2, 62);
+
+    this->_objPath = path;
+
+    if (DiskFile file = compressData(data);
+        !file || !this->writeBlob(file.toSpan())) [[unlikely]] {
+      this->_error = true;
+      return;
+    }
+  }
+}
+
+Leaf::Leaf(const std::string_view filePath, const std::span<unsigned char> data,
+           const std::string_view parentHash,
+           const bool isExecutable) noexcept {
 
   this->_filePath = filePath;
   this->_isExecutable = isExecutable;
@@ -56,33 +105,15 @@ Leaf::Leaf(const std::string_view filePath, const std::span<unsigned char> data,
   path.append(this->_hash, 2, 62);
 
   this->_objPath = path;
-
   DiskFile file = compressData(data);
 
-  if (!this->writeBlob(file.toSpan()))
-    throw std::runtime_error("Unable to write leaf blob\n");
-}
-
-Leaf::Leaf(const std::string_view filePath, const std::span<unsigned char> data,
-           const std::string_view parentHash, const bool isExecutable) {
-
-  this->_filePath = filePath;
-  this->_isExecutable = isExecutable;
-
-  this->_hash = this->hash(data);
-  std::string path = OBJFOLDER;
-  path.append(this->_hash, 0, 2);
-  path += '/';
-  path.append(this->_hash, 2, 62);
-
-  this->_objPath = path;
-  DiskFile file = compressData(data);
-
-  if (!this->writeDiffBlob(file.toSpan(), parentHash))
-    throw std::runtime_error("Unable to write leaf blob\n");
+  if (!this->writeDiffBlob(file.toSpan(), parentHash)) [[unlikely]] {
+    this->_error = true;
+    return;
+  }
 }
 bool Leaf::writeFile(const std::string_view path,
-                     const std::span<unsigned char> data) {
+                     const std::span<unsigned char> data) noexcept {
 
   fs::path p = path;
   fs::create_directories(p.parent_path());
@@ -95,7 +126,7 @@ bool Leaf::writeFile(const std::string_view path,
   return true;
 }
 bool Leaf::writeDiffBlob(const std::span<unsigned char> data,
-                         const std::string_view parentHash) {
+                         const std::string_view parentHash) noexcept {
   fs::path path = this->_objPath;
   fs::create_directories(path.parent_path());
   std::ofstream file(path, std::fstream::binary);
@@ -111,7 +142,7 @@ bool Leaf::writeDiffBlob(const std::span<unsigned char> data,
   file.flush();
   return true;
 }
-bool Leaf::writeBlob(const std::span<unsigned char> data) {
+bool Leaf::writeBlob(const std::span<unsigned char> data) noexcept {
   fs::path path = this->_objPath;
   fs::create_directories(path.parent_path());
   std::ofstream file(path, std::fstream::binary);
@@ -126,7 +157,8 @@ bool Leaf::writeBlob(const std::span<unsigned char> data) {
   file.flush();
   return true;
 }
-std::expected<std::vector<unsigned char>, std::string> Leaf::getBlob() {
+std::expected<std::vector<unsigned char>, std::string>
+Leaf::getBlob() noexcept {
   std::vector<unsigned char> res;
   std::ifstream file(this->_objPath, std::fstream::binary);
   if (!file)
@@ -153,7 +185,7 @@ std::expected<std::vector<unsigned char>, std::string> Leaf::getBlob() {
 }
 
 std::expected<std::vector<unsigned char>, std::string>
-Leaf::getFinalDecompressBlob() {
+Leaf::getFinalDecompressBlob() noexcept {
   DiskFile file(this->_objPath.string());
   if (!file)
     return std::unexpected("Invalid file");
@@ -201,7 +233,7 @@ bool applyDiffsUncompressed(std::vector<unsigned char> &old,
   for (size_t idx = 0; idx < diffs.size();) {
     if (diffs[idx] == 'C') {
       idx++;
-      std::array<unsigned char, 32> beg, end;
+      alignas(32) std::array<unsigned char, 32> beg, end;
       strncpy((char *)beg.data(), (char *)&diffs[idx], 32);
       idx += 32;
       strncpy((char *)end.data(), (char *)&diffs[idx], 32);
@@ -218,7 +250,7 @@ bool applyDiffsUncompressed(std::vector<unsigned char> &old,
       }
     } else if (diffs[idx] == 'I') {
       idx++;
-      std::array<unsigned char, 32> size;
+      alignas(32) std::array<unsigned char, 32> size;
       strncpy((char *)size.data(), (char *)&diffs[idx], 32);
       idx += 32;
       if (const auto lengthOpt = toNumber(size); !lengthOpt.has_value())
@@ -236,30 +268,38 @@ bool applyDiffsUncompressed(std::vector<unsigned char> &old,
 }
 
 std::expected<std::vector<unsigned char>, std::string>
-Leaf::diffFile(const std::span<unsigned char> newer) {
+Leaf::diffFile(const std::span<unsigned char> newer,
+               const bool isCompressed) noexcept {
   if (auto dataOpt = this->getFinalDecompressBlob(); !dataOpt.has_value())
     return std::unexpected(dataOpt.error());
   else {
+    std::span<unsigned char> newBlob = newer;
+    DiskFile file;
+    if (isCompressed) {
+      file = decompressData(newBlob);
+      newBlob = file.toSpan();
+    }
+
     std::vector<unsigned char> diffs;
     const std::vector<unsigned char> original = std::move(dataOpt.value());
-    if (Node::hash(newer) == Node::hash(original))
+    if (Node::hash(newBlob) == Node::hash(original))
       return std::vector<unsigned char>{};
 
     auto originalIt = original.cbegin();
-    auto newIt = newer.cbegin();
-    while (newIt != newer.cend()) {
+    auto newIt = newBlob.cbegin();
+    while (newIt != newBlob.cend()) {
       if (originalIt == original.cend()) {
-        if (const uint32_t length = newer.cend() - newIt; length > 0) {
+        if (const uint32_t length = newBlob.cend() - newIt; length > 0) {
           diffs.emplace_back('I');
           const auto lenArr = toArray(length);
           diffs.insert(diffs.end(), lenArr.cbegin(), lenArr.cend());
-          diffs.insert(diffs.end(), newIt, newer.cend());
+          diffs.insert(diffs.end(), newIt, newBlob.cend());
         }
         return diffs;
       }
       if (*newIt == *originalIt) {
         const auto beg = toArray(originalIt - original.cbegin());
-        while (originalIt != original.cend() && newIt != newer.cend() &&
+        while (originalIt != original.cend() && newIt != newBlob.cend() &&
                *newIt == *originalIt) {
           newIt++;
           originalIt++;
@@ -270,7 +310,7 @@ Leaf::diffFile(const std::span<unsigned char> newer) {
         diffs.insert(diffs.end(), end.cbegin(), end.cend());
       } else {
         const auto beg = newIt;
-        while (newIt != newer.cend() && *newIt != *originalIt)
+        while (newIt != newBlob.cend() && *newIt != *originalIt)
           newIt++;
 
         diffs.emplace_back('I');
@@ -283,7 +323,8 @@ Leaf::diffFile(const std::span<unsigned char> newer) {
   }
 }
 
-std::span<unsigned char> Leaf::readBlobData(std::span<unsigned char> data) {
+std::span<unsigned char>
+Leaf::readBlobData(std::span<unsigned char> data) noexcept {
 
   std::string size = "";
   int pos = 0;
@@ -299,7 +340,7 @@ std::span<unsigned char> Leaf::readBlobData(std::span<unsigned char> data) {
   return data.subspan(pos + 1, length);
 }
 
-Leaf Leaf::getParentLeaf(const std::span<unsigned char> data) {
+Leaf Leaf::getParentLeaf(const std::span<unsigned char> data) noexcept {
   const std::string_view parentHash = std::string_view((char *)data.data(), 64);
   return Leaf(this->getFilePath().string(), parentHash, this->_isExecutable);
 }

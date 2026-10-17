@@ -6,7 +6,8 @@
 #include <unistd.h>
 #include <vector>
 
-bool FSProtocol::writePrimitive(const int fd, void *data, const uint32_t size) {
+bool FSProtocol::writePrimitive(const int fd, void *data,
+                                const uint32_t size) noexcept {
   uint32_t idx = 0;
   do {
     const ssize_t res = send(fd, (unsigned char *)data + idx, size - idx, 0);
@@ -25,13 +26,14 @@ bool FSProtocol::writePrimitive(const int fd, void *data, const uint32_t size) {
 }
 
 using FSCommand = struct FSProtocol::Command;
-bool FSProtocol::writeToSocket(const int fd, const SSLString &data) {
+bool FSProtocol::writeToSocket(const int fd, const SSLString &data) noexcept {
   assert(fd >= 0 && this->_public && this->_private &&
          !this->_public->_isPrivateKey);
   if (const auto blob = this->_public->encryptBlob(data); blob.has_value()) {
     const SSLString str = blob.value();
 
-    std::array<unsigned char, LENGTH_SIZE> sizeArray = toArray(str._length);
+    alignas(32) std::array<unsigned char, LENGTH_SIZE> sizeArray =
+        toArray(str._length);
     std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
     packet.resize(packet.size() + str._length, 0);
     memcpy(&packet[LENGTH_SIZE], str._data, str._length);
@@ -53,7 +55,8 @@ bool FSProtocol::writeToSocket(const int fd, const SSLString &data) {
   return false;
 }
 
-bool FSProtocol::writeToSocketAES(const int fd, const SSLString &data) {
+bool FSProtocol::writeToSocketAES(const int fd,
+                                  const SSLString &data) noexcept {
   assert(fd >= 0);
   if (this->_aes == nullptr) {
     std::println("No AES Key available");
@@ -62,7 +65,8 @@ bool FSProtocol::writeToSocketAES(const int fd, const SSLString &data) {
   if (const auto blob = this->_aes->encryptBlob(data); blob.has_value()) {
     const SSLString str = blob.value();
 
-    std::array<unsigned char, LENGTH_SIZE> sizeArray = toArray(str._length);
+    alignas(32) std::array<unsigned char, LENGTH_SIZE> sizeArray =
+        toArray(str._length);
     std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
     packet.resize(packet.size() + str._length, 0);
     memcpy(&packet[LENGTH_SIZE], str._data, str._length);
@@ -88,7 +92,7 @@ StringOpt FSProtocol::readSocketAES(const int fd) {
   StringOpt strOpt = readSocket(fd);
   if (!strOpt.has_value())
     return std::nullopt;
-  std::vector<unsigned char> sig(RSA_SIGNING_LENGTH);
+  alignas(32) std::vector<unsigned char> sig(RSA_SIGNING_LENGTH);
   if (!readPacket(fd, sig.data(), RSA_SIGNING_LENGTH))
     return std::nullopt;
 
@@ -109,7 +113,7 @@ StringOpt FSProtocol::readSocketRSA(const int fd) {
   StringOpt strOpt = readSocket(fd);
   if (!strOpt.has_value())
     return std::nullopt;
-  std::vector<unsigned char> sig(RSA_SIGNING_LENGTH);
+  alignas(32) std::vector<unsigned char> sig(RSA_SIGNING_LENGTH);
   if (!readPacket(fd, sig.data(), RSA_SIGNING_LENGTH))
     return std::nullopt;
 
@@ -125,7 +129,8 @@ StringOpt FSProtocol::readSocketRSA(const int fd) {
   }
 }
 
-bool FSProtocol::readPacket(const int fd, void *data, const uint32_t numBytes) {
+bool FSProtocol::readPacket(const int fd, void *data,
+                            const uint32_t numBytes) noexcept {
   assert(fd >= 0);
   uint32_t bytesRead = 0;
 
@@ -148,7 +153,7 @@ bool FSProtocol::readPacket(const int fd, void *data, const uint32_t numBytes) {
 }
 StringOpt FSProtocol::readSocket(const int fd) {
   assert(fd >= 0);
-  std::array<unsigned char, LENGTH_SIZE> packetSize{'0'};
+  alignas(32) std::array<unsigned char, LENGTH_SIZE> packetSize{'0'};
 
   if (!readPacket(fd, packetSize.data(), LENGTH_SIZE))
     return std::nullopt;

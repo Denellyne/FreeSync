@@ -1,6 +1,5 @@
 #pragma once
 #include "../../FSLList/FSLList.h"
-#include "../../TempFile/TempFile.hpp"
 #include "../FSProtocol.h"
 #include <atomic>
 #include <netinet/in.h>
@@ -10,13 +9,13 @@
 class FSManager {
 public:
   FSManager(const std::string_view ip = "localhost",
-            const int port = FSMANAGER_PORT, const int backlog = 128);
-  void run(const std::atomic_bool &running);
-  uint64_t addNewNode(std::vector<Request> &&requests) {
+            const int port = FSMANAGER_PORT, const int backlog = 128) noexcept;
+  void run(const std::atomic_bool &running) noexcept;
+  uint64_t addNewNode(std::vector<Request> &&requests) noexcept {
     return this->_list.addNode(std::move(requests));
   }
   [[nodiscard]] bool removeDeadConnection(const uint64_t connection,
-                                          const int id = -1) {
+                                          const int id = -1) noexcept {
     auto nodeOpt = this->_list.getNode(connection);
     if (!nodeOpt.has_value())
       return false;
@@ -34,7 +33,7 @@ public:
   }
 
 private:
-  void removeTimeoutConnections() {
+  void removeTimeoutConnections() noexcept {
     std::vector<uint64_t> ids;
     for (const auto &node : this->_list) {
       const auto currentTime =
@@ -56,14 +55,14 @@ private:
   class Connection final : public FSProtocol {
   public:
     Connection() = delete;
-    Connection(const int fd) : _fd(fd) {
+    Connection(const int fd) noexcept : _fd(fd) {
       this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
       if (!this->_private) {
         std::println("Unable to load private key");
         this->_fd = -1;
       }
     }
-    ~Connection() {
+    ~Connection() noexcept {
       std::println("Closing connection of sock:{}", this->_fd);
       close(const_cast<int &>(this->_fd));
     }
@@ -74,27 +73,32 @@ private:
       NODESET,
       FINISHED,
     };
-    processStatus process();
-    bool confirmFile();
-    virtual void run() override {}
-    constexpr int getFd() const { return this->_fd; }
-    constexpr uint64_t getNode() const { return this->_node; }
-    constexpr void setNodeId(const uint64_t nodeId) { this->_node = nodeId; }
-    std::optional<std::vector<unsigned char>> getFileContents() {
-      return this->_file.getContents();
+    processStatus process() noexcept;
+    bool confirmFile() noexcept;
+    virtual void run() noexcept override {}
+    constexpr int getFd() const noexcept { return this->_fd; }
+    constexpr uint64_t getNode() const noexcept { return this->_node; }
+    constexpr void setNodeId(const uint64_t nodeId) noexcept {
+      this->_node = nodeId;
     }
-    bool acquireRequest();
-    std::string_view getFilePath() const { return this->_file.getFilePath(); }
+    std::optional<std::span<unsigned char>> getFileContents() const noexcept {
+      return this->_file.toSpan();
+    }
+    bool acquireRequest() noexcept;
+    std::string_view getFilePath() const noexcept {
+      return this->_file.getFilePath();
+    }
+    DiskFile &&releaseFile() { return std::move(this->_file); }
 
   private:
     // std::string generateRandomString();
-    bool handleValidation();
-    bool handleAES();
-    bool interpretCommand(const SSLString &command);
-    bool checkIfAuthorized(const std::vector<unsigned char> &key);
+    bool handleValidation() noexcept;
+    bool handleAES() noexcept;
+    bool interpretCommand(const SSLString &command) noexcept;
+    bool checkIfAuthorized(const std::vector<unsigned char> &key) noexcept;
 
     int _fd = -1;
-    TempFile _file;
+    DiskFile _file;
     uint64_t _node = 0;
   };
   FSLList<Request> _list;

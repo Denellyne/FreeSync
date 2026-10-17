@@ -11,46 +11,51 @@
 class FSServer {
 public:
   FSServer() = delete;
-  FSServer(std::atomic_bool &running);
-  ~FSServer() {
+  FSServer(std::atomic_bool &running) noexcept;
+  ~FSServer() noexcept {
     std::println("Closing server...");
     if (this->_serverFD != -1)
       close(this->_serverFD);
     this->_serverFD = -1;
   }
-  void run();
+  void run() noexcept;
   static void handleConnection(const int fd, const std::atomic_bool &running,
-                               FSManager &manager);
+                               FSManager &manager) noexcept;
+
+  operator bool() const noexcept { return !this->_error; }
 
 private:
   class Connection final : public FSProtocol {
   public:
     Connection() = delete;
-    Connection(const int fd, const std::atomic_bool &running, bool &valid,
-               FSManager &manager);
-    ~Connection() {
+    Connection(const int fd, const std::atomic_bool &running,
+               FSManager &manager) noexcept;
+    ~Connection() noexcept {
       if (this->_requestId > 0)
         const bool _ = this->_manager.removeDeadConnection(this->_requestId);
       std::println("Closing connection of sock:{}", this->_fd);
       close(const_cast<int &>(this->_fd));
     }
-    virtual void run() override;
+    virtual void run() noexcept override;
+    operator bool() const noexcept { return !this->_error; }
 
   private:
     // std::string generateRandomString();
-    bool handleValidation();
-    bool handleAES();
-    bool interpretCommand(const SSLString &command);
-    bool checkIfAuthorized(const std::vector<unsigned char> &key);
+    bool handleValidation() noexcept;
+    bool handleAES() noexcept;
+    bool interpretCommand(const SSLString &command) noexcept;
+    bool checkIfAuthorized(const std::vector<unsigned char> &key) noexcept;
 
     int _fd = -1;
     uint64_t _requestId = 0;
     const std::atomic_bool &_running;
     FSManager &_manager;
+    bool _error = false;
   };
   ThreadPool _pool{maxThreads()};
   FSManager _manager;
   std::atomic_bool &_running;
   int _serverFD = -1;
   struct sockaddr_in _sockAddr;
+  bool _error = false;
 };

@@ -5,21 +5,19 @@
 #include <cassert>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
-#include <stdexcept>
+#include <print>
 
 Tree::Tree(const std::string_view folder, bool root) : _root(root) {
   fs::path path = folder;
-  if (!fs::exists(path)) {
-    std::string err = "Passed folder doesn't exist ";
-    err += path;
-    err += '\n';
-    throw std::runtime_error(err);
-  } else if (!fs::is_directory(path)) {
-    std::string err = "Passed path isn't a directory ";
-    err += path;
-    err += '\n';
-    throw std::runtime_error(err);
+  if (!fs::exists(path)) [[unlikely]] {
+    std::println("Passed folder doesn't exist {}", path);
+    this->_error = true;
+    return;
+
+  } else if (!fs::is_directory(path)) [[unlikely]] {
+    std::println("Passed path isn't a directory {}", path);
+    this->_error = true;
+    return;
   }
   this->_filePath = path;
   for (const auto &p : fs::directory_iterator(path)) {
@@ -27,16 +25,19 @@ Tree::Tree(const std::string_view folder, bool root) : _root(root) {
         str.contains(".freesync") || str.contains(".git"))
       continue;
 
-    try {
-      this->_children.emplace_back(Tree::newNode(p.path().c_str()));
-    } catch (const std::runtime_error &err) {
-      throw err;
+    this->_children.emplace_back(Tree::newNode(p.path().c_str()));
+
+    if (!this->_children[this->_children.size() - 1]) [[unlikely]] {
+      this->_error = true;
+      return;
     }
   }
 
   this->hashTree();
-  if (!this->writeBlob())
-    throw std::runtime_error("Unable to write tree blob\n");
+  if (!this->writeBlob()) [[unlikely]] {
+    this->_error = true;
+    return;
+  }
 }
 
 Tree::Tree(const std::array<char, 64> &hash, bool root) : _root(root) {
@@ -49,12 +50,12 @@ Tree::Tree(const std::array<char, 64> &hash, bool root) : _root(root) {
   this->_filePath = ".";
 }
 
-std::unique_ptr<Node> Tree::newNode(const std::string_view filePath) {
-  if (!fs::exists(filePath)) {
+std::unique_ptr<Node> Tree::newNode(const std::string_view filePath) noexcept {
+  if (!fs::exists(filePath)) [[unlikely]] {
     std::string err = "Passed file doesn't exist ";
     err += filePath;
     err += '\n';
-    throw std::runtime_error(err);
+    return nullptr;
   }
   if (fs::is_directory(filePath))
     return std::make_unique<Tree>(Tree(filePath));
@@ -62,7 +63,7 @@ std::unique_ptr<Node> Tree::newNode(const std::string_view filePath) {
   return std::make_unique<Leaf>(Leaf(filePath));
 };
 
-void Tree::hashTree() {
+void Tree::hashTree() noexcept {
   this->_hash.reserve(this->_children.size() * 64);
   std::sort(this->_children.begin(), this->_children.end());
   for (const auto &child : this->_children)
@@ -77,11 +78,11 @@ void Tree::hashTree() {
   this->_objPath = path;
 }
 
-bool Tree::writeBlob() {
+bool Tree::writeBlob() noexcept {
   std::string data = "";
   if (this->_root) {
     if (const auto str = Node::getHeadFile(); !str.has_value()) {
-      std::cerr << "Head file is null optional\n";
+      std::println("Head file is null optional");
       return false;
     } else if (str.value() == this->_hash)
       return true;
@@ -93,7 +94,7 @@ bool Tree::writeBlob() {
   fs::create_directories(path.parent_path());
   std::ofstream file(path, std::fstream::binary);
   if (!file) {
-    std::cerr << "Unable to open file to path of tree object\n";
+    std::println("Unable to open file to path of tree object");
     return false;
   }
 
@@ -105,7 +106,7 @@ bool Tree::writeBlob() {
     else if (fs::is_regular_file(p)) {
       const Leaf *leaf = reinterpret_cast<Leaf *>(children.get());
       if (!leaf) {
-        std::cerr << "Regular file isn't of Leaf type: " << p << '\n';
+        std::println("Regular file isn't of Leaf type: {}", p);
         return false;
       }
       if (leaf->isExecutable())
@@ -128,10 +129,10 @@ bool Tree::writeBlob() {
   return true;
 }
 
-bool Tree::writeHeadFile() {
+bool Tree::writeHeadFile() noexcept {
   std::ofstream file(HEADFILE, std::fstream::binary | std::fstream::trunc);
   if (!file) {
-    std::cerr << "Unable to open head file\n";
+    std::println("Unable to open head file");
     return false;
   }
   file.write(this->_hash.c_str(), 64);

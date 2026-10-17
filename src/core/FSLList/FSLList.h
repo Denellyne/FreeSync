@@ -9,17 +9,18 @@ template <typename T> struct LListNode;
 template <typename T> using LListPtr = std::shared_ptr<LListNode<T>>;
 
 template <typename T> struct LListNode {
-  LListNode(std::vector<T> &&data) : _data(std::move(data)) {}
+  constexpr LListNode(std::vector<T> &&data) noexcept
+      : _data(std::move(data)) {}
   std::vector<T> _data;
   LListPtr<T> _next = nullptr;
   std::recursive_mutex _mutex;
   std::shared_mutex _readMutex;
-  void removeNext() {
+  void removeNext() noexcept {
     std::scoped_lock lock{this->_mutex, this->_readMutex};
     if (!this->_next)
       return;
     std::scoped_lock guard{this->_next->_mutex, this->_next->_readMutex};
-    if (LListPtr<T> tail = this->_next->_next; tail) {
+    if (__restrict__ LListPtr<T> tail = this->_next->_next; tail) {
       std::scoped_lock lock{tail->_mutex, tail->_readMutex};
       this->_next.swap(tail);
       return;
@@ -34,10 +35,11 @@ public:
   LListPtr<T> _last = nullptr;
   std::recursive_mutex _mutex;
   std::shared_mutex _readMutex;
-  uint64_t addNode(std::vector<T> &&data) {
-    LListPtr<T> l = std::make_shared<LListNode<T>>(std::move(data));
+  uint64_t addNode(std::vector<T> &&data) noexcept {
+    __restrict__ LListPtr<T> l =
+        std::make_shared<LListNode<T>>(std::move(data));
     std::scoped_lock lock{this->_mutex, l->_mutex, l->_readMutex};
-    if (LListPtr<T> cur = getLastNode(); !cur) {
+    if (__restrict__ LListPtr<T> cur = getLastNode(); !cur) {
       std::unique_lock guard{this->_readMutex};
       this->_list.swap(l);
       this->_last = this->_list;
@@ -49,11 +51,11 @@ public:
       return reinterpret_cast<uint64_t>(cur->_next.get());
     }
   }
-  void removeNode(const uint64_t id) {
+  void removeNode(const uint64_t id) noexcept {
     std::scoped_lock head{this->_mutex};
     if (getId(this->_list) == id) {
       std::scoped_lock lock{this->_mutex, this->_readMutex};
-      LListPtr<T> next = this->_list->_next;
+      __restrict__ LListPtr<T> next = this->_list->_next;
       if (next) {
         std::scoped_lock lock{next->_mutex, next->_readMutex};
         this->_list.swap(next);
@@ -70,7 +72,7 @@ public:
     } else if (auto headOpt = getPrevNode(id); !headOpt.has_value())
       return;
     else {
-      LListPtr<T> head = headOpt.value();
+      __restrict__ LListPtr<T> head = headOpt.value();
       head->removeNext();
       std::scoped_lock lock{this->_mutex, this->_readMutex, head->_mutex,
                             head->_readMutex};
@@ -85,16 +87,15 @@ public:
     }
   }
 
-  ~FSLList() { this->freeList(this->_list); }
+  ~FSLList() noexcept { this->freeList(this->_list); }
 
-  std::optional<LListPtr<T>> getNode(const uint64_t id) const {
-    LListPtr<T> node = this->_list;
+  std::optional<LListPtr<T>> getNode(const uint64_t id) const noexcept {
+    __restrict__ LListPtr<T> node = this->_list;
     while (node) {
       std::shared_lock lock{node->_readMutex};
-
       if (getId(node).value_or(0) == id)
         return node;
-      else if (LListPtr<T> next = node->_next; next) {
+      else if (__restrict__ LListPtr<T> next = node->_next; next) {
         std::shared_lock lock{next->_readMutex};
         if (getId(next).value_or(0) == id)
           return next;
@@ -104,7 +105,7 @@ public:
     return std::nullopt;
   }
 
-  std::optional<uint64_t> getId(LListPtr<T> const &node) const {
+  std::optional<uint64_t> getId(LListPtr<T> const &node) const noexcept {
     if (!node.get())
       return std::nullopt;
     std::shared_lock lock{node->_readMutex};
@@ -115,30 +116,30 @@ public:
     LListIterator(LListPtr<T> ptr) : _ptr(ptr) {}
     LListPtr<T> _ptr = nullptr;
     std::shared_lock<std::shared_mutex> _lock;
-    LListIterator &operator++() {
+    LListIterator &operator++() noexcept {
       lock();
       this->_ptr = this->_ptr->_next;
       unlock();
       return *this;
     }
-    LListPtr<T> &operator&() {
+    LListPtr<T> &operator&() noexcept {
       lock();
       return &this->_ptr;
     }
-    LListPtr<T> operator*() {
+    LListPtr<T> operator*() noexcept {
       lock();
       return this->_ptr;
     }
-    void lock() {
+    void lock() noexcept {
       if (this->_ptr)
         this->_lock = std::shared_lock(this->_ptr->_readMutex);
     }
-    void unlock() {
+    void unlock() noexcept {
       if (this->_lock.owns_lock())
         this->_lock.unlock();
     }
 
-    friend bool operator==(LListIterator &lhs, LListIterator &rhs) {
+    friend bool operator==(LListIterator &lhs, LListIterator &rhs) noexcept {
       lhs.lock();
       rhs.lock();
       const bool result = lhs._ptr.get() == rhs._ptr.get();
@@ -146,7 +147,7 @@ public:
       rhs.unlock();
       return result;
     }
-    friend bool operator!=(LListIterator &lhs, LListIterator &rhs) {
+    friend bool operator!=(LListIterator &lhs, LListIterator &rhs) noexcept {
       lhs.lock();
       rhs.lock();
       const bool result = lhs._ptr.get() != rhs._ptr.get();
@@ -155,14 +156,14 @@ public:
       return result;
     }
   };
-  LListIterator begin() {
+  LListIterator begin() noexcept {
     std::shared_lock lock(this->_readMutex);
     std::shared_lock<std::shared_mutex> nodeLock;
     if (this->_list)
       nodeLock = std::shared_lock(this->_list->_readMutex);
     return this->_list;
   }
-  LListIterator end() {
+  LListIterator end() noexcept {
     std::shared_lock lock(this->_readMutex);
     std::shared_lock<std::shared_mutex> nodeLock;
     if (this->_last) {
@@ -171,14 +172,14 @@ public:
     }
     return this->_last;
   }
-  const LListIterator cbegin() const {
+  const LListIterator cbegin() const noexcept {
     std::shared_lock lock(this->_readMutex);
     std::shared_lock<std::shared_mutex> nodeLock;
     if (this->_list)
       nodeLock = std::shared_lock(this->_list->_readMutex);
     return this->_list;
   }
-  const LListIterator cend() const {
+  const LListIterator cend() const noexcept {
     std::shared_lock lock(this->_readMutex);
     std::shared_lock<std::shared_mutex> nodeLock;
     if (this->_last) {
@@ -189,7 +190,7 @@ public:
   }
 
 private:
-  LListPtr<T> getLastNode() {
+  LListPtr<T> getLastNode() noexcept {
     std::scoped_lock lock{this->_mutex, this->_readMutex};
     if (this->_last)
       return this->_last;
@@ -207,12 +208,12 @@ private:
     // return nodeLoad;
   }
 
-  std::optional<LListPtr<T>> getPrevNode(const uint64_t id) const {
-    LListPtr<T> node = this->_list;
+  std::optional<LListPtr<T>> getPrevNode(const uint64_t id) const noexcept {
+    __restrict__ LListPtr<T> node = this->_list;
     while (node) {
-      LListPtr<T> prev = node;
+      __restrict__ LListPtr<T> prev = node;
       std::shared_lock lock(node->_readMutex);
-      LListPtr<T> cur = node->_next;
+      __restrict__ LListPtr<T> cur = node->_next;
       if (!cur)
         return std::nullopt;
       else {
@@ -224,8 +225,8 @@ private:
     }
     return std::nullopt;
   }
-  void freeList(LListPtr<T> &node) {
-    LListPtr<T> ptr = node;
+  void freeList(LListPtr<T> &node) noexcept {
+    __restrict__ LListPtr<T> ptr = node;
     while (ptr) {
       removeNode(getId(ptr).value());
       ptr = node;

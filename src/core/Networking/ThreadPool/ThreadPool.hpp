@@ -2,7 +2,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <functional>
-#include <iostream>
 #include <mutex>
 #include <print>
 #include <queue>
@@ -19,10 +18,10 @@ typedef std::function<void()> Job;
 class ThreadPool {
 public:
   ThreadPool() = delete;
-  ThreadPool(const unsigned threadCount = 1) {
+  ThreadPool(const size_t threadCount = 1) noexcept {
     std::println("Starting ThreadPool with {} threads", threadCount);
     this->_workers.reserve(threadCount);
-    for (unsigned i = 0; i < threadCount; i++) {
+    for (size_t i = 0; i < threadCount; i++) {
       this->_workers.emplace_back(std::thread{[this, i] {
         while (true) {
           Job task;
@@ -42,22 +41,23 @@ public:
             this->_tasks.pop();
           }
 
-          try {
-            std::println("Thread {} is executing a job", i);
-            task();
-          } catch (std::exception &e) {
-            std::cerr << "Caught exception " << e.what() << '\n';
-          }
+          // try {
+          //   std::println("Thread {} is executing a job", i);
+          task(); // Given we compile with -fno-exceptions this should never
+                  // throw
+          // } catch (const std::exception &e) {
+          //   std::println("Caught exception {}", e.what());
+          // }
         }
       }});
     }
   }
-  ~ThreadPool() {
+  ~ThreadPool() noexcept {
     std::println("Shutting down ThreadPool");
     this->shutdown();
   }
 
-  void enqueue(Job task) {
+  void enqueue(Job &&task) noexcept {
     {
       std::unique_lock<std::mutex> lock(this->_mutex);
       this->_tasks.emplace(std::move(task));
@@ -65,7 +65,7 @@ public:
     this->_cv.notify_one();
   }
 
-  void shutdown() {
+  void shutdown() noexcept {
     this->_terminate.store(true);
     this->_cv.notify_all();
 

@@ -2,7 +2,7 @@
 #include <openssl/aes.h>
 #include <optional>
 
-std::optional<SSLString> AESKey::encryptBlob(const SSLString &data) {
+std::optional<SSLString> AESKey::encryptBlob(const SSLString &data) noexcept {
   if (data._length == 0)
     return std::nullopt;
   AESIV iv;
@@ -65,7 +65,7 @@ std::optional<SSLString> AESKey::encryptBlob(const SSLString &data) {
   }
 }
 
-std::optional<SSLString> AESKey::decryptBlob(SSLString &data) {
+std::optional<SSLString> AESKey::decryptBlob(SSLString &data) noexcept {
   AESIV iv{};
   AESTAG tag{};
   if (data._length < IV_SIZE + TAG_SIZE)
@@ -114,10 +114,12 @@ std::optional<SSLString> AESKey::decryptBlob(SSLString &data) {
     return SSLString(plainText, cLen);
   }
 };
-AESCtxPtr AESKey::loadDecryptCtx(AESIV &iv) {
+AESCtxPtr AESKey::loadDecryptCtx(AESIV &iv) noexcept {
   AESCtxPtr ctx = AESCtxPtr(EVP_CIPHER_CTX_new());
-  if (!ctx)
+  if (!ctx) {
+    std::cerr << "Unable to allocate AES decrypt context";
     return nullptr;
+  }
 
   if (!EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr,
                           nullptr)) {
@@ -141,10 +143,12 @@ AESCtxPtr AESKey::loadDecryptCtx(AESIV &iv) {
   return ctx;
 }
 
-AESCtxPtr AESKey::loadEncryptCtx(AESIV &iv) {
+AESCtxPtr AESKey::loadEncryptCtx(AESIV &iv) noexcept {
   AESCtxPtr ctx = AESCtxPtr(EVP_CIPHER_CTX_new());
-  if (!ctx)
+  if (!ctx) {
+    std::cerr << "Unable to allocate AES encrypt context";
     return nullptr;
+  }
 
   if (!EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr,
                           nullptr)) {
@@ -168,7 +172,7 @@ AESCtxPtr AESKey::loadEncryptCtx(AESIV &iv) {
   return ctx;
 }
 
-std::optional<AESIV> AESKey::getIV() {
+std::optional<AESIV> AESKey::getIV() noexcept {
   AESIV iv{};
   if (RAND_bytes(iv.data(), IV_SIZE) < 1) {
     std::cerr << "Unable to generate random IV\n";
@@ -178,7 +182,7 @@ std::optional<AESIV> AESKey::getIV() {
   return iv;
 }
 
-KeyPtr RSAKey::loadPublicKey(const std::string_view path) {
+KeyPtr RSAKey::loadPublicKey(const std::string_view path) noexcept {
   if (FILE *fp = fopen(path.data(), "r"); fp) {
     KeyPtr key = KeyPtr(PEM_read_PUBKEY(fp, nullptr, nullptr, nullptr));
     fclose(fp);
@@ -189,7 +193,7 @@ KeyPtr RSAKey::loadPublicKey(const std::string_view path) {
   return nullptr;
 }
 
-KeyPtr RSAKey::loadPrivateKey(const std::string_view path) {
+KeyPtr RSAKey::loadPrivateKey(const std::string_view path) noexcept {
   if (FILE *fp = fopen(path.data(), "r"); fp) {
     KeyPtr key = KeyPtr(PEM_read_PrivateKey(fp, nullptr, nullptr, nullptr));
     fclose(fp);
@@ -199,7 +203,7 @@ KeyPtr RSAKey::loadPrivateKey(const std::string_view path) {
   ERR_print_errors_fp(stderr);
   return nullptr;
 }
-KeyPtr RSAKey::loadPublicKey(const std::vector<unsigned char> &key) {
+KeyPtr RSAKey::loadPublicKey(const std::vector<unsigned char> &key) noexcept {
   BIO *bp(BIO_new_mem_buf((void *)key.data(), key.size()));
   if (!bp) {
     std::cerr << "Unable to load public key from buffer\n";
@@ -211,7 +215,7 @@ KeyPtr RSAKey::loadPublicKey(const std::vector<unsigned char> &key) {
   BIO_free(bp);
   return keyPtr;
 }
-KeyPtr RSAKey::loadPrivateKey(const std::vector<unsigned char> &key) {
+KeyPtr RSAKey::loadPrivateKey(const std::vector<unsigned char> &key) noexcept {
   BIO *bp(BIO_new_mem_buf((void *)key.data(), key.size()));
   if (!bp) {
     std::cerr << "Unable to load private key from buffer\n";
@@ -224,7 +228,7 @@ KeyPtr RSAKey::loadPrivateKey(const std::vector<unsigned char> &key) {
   BIO_free(bp);
   return keyPtr;
 }
-RSACtxPtr RSAKey::loadEncryptCtx() {
+RSACtxPtr RSAKey::loadEncryptCtx() noexcept {
   assert(this->_key != nullptr);
   if (EVP_PKEY_CTX *ctxRaw = EVP_PKEY_CTX_new(this->_key.get(), nullptr);
       !ctxRaw) {
@@ -257,7 +261,7 @@ RSACtxPtr RSAKey::loadEncryptCtx() {
   else
     return RSACtxPtr(ctxRaw);
 }
-RSACtxPtr RSAKey::loadDecryptCtx() {
+RSACtxPtr RSAKey::loadDecryptCtx() noexcept {
   assert(this->_key != nullptr);
   if (EVP_PKEY_CTX *ctxRaw = EVP_PKEY_CTX_new(this->_key.get(), nullptr);
       !ctxRaw) {
@@ -289,7 +293,7 @@ RSACtxPtr RSAKey::loadDecryptCtx() {
     return RSACtxPtr(ctxRaw);
 }
 
-std::optional<SSLString> RSAKey::encryptBlob(const SSLString &data) {
+std::optional<SSLString> RSAKey::encryptBlob(const SSLString &data) noexcept {
   if (data._length == 0)
     return std::nullopt;
   assert(this->_isPrivateKey == false);
@@ -356,7 +360,7 @@ std::optional<SSLString> RSAKey::encryptBlob(const SSLString &data) {
 //     return SSLString(out, outlen);
 // }
 
-std::optional<SSLString> RSAKey::decryptBlob(SSLString &data) {
+std::optional<SSLString> RSAKey::decryptBlob(SSLString &data) noexcept {
   assert(this->_isPrivateKey);
   RSACtxPtr ctx = nullptr;
   if (ctx = loadDecryptCtx(); !ctx) {
@@ -421,16 +425,16 @@ std::optional<SSLString> RSAKey::decryptBlob(SSLString &data) {
 //     return SSLString(out, outlen);
 // }
 
-std::array<unsigned char, PTR_SIZE> ptrToArray(uint64_t n) {
-  std::array<unsigned char, PTR_SIZE> res{'0'};
+std::array<unsigned char, PTR_SIZE> ptrToArray(uint64_t n) noexcept {
+  alignas(32) std::array<unsigned char, PTR_SIZE> res{'0'};
   for (size_t i = 64; i > 0; i--) {
     res[i - 1] = (n % 10) + '0';
     n /= 10;
   }
   return res;
 }
-std::array<unsigned char, LENGTH_SIZE> toArray(uint32_t n) {
-  std::array<unsigned char, LENGTH_SIZE> res{'0'};
+std::array<unsigned char, LENGTH_SIZE> toArray(uint32_t n) noexcept {
+  alignas(32) std::array<unsigned char, LENGTH_SIZE> res{'0'};
   for (size_t i = 32; i > 0; i--) {
     res[i - 1] = (n % 10) + '0';
     n /= 10;
@@ -438,7 +442,8 @@ std::array<unsigned char, LENGTH_SIZE> toArray(uint32_t n) {
   return res;
 }
 
-std::optional<uint64_t> ptrToNumber(const std::span<const unsigned char> &vec) {
+std::optional<uint64_t>
+ptrToNumber(const std::span<const unsigned char> &vec) noexcept {
   if (vec.size() < LENGTH_SIZE)
     return std::nullopt;
   uint64_t num = 0;
@@ -449,7 +454,7 @@ std::optional<uint64_t> ptrToNumber(const std::span<const unsigned char> &vec) {
   }
   return num;
 }
-std::optional<uint64_t> ptrToNumber(const SSLString &str) {
+std::optional<uint64_t> ptrToNumber(const SSLString &str) noexcept {
   uint64_t num = 0;
   if (str._length == 0)
     return std::nullopt;
@@ -460,7 +465,8 @@ std::optional<uint64_t> ptrToNumber(const SSLString &str) {
   }
   return num;
 }
-std::optional<uint32_t> toNumber(const std::span<const unsigned char> &vec) {
+std::optional<uint32_t>
+toNumber(const std::span<const unsigned char> &vec) noexcept {
   if (vec.size() < LENGTH_SIZE)
     return std::nullopt;
   uint32_t num = 0;
@@ -472,7 +478,7 @@ std::optional<uint32_t> toNumber(const std::span<const unsigned char> &vec) {
   return num;
 }
 std::optional<uint32_t>
-toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec) {
+toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec) noexcept {
   uint32_t num = 0;
   for (const auto c : vec) {
     if (c < '0' || c > '9')
@@ -481,7 +487,7 @@ toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec) {
   }
   return num;
 }
-std::optional<uint32_t> toNumber(const SSLString &str) {
+std::optional<uint32_t> toNumber(const SSLString &str) noexcept {
   uint32_t num = 0;
   if (str._length == 0)
     return std::nullopt;
@@ -493,7 +499,7 @@ std::optional<uint32_t> toNumber(const SSLString &str) {
   return num;
 }
 
-bool RSAKey::validateBlob(const SSLString &raw, const SSLString &sig) {
+bool RSAKey::validateBlob(const SSLString &raw, const SSLString &sig) noexcept {
   assert(!this->_isPrivateKey && this->_key);
   EVP_MD_CTX *m_RSAVerifyCtx = EVP_MD_CTX_create();
   if (!m_RSAVerifyCtx) {
@@ -526,7 +532,7 @@ bool RSAKey::validateBlob(const SSLString &raw, const SSLString &sig) {
   EVP_MD_CTX_free(m_RSAVerifyCtx);
   return false;
 }
-std::optional<SSLString> RSAKey::signBlob(const SSLString &data) {
+std::optional<SSLString> RSAKey::signBlob(const SSLString &data) noexcept {
   assert(this->_isPrivateKey && this->_key);
   if (unsigned char *out = (unsigned char *)OPENSSL_malloc(RSA_SIGNING_LENGTH);
       !out) {
