@@ -318,6 +318,9 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
       if (const FSCode answer =
               FSStrCode(std::string_view((char *)msg._data, COMMAND_LENGTH));
           answer != OK) {
+        const std::string msg = msgOpt->toString();
+        std::println(
+            "{}", std::string(msg.cbegin() + COMMAND_LENGTH + 1, msg.cend()));
         return false;
       } else {
         if (msg._length != COMMAND_LENGTH + 1 + PTR_SIZE) {
@@ -335,8 +338,6 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
                std::string{dataView.cbegin(), dataView.cend()} |
                    std::views::split(std::string_view{" "}) |
                    std::views::stride(2)) {
-
-            std::println("{}", std::string(file.begin(), file.end()));
             this->_pool.enqueue(
                 std::bind(&FSClient::sendFile, this,
                           std::string(file.begin(), file.end()),

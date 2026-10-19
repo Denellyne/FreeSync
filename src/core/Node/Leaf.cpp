@@ -1,5 +1,6 @@
 #include "Leaf.h"
 #include "../Compressor/Compressor.h"
+#include "../DiskObject/DiskView.hpp"
 #include "../Encrypt/Encrypt.h"
 #include "Node.h"
 #include <cassert>
@@ -59,7 +60,7 @@ Leaf::Leaf(const std::string_view filePath, const std::span<unsigned char> data,
   this->_filePath = filePath;
   this->_isExecutable = isExecutable;
 
-  this->_hash = this->hash(hash);
+  this->_hash = hash;
   std::string path = OBJFOLDER;
   path.append(this->_hash, 0, 2);
   path += '/';
@@ -191,7 +192,7 @@ Leaf::getBlob() noexcept {
 
 std::expected<std::vector<unsigned char>, std::string>
 Leaf::getFinalDecompressBlob() noexcept {
-  const DiskFile file(this->_objPath.string(), true);
+  DiskView file(this->_objPath.string());
   if (!file)
     return std::unexpected("Invalid file");
   std::span<unsigned char> data = file.toSpan();

@@ -67,7 +67,7 @@ public:
   }
   std::optional<LTree> getChildTree(std::string_view path) const noexcept;
   std::string getBlobSize() noexcept;
-  bool commit() noexcept { return this->writeHeadFile(); }
+  bool commit() noexcept { return this->writeMerkleTree(); }
 
 private:
   [[nodiscard]] bool writeBlob() noexcept;

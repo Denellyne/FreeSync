@@ -1,5 +1,5 @@
 #pragma once
-#include "../Compressor/Compressor.h"
+#include "../DiskObject/DiskFile.hpp"
 #include "../Encrypt/Encrypt.h"
 #include <chrono>
 #include <cstring>

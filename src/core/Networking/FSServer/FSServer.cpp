@@ -252,13 +252,13 @@ bool FSServer::Connection::interpretCommandRSA(
   const std::string_view codeView(
       (const char *)(command._data),
       (const char *)(command._data + COMMAND_LENGTH));
-  const uint32_t dataViewLength = command._length - COMMAND_LENGTH > 0
-                                      ? command._length - COMMAND_LENGTH
+  const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1 > 0
+                                      ? command._length - COMMAND_LENGTH - 1
                                       : 0;
   std::span<const unsigned char> dataView;
   if (dataViewLength > 0)
-    dataView = std::span<const unsigned char>(command._data + COMMAND_LENGTH,
-                                              command._length - COMMAND_LENGTH);
+    dataView = std::span<const unsigned char>(
+        command._data + COMMAND_LENGTH + 1, dataViewLength);
 
   const FSCode code = FSStrCode(codeView);
   switch (code) {
@@ -290,19 +290,23 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
   const std::string_view codeView(
       (const char *)(command._data),
       (const char *)(command._data + COMMAND_LENGTH));
-  const uint32_t dataViewLength = command._length - COMMAND_LENGTH > 0
-                                      ? command._length - COMMAND_LENGTH
+  const uint32_t dataViewLength = command._length > COMMAND_LENGTH + 1
+                                      ? command._length - COMMAND_LENGTH - 1
                                       : 0;
-  std::span<const unsigned char> dataView;
+  std::span<const unsigned char> dataView{};
   if (dataViewLength > 0)
-    dataView = std::span<const unsigned char>(command._data + COMMAND_LENGTH,
-                                              command._length - COMMAND_LENGTH);
+    dataView = std::span<const unsigned char>(
+        command._data + COMMAND_LENGTH + 1, dataViewLength);
 
   const FSCode code = FSStrCode(codeView);
   switch (code) {
   case DEL: {
   } break;
   case RETR: {
+    if (dataView.empty()) {
+      const SSLString msg(FSCodeStr(ERR) + " No path was passed");
+      return writeToSocketAES(this->_fd, msg);
+    }
 
     if (const auto current = Node::getHeadFile(); !current.has_value()) {
       std::println("Unable to get current head file");
@@ -311,8 +315,6 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
       alignas(32) std::array<char, 64> arr;
       memcpy(arr.data(), current.value().data(), 64);
       LTree tree = LTree(arr, "/FreeSync", true);
-      std::span<const unsigned char> dataView = std::span<const unsigned char>(
-          command._data + COMMAND_LENGTH + 1, dataViewLength - 1);
       if (auto treeOpt =
               tree.getChild(std::string{dataView.cbegin(), dataView.cend()});
           !treeOpt.has_value()) {
@@ -329,8 +331,10 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
     }
   } break;
   case STRU: {
-    std::span<const unsigned char> dataView = std::span<const unsigned char>(
-        command._data + COMMAND_LENGTH + 1, dataViewLength - 1);
+    if (dataView.empty()) {
+      const SSLString msg(FSCodeStr(ERR) + " No path was passed");
+      return writeToSocketAES(this->_fd, msg);
+    }
     auto split = std::string{dataView.cbegin(), dataView.cend()} |
                  std::views::split(std::string_view{" "});
     // Change this if it becomes too slow
@@ -360,6 +364,10 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
     std::println("Switched to AES encryption");
   } break;
   case LIST: {
+    if (dataView.empty()) {
+      const SSLString msg(FSCodeStr(ERR) + " No path was passed");
+      return writeToSocketAES(this->_fd, msg);
+    }
     if (const auto current = Node::getHeadFile(); !current.has_value()) {
       std::println("Unable to get current head file");
       break;
@@ -367,8 +375,7 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
       alignas(32) std::array<char, 64> arr;
       memcpy(arr.data(), current.value().data(), 64);
       LTree tree = LTree(arr, "/FreeSync", true);
-      const std::string path((char *)(command._data + COMMAND_LENGTH),
-                             command._length - COMMAND_LENGTH);
+      const std::string path(dataView.cbegin(), dataView.cend());
       if (const auto treeOpt = tree.getChildTree(path); !treeOpt.has_value()) {
         const SSLString msg(FSCodeStr(ERR) + " Unable to find folder");
         return writeToSocketAES(this->_fd, msg);

@@ -227,6 +227,8 @@ std::expected<std::string, std::string> LTree::addCompressedFile(
     bool newFile = true;
     for (auto it = this->_children.begin(); it != this->_children.end(); it++)
       if ((*it)._fileName == fileName) {
+        if (it->_hash == hash)
+          return this->_hash;
         newFile = false;
         Leaf leaf(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
         if (!leaf)
