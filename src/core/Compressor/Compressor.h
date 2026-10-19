@@ -15,6 +15,9 @@
 class DiskFile {
 public:
   DiskFile(const bool error = false) noexcept : _error(error) {
+    if (this->_error)
+      return;
+
     char TMP_TEMPLATE[] = "/var/tmp/FS_XXXXXX";
     this->_fd = mkstemp(TMP_TEMPLATE);
     this->_path = TMP_TEMPLATE;
@@ -42,15 +45,28 @@ public:
     std::swap(this->_buf, other._buf);
     std::swap(this->_path, other._path);
   }
-  DiskFile(std::string_view filePath) noexcept {
-    char TMP_TEMPLATE[] = "/var/tmp/FS_XXXXXX";
-    this->_fd = mkstemp(TMP_TEMPLATE);
-    this->_path = TMP_TEMPLATE;
-    std::filesystem::copy_file(
-        filePath, this->_path,
-        std::filesystem::copy_options::overwrite_existing);
+  DiskFile(std::string_view filePath, const bool viewOnly = false) noexcept {
+    if (!std::filesystem::exists(filePath)) {
+      this->_error = true;
+      return;
+    }
+    if (viewOnly) {
+      this->_path = filePath;
+      this->_fd = open(this->_path.c_str(), O_RDONLY);
+      if (this->_fd < 0) {
+        this->_error = true;
+        return;
+      }
 
-    this->_length = std::filesystem::file_size(filePath);
+    } else {
+      char TMP_TEMPLATE[] = "/var/tmp/FS_XXXXXX";
+      this->_fd = mkstemp(TMP_TEMPLATE);
+      this->_path = TMP_TEMPLATE;
+      std::filesystem::copy_file(
+          filePath, this->_path,
+          std::filesystem::copy_options::overwrite_existing);
+    }
+    this->_length = std::filesystem::file_size(this->_path);
 
     this->_buf = (unsigned char *)::mmap(
         0, this->_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, this->_fd, 0);
@@ -91,7 +107,7 @@ public:
     return std::span<unsigned char>(this->_buf, this->_length);
   }
 
-  bool error() noexcept { return this->_error; }
+  bool error() const noexcept { return !this->_error; }
   std::string_view getFilePath() const noexcept { return this->_path; }
 
   [[nodiscard]] bool write(const std::span<const unsigned char> data) noexcept {

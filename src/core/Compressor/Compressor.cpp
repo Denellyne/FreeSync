@@ -221,46 +221,60 @@ DiskFile compressData(std::span<unsigned char> data) noexcept {
 
 DiskFile decompressData(std::span<unsigned char> data) noexcept {
   DiskFile out;
-  if (data.empty()) {
+  if (data.empty()) [[unlikely]] {
     std::println("Nothing to decompress, vector is empty");
     return DiskFile(true);
   }
 
   zng_stream zs{};
-  zs.next_in = data.data();
-  zs.avail_in = data.size();
-
-  if (zng_inflateInit2(&zs, 15 + 32) != Z_OK) {
+  if (zng_inflateInit2(&zs, 15 + 32) != Z_OK) [[unlikely]] {
     std::println("Unable to initialize decompression");
     return DiskFile(true);
   }
 
-  constexpr size_t CHUNK = 64 * 1024;
+  constexpr size_t OUT_CHUNK = 64 * 1024;
+  constexpr size_t MAX_IN_CHUNK = 1024 * 1024 * 1024;
 
-  int ret;
-  do {
-    unsigned char buf[CHUNK];
+  size_t bytesRemaining = data.size();
+  const unsigned char *currentIn = data.data();
 
+  int ret = Z_OK;
+
+  while (bytesRemaining > 0 || ret != Z_STREAM_END) {
+    if (zs.avail_in == 0 && bytesRemaining > 0) {
+      const size_t chunkIn = std::min(bytesRemaining, MAX_IN_CHUNK);
+      zs.next_in = const_cast<unsigned char *>(currentIn);
+      zs.avail_in = static_cast<unsigned int>(chunkIn);
+
+      currentIn += chunkIn;
+      bytesRemaining -= chunkIn;
+    }
+
+    unsigned char buf[OUT_CHUNK];
     zs.next_out = buf;
-    zs.avail_out = CHUNK;
+    zs.avail_out = static_cast<unsigned int>(OUT_CHUNK);
 
     ret = zng_inflate(&zs, Z_NO_FLUSH);
-    const size_t produced = CHUNK - zs.avail_out;
+    const size_t produced = OUT_CHUNK - zs.avail_out;
 
-    if (ret != Z_OK && ret != Z_STREAM_END) [[unlikely]] {
-      std::println("Error decompressing");
+    if (produced > 0 &&
+        !out.write(std::span<const unsigned char>(buf, produced)))
+        [[unlikely]] {
+      std::println("Error writing to file");
       zng_inflateEnd(&zs);
       return DiskFile(true);
     }
 
-    if (!out.write(std::span<const unsigned char>(buf, produced))) {
+    if (ret == Z_STREAM_END)
+      break;
+
+    if (ret != Z_OK) [[unlikely]] {
+      std::println("Error decompressing: {}", ret);
       zng_inflateEnd(&zs);
       return DiskFile(true);
     }
-
-  } while (ret != Z_STREAM_END);
+  }
 
   zng_inflateEnd(&zs);
-
   return out;
 }

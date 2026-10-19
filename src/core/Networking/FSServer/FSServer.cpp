@@ -245,6 +245,45 @@ bool FSServer::Connection::handleValidation() noexcept {
 //   return res;
 // }
 
+bool FSServer::Connection::interpretCommandRSA(
+    const SSLString &command) noexcept {
+  if (command._length < COMMAND_LENGTH)
+    return false;
+  const std::string_view codeView(
+      (const char *)(command._data),
+      (const char *)(command._data + COMMAND_LENGTH));
+  const uint32_t dataViewLength = command._length - COMMAND_LENGTH > 0
+                                      ? command._length - COMMAND_LENGTH
+                                      : 0;
+  std::span<const unsigned char> dataView;
+  if (dataViewLength > 0)
+    dataView = std::span<const unsigned char>(command._data + COMMAND_LENGTH,
+                                              command._length - COMMAND_LENGTH);
+
+  const FSCode code = FSStrCode(codeView);
+  switch (code) {
+  case AESK: {
+    if (command._length < AES_KEY_BYTES + COMMAND_LENGTH)
+      return false;
+    this->_aes = std::make_unique<AESKey>(command._data + COMMAND_LENGTH);
+    std::println("Switched to AES encryption");
+  } break;
+  case OK:
+    break;
+  case QUIT:
+    return false;
+    break;
+  default:
+    std::println("Invalid commmand for RSA communication");
+    return false;
+    break;
+  case ERR:
+    std::println("Error received");
+    return false;
+    break;
+  }
+  return true;
+}
 bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
   if (command._length < COMMAND_LENGTH)
     return false;
@@ -328,9 +367,8 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
       alignas(32) std::array<char, 64> arr;
       memcpy(arr.data(), current.value().data(), 64);
       LTree tree = LTree(arr, "/FreeSync", true);
-      const std::string_view path(
-          (const char *)(command._data + COMMAND_LENGTH),
-          (const char *)(command._data + command._length));
+      const std::string path((char *)(command._data + COMMAND_LENGTH),
+                             command._length - COMMAND_LENGTH);
       if (const auto treeOpt = tree.getChildTree(path); !treeOpt.has_value()) {
         const SSLString msg(FSCodeStr(ERR) + " Unable to find folder");
         return writeToSocketAES(this->_fd, msg);
@@ -395,7 +433,7 @@ void FSServer::Connection::run() noexcept {
         return;
       else {
         const SSLString command = commandOpt.value();
-        if (!interpretCommand(command))
+        if (!interpretCommandRSA(command))
           return;
       }
       // std::cout << command << '\n';

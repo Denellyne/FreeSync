@@ -44,6 +44,7 @@ private:
     bool handleValidation() noexcept;
     bool handleAES() noexcept;
     bool interpretCommand(const SSLString &command) noexcept;
+    bool interpretCommandRSA(const SSLString &command) noexcept;
     bool checkIfAuthorized(const std::vector<unsigned char> &key) noexcept;
 
     int _fd = -1;

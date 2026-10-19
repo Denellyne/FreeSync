@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <print>
 #include <string>
 #include <zlib-ng.h>
 
@@ -46,48 +47,51 @@ Leaf::Leaf(const std::string_view filePath) noexcept {
   this->_objPath = path;
 
   if (!this->writeBlob(compressData(file).toSpan())) [[unlikely]] {
+    std::println("Unable to compress blob for leaf");
     this->_error = true;
     return;
   }
 }
 
 Leaf::Leaf(const std::string_view filePath, const std::span<unsigned char> data,
-           const bool isExecutable, const bool isCompressed) noexcept {
+           const bool isExecutable, const std::string_view hash) noexcept {
 
   this->_filePath = filePath;
   this->_isExecutable = isExecutable;
 
-  if (isCompressed) {
-    DiskFile file = decompressData(data);
-    if (!file) {
-      this->_error = true;
-      return;
-    }
-    this->_hash = this->hash(file.toSpan());
-    std::string path = OBJFOLDER;
-    path.append(this->_hash, 0, 2);
-    path += '/';
-    path.append(this->_hash, 2, 62);
+  this->_hash = this->hash(hash);
+  std::string path = OBJFOLDER;
+  path.append(this->_hash, 0, 2);
+  path += '/';
+  path.append(this->_hash, 2, 62);
 
-    this->_objPath = path;
-    if (!this->writeBlob(data)) [[unlikely]] {
-      this->_error = true;
-      return;
-    }
-  } else {
-    this->_hash = this->hash(data);
-    std::string path = OBJFOLDER;
-    path.append(this->_hash, 0, 2);
-    path += '/';
-    path.append(this->_hash, 2, 62);
+  this->_objPath = path;
+  if (!this->writeBlob(data)) [[unlikely]] {
+    std::println("Unable to write compressed blob to file");
+    this->_error = true;
+    return;
+  }
+}
+Leaf::Leaf(const std::string_view filePath, const std::span<unsigned char> data,
+           const bool isExecutable) noexcept {
 
-    this->_objPath = path;
+  this->_filePath = filePath;
+  this->_isExecutable = isExecutable;
 
-    if (DiskFile file = compressData(data);
-        !file || !this->writeBlob(file.toSpan())) [[unlikely]] {
-      this->_error = true;
-      return;
-    }
+  this->_hash = this->hash(data);
+  std::string path = OBJFOLDER;
+  path.append(this->_hash, 0, 2);
+  path += '/';
+  path.append(this->_hash, 2, 62);
+
+  this->_objPath = path;
+
+  if (DiskFile file = compressData(data);
+      !file || !this->writeBlob(file.toSpan())) [[unlikely]] {
+
+    std::println("Unable to compress blob for leaf or write it to disk");
+    this->_error = true;
+    return;
   }
 }
 
@@ -107,7 +111,8 @@ Leaf::Leaf(const std::string_view filePath, const std::span<unsigned char> data,
   this->_objPath = path;
   DiskFile file = compressData(data);
 
-  if (!this->writeDiffBlob(file.toSpan(), parentHash)) [[unlikely]] {
+  if (!file || !this->writeDiffBlob(file.toSpan(), parentHash)) [[unlikely]] {
+    std::println("Unable to compress blob for leaf or write diff blob");
     this->_error = true;
     return;
   }
@@ -186,7 +191,7 @@ Leaf::getBlob() noexcept {
 
 std::expected<std::vector<unsigned char>, std::string>
 Leaf::getFinalDecompressBlob() noexcept {
-  DiskFile file(this->_objPath.string());
+  const DiskFile file(this->_objPath.string(), true);
   if (!file)
     return std::unexpected("Invalid file");
   std::span<unsigned char> data = file.toSpan();
@@ -274,9 +279,12 @@ Leaf::diffFile(const std::span<unsigned char> newer,
     return std::unexpected(dataOpt.error());
   else {
     std::span<unsigned char> newBlob = newer;
-    DiskFile file;
+    DiskFile file(true);
     if (isCompressed) {
       file = decompressData(newBlob);
+      if (!file)
+        return std::unexpected("Unable to decompress blob for diffing");
+
       newBlob = file.toSpan();
     }
 

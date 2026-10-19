@@ -1,11 +1,9 @@
-#include "core/Node/Tree.h"
-#include <fcntl.h>
-// #include "core/Node/LTree.h"
-// #include <fstream>
-#include <unistd.h>
 #ifndef CLIENT
 #include "core/Networking/FSServer/FSServer.h"
+#include "core/Node/Tree.h"
 #include <csignal>
+#include <fcntl.h>
+#include <unistd.h>
 std::atomic_bool running = true;
 void sigHandler(const int sig) noexcept {
   switch (sig) {
@@ -15,27 +13,19 @@ void sigHandler(const int sig) noexcept {
   }
 }
 int main(void) {
-
-  // const auto current = Node::getHeadFile();
-  // std::array<char, 64> arr;
-  // memcpy(arr.data(), current.value().data(), 64);
-  // LTree tree(arr, "/FreeSync", true);
-  // std::vector<unsigned char> data;
-  // std::ifstream file("LICENSE", std::ifstream::binary);
-  // while (file.good())
-  //   data.emplace_back(file.get());
-  // std::cout << tree.getHash() << '\n';
-  // std::cout << tree.addFile(data, "/FreeSync/LICENSE", false).value() <<
-  // '\n'; bool a = tree.writeMerkleTree();
-
-  Tree tree = Tree(".", true);
-  if (!tree.writeMerkleTree()) {
-    std::println("Unable to save merkle tree");
-    return 1;
-  }
-
   signal(SIGPIPE, SIG_IGN);
   signal(SIGINT, sigHandler);
+  if (const auto current = Node::getHeadFile(); !current.has_value()) {
+    std::println("Unable to get head file");
+    return 1;
+  } else if (current.value() == "NOPARENT") {
+    Tree tree = Tree(".", true);
+    if (!tree.writeMerkleTree()) {
+      std::println("Unable to save merkle tree");
+      return 1;
+    }
+  }
+
   FSServer sv = FSServer(running);
   if (!sv) {
     std::println("Unable to initialize server, exiting...");

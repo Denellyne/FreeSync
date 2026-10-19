@@ -10,7 +10,9 @@ class Leaf : public Node {
 public:
   Leaf(const std::string_view filePath) noexcept;
   Leaf(const std::string_view filePath, std::span<unsigned char> data,
-       const bool isExecutable, const bool isCompressed = false) noexcept;
+       const bool isExecutable) noexcept;
+  Leaf(const std::string_view filePath, std::span<unsigned char> data,
+       const bool isExecutable, const std::string_view hash) noexcept;
   Leaf(const std::string_view filePath, std::span<unsigned char> data,
        const std::string_view parentHash, const bool isExecutable) noexcept;
   Leaf(const std::string_view filePath, const std::string_view hash,

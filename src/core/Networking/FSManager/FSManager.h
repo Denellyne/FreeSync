@@ -12,6 +12,7 @@ public:
             const int port = FSMANAGER_PORT, const int backlog = 128) noexcept;
   void run(const std::atomic_bool &running) noexcept;
   uint64_t addNewNode(std::vector<Request> &&requests) noexcept {
+    // Check if path is valid for all requests
     return this->_list.addNode(std::move(requests));
   }
   [[nodiscard]] bool removeDeadConnection(const uint64_t connection,
@@ -88,7 +89,8 @@ private:
     std::string_view getFilePath() const noexcept {
       return this->_file.getFilePath();
     }
-    DiskFile &&releaseFile() { return std::move(this->_file); }
+    DiskFile &&releaseFile() noexcept { return std::move(this->_file); }
+    std::string_view getHash() const noexcept { return this->_hash; }
 
   private:
     // std::string generateRandomString();
@@ -99,6 +101,7 @@ private:
 
     int _fd = -1;
     DiskFile _file;
+    std::string _hash = "";
     uint64_t _node = 0;
   };
   FSLList<Request> _list;

@@ -128,7 +128,7 @@ FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
 }
 bool FSManager::Connection::confirmFile() noexcept {
   Decompressor decom(this->_file.getFilePath());
-  const std::string hash = Node::hash(decom.getData());
+  this->_hash = Node::hash(decom.getData());
   if (StringOpt msgOpt = readSocketAES(this->_fd); !msgOpt.has_value()) {
     std::println("Unable to get the client hash, closing connection");
     const SSLString msg(FSCodeStr(FSCode::ERR) +
@@ -137,7 +137,7 @@ bool FSManager::Connection::confirmFile() noexcept {
     return false;
   } else {
     const SSLString msg = msgOpt.value();
-    if (msg._length != hash.size()) {
+    if (msg._length != this->_hash.size()) {
       std::println("Message has different length than our hash");
       const SSLString msg(FSCodeStr(FSCode::ERR) +
                           " Message has different length than our hash");
@@ -146,7 +146,7 @@ bool FSManager::Connection::confirmFile() noexcept {
     }
     std::span<const unsigned char> dataView =
         std::span<const unsigned char>(msg._data, msg._length);
-    if (std::string(dataView.begin(), dataView.end()) != hash) {
+    if (std::string(dataView.begin(), dataView.end()) != this->_hash) {
       std::println("Hash is not the same");
       const SSLString msg(FSCodeStr(FSCode::ERR) + " Hash is not the same");
       const bool _ = writeToSocketAES(this->_fd, msg);
@@ -333,7 +333,8 @@ void FSManager::run(const std::atomic_bool &running) noexcept {
                   errorFound = true;
                   break;
                 }
-                req._file = clientList[i]->releaseFile();
+                req.file = std::move(clientList[i]->releaseFile());
+                req.hash = clientList[i]->getHash();
               }
 
               allDone &= req.complete;
@@ -348,9 +349,10 @@ void FSManager::run(const std::atomic_bool &running) noexcept {
                 memcpy(arr.data(), current.value().data(), 64);
                 LTree tree = LTree(arr, "/FreeSync", true);
                 for (const auto &req : node->_data) {
-                  if (const auto result = tree.addFile(req._file.toSpan(),
-                                                       req.path, false, true);
+                  if (const auto result = tree.addCompressedFile(
+                          req.file.toSpan(), req.path, false, req.hash);
                       !result.has_value()) {
+                    std::println("Error when adding file:{}", result.error());
                     errorFound = true;
                     break;
                   }

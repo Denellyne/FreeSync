@@ -117,13 +117,13 @@ struct Request {
     std::swap(this->id, other.id);
     std::swap(this->complete, other.complete);
     std::swap(this->type, other.type);
-    std::swap(this->_file, other._file);
+    std::swap(this->file, other.file);
     return *this;
   }
-  std::string path;
+  std::string path = "", hash = "";
   int id = -1;
   bool complete = type == DELETE;
-  DiskFile _file{};
+  DiskFile file = DiskFile(true);
   const int64_t timestamp =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch())

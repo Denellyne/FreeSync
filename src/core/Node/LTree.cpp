@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <print>
 #include <vector>
 
@@ -14,16 +15,17 @@ LTree::LTree(const std::array<char, 64> &hash, const std::string_view filePath,
              const bool root) noexcept
     : _root(root) {
   this->_hash = std::string(hash.data(), 64);
+  this->_filePath = filePath;
 
   std::string path = OBJFOLDER;
   path.append(this->_hash, 0, 2);
   path += '/';
   path.append(this->_hash, 2, 62);
   this->_objPath = path;
-  if (const auto val = getTreeFromBlob(this->_objPath.c_str(), filePath);
+  if (const auto val =
+          getTreeFromBlob(this->_objPath.c_str(), this->_filePath.c_str());
       val.has_value()) {
     this->_children = std::move(val->_children);
-    this->_filePath = val->_filePath;
   } else [[unlikely]]
     this->_error = true;
 }
@@ -207,16 +209,18 @@ LTree::getChild(const std::filesystem::path &filePath) const noexcept {
   }
   return std::unexpected("Unable to find file");
 }
-std::expected<std::string, std::string>
-LTree::addFile(const std::span<unsigned char> data,
-               const std::filesystem::path &filePath, const bool isExecutable,
-               const bool isCompressed) noexcept {
+
+std::expected<std::string, std::string> LTree::addCompressedFile(
+    const std::span<unsigned char> data, const std::filesystem::path &filePath,
+    const bool isExecutable, const std::string_view hash) noexcept {
 
   constexpr auto isSubPath = [](const fs::path &path, const fs::path &base) {
     const auto mismatchPair =
         std::mismatch(path.begin(), path.end(), base.begin(), base.end());
     return mismatchPair.second == base.end();
   };
+  if (hash.empty() || hash == "")
+    return std::unexpected("Hash is empty");
 
   if (filePath.parent_path() == this->_filePath) {
     const std::string fileName = filePath.filename();
@@ -224,8 +228,11 @@ LTree::addFile(const std::span<unsigned char> data,
     for (auto it = this->_children.begin(); it != this->_children.end(); it++)
       if ((*it)._fileName == fileName) {
         newFile = false;
-        Leaf l(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
-        if (const auto dataOpt = l.diffFile(data, isCompressed);
+        Leaf leaf(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
+        if (!leaf)
+          return std::unexpected("Unable to find leaf");
+
+        if (const auto dataOpt = leaf.diffFile(data, true);
             !dataOpt.has_value())
           return std::unexpected(dataOpt.error());
         else {
@@ -233,6 +240,9 @@ LTree::addFile(const std::span<unsigned char> data,
           if (diffs.empty())
             return this->_hash;
           Leaf newLeaf(filePath.string(), diffs, it->_hash, isExecutable);
+          if (!newLeaf)
+            return std::unexpected("Unable to allocate new leaf");
+
           this->_children.erase(it);
           std::string entry = REGULAR_FILE;
           if (isExecutable)
@@ -243,8 +253,9 @@ LTree::addFile(const std::span<unsigned char> data,
         break;
       }
     if (newFile) {
-      const Leaf leaf =
-          Leaf(filePath.string(), data, isExecutable, isCompressed);
+      const Leaf leaf = Leaf(filePath.string(), data, isExecutable, hash);
+      if (!leaf)
+        return std::unexpected("Unable to allocate new leaf");
       std::string entry = REGULAR_FILE;
       if (isExecutable)
         entry = EXECUTABLE_FILE;
@@ -265,8 +276,112 @@ LTree::addFile(const std::span<unsigned char> data,
           obj += '/';
           obj.append((*it)._hash, 2, 62);
           if (auto tree = getTreeFromBlob(obj, p); tree.has_value()) {
-            if (const auto newHash = tree.value().addFile(
-                    data, filePath, isExecutable, isCompressed);
+            if (const auto newHash = tree.value().addCompressedFile(
+                    data, filePath, isExecutable, hash);
+                !newHash.has_value())
+              return std::unexpected(newHash.error());
+            else {
+              it->_hash = newHash.value();
+            }
+          } else
+            return std::unexpected(tree.error());
+
+          newDirectory = false;
+          break;
+        }
+      }
+    }
+    if (newDirectory) {
+      std::string treePath = this->_filePath.string() + '/';
+
+      const std::string subDirectory =
+          filePath.string().substr(treePath.length());
+      const int pos = subDirectory.find_first_of('/');
+      treePath += subDirectory.substr(0, pos);
+
+      LTree tree = LTree::newEmptyLTree(treePath);
+      const auto treeHash =
+          tree.addCompressedFile(data, filePath, isExecutable, hash);
+      if (!treeHash.has_value() || !tree.writeBlob())
+        return std::unexpected(treeHash.error());
+      this->_children.emplace_back(
+          LNode{DIRECTORY, tree.getFileName(), tree._hash});
+    }
+  }
+
+  this->hashTree();
+  if (!this->writeBlob())
+    return std::unexpected("Unable to save tree blob\n");
+
+  return this->_hash;
+}
+std::expected<std::string, std::string>
+LTree::addFile(const std::span<unsigned char> data,
+               const std::filesystem::path &filePath,
+               const bool isExecutable) noexcept {
+
+  constexpr auto isSubPath = [](const fs::path &path, const fs::path &base) {
+    const auto mismatchPair =
+        std::mismatch(path.begin(), path.end(), base.begin(), base.end());
+    return mismatchPair.second == base.end();
+  };
+
+  if (filePath.parent_path() == this->_filePath) {
+    const std::string fileName = filePath.filename();
+    bool newFile = true;
+    for (auto it = this->_children.begin(); it != this->_children.end(); it++)
+      if ((*it)._fileName == fileName) {
+        newFile = false;
+        Leaf leaf(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
+        if (!leaf)
+          return std::unexpected("Unable to find leaf");
+
+        if (const auto dataOpt = leaf.diffFile(data, false);
+            !dataOpt.has_value())
+          return std::unexpected(dataOpt.error());
+        else {
+          std::vector<unsigned char> diffs = dataOpt.value();
+          if (diffs.empty())
+            return this->_hash;
+          Leaf newLeaf(filePath.string(), diffs, it->_hash, isExecutable);
+          if (!newLeaf)
+            return std::unexpected("Unable to allocate new leaf");
+
+          this->_children.erase(it);
+          std::string entry = REGULAR_FILE;
+          if (isExecutable)
+            entry = EXECUTABLE_FILE;
+          this->_children.emplace_back(LNode{entry, newLeaf.getFileName(),
+                                             std::string(newLeaf.getHash())});
+        }
+        break;
+      }
+    if (newFile) {
+      const Leaf leaf = Leaf(filePath.string(), data, isExecutable);
+      if (!leaf)
+        return std::unexpected("Unable to allocate new leaf");
+      std::string entry = REGULAR_FILE;
+      if (isExecutable)
+        entry = EXECUTABLE_FILE;
+
+      this->_children.emplace_back(
+          LNode(entry, leaf.getFileName(), leaf.getHash().data()));
+    }
+
+  } else if (isSubPath(filePath, this->_filePath)) {
+    bool newDirectory = true;
+    for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
+      if ((*it)._entry == DIRECTORY) {
+        const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
+        if (isSubPath(filePath, p)) {
+          std::string obj = OBJFOLDER;
+
+          obj.append((*it)._hash, 0, 2);
+          obj += '/';
+          obj.append((*it)._hash, 2, 62);
+          if (auto tree = getTreeFromBlob(obj, p); tree.has_value()) {
+            if (const auto newHash =
+                    tree.value().addFile(data, filePath, isExecutable);
                 !newHash.has_value())
               return std::unexpected(newHash.error());
             else {
@@ -345,18 +460,31 @@ std::optional<LTree> LTree::getChildTree(std::string_view path) const noexcept {
     path.remove_prefix(1);
   if (!path.find('/'))
     path.remove_prefix(1);
-  alignas(32) std::array<char, 64> hash;
   if (path.empty()) {
+    std::println("Path is empty");
+    return std::nullopt;
+  }
+
+  alignas(32) std::array<char, 64> hash;
+  const std::string treeName = this->getFileName();
+  if (path == treeName) {
     memcpy(hash.data(), this->_hash.data(), 64);
     return LTree(hash, this->_filePath.string(), this->_root);
+  } else if (const size_t pos = path.find(treeName + '/');
+             pos != std::string::npos)
+    path.remove_prefix(treeName.length() + 1);
+  else {
+    std::println("Path is an invalid directory path");
+    return std::nullopt;
   }
-  const std::string_view folder = path.substr(0, path.find_first_of('/'));
+
+  const std::string_view folder = path.substr(0, path.find('/'));
   for (const auto &child : this->_children)
     if (child._entry == DIRECTORY && child._fileName == folder) {
-      path.remove_prefix(folder.length());
       memcpy(hash.data(), child._hash.data(), 64);
-      const LTree tree =
-          LTree(hash, this->getFileName() + '/' + child._fileName, false);
+      const LTree tree = LTree(hash, treeName + '/' + child._fileName, false);
+      if (!tree)
+        return std::nullopt;
       return tree.getChildTree(path);
     }
 

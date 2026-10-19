@@ -51,8 +51,14 @@ public:
                   const bool root = false) noexcept;
   [[nodiscard]] std::expected<std::string, std::string>
   addFile(const std::span<unsigned char> data,
-          const std::filesystem::path &filePath, const bool isExecutable,
-          const bool isCompressed = false) noexcept;
+          const std::filesystem::path &filePath,
+          const bool isExecutable) noexcept;
+
+  [[nodiscard]] std::expected<std::string, std::string>
+  addCompressedFile(const std::span<unsigned char> data,
+                    const std::filesystem::path &filePath,
+                    const bool isExecutable,
+                    const std::string_view hash) noexcept;
   std::expected<std::vector<unsigned char>, std::string>
   getChild(const std::filesystem::path &filePath) const noexcept;
   std::expected<std::vector<Commit>, std::string> getAllCommits() noexcept;
