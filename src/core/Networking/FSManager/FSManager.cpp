@@ -16,11 +16,14 @@ FSManager::FSManager(const std::string_view ip, const int port,
                      const int backlog) noexcept {
   this->_serverFD = socket(AF_INET, SOCK_STREAM, 0);
   if (0 >= this->_serverFD) {
+    this->_error = true;
     std::cerr << "socket creation error\n";
     return;
   }
-  if (int opt = 1; setsockopt(this->_serverFD, SOL_SOCKET, SO_REUSEADDR,
-                              (char *)&opt, sizeof opt) < 0) {
+  if (int opt = 1;
+      setsockopt(this->_serverFD, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
+                 (char *)&opt, sizeof opt) < 0) {
+    this->_error = true;
     std::cerr << "setSocketopt error\n";
     return;
   }
@@ -32,16 +35,16 @@ FSManager::FSManager(const std::string_view ip, const int port,
 
   if (bind(this->_serverFD, (struct sockaddr *)&serverAddr,
            sizeof(serverAddr)) < 0) {
+    this->_error = true;
     std::cerr << "bind error\n";
     return;
   }
 
   if (listen(this->_serverFD, backlog) < 0) {
+    this->_error = true;
     std::cerr << "listen error\n";
     return;
   }
-
-  this->_isOk = true;
 }
 FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
   if (!this->_public) {
@@ -93,6 +96,14 @@ FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
     this->_aes = std::make_unique<AESKey>(command._data + COMMAND_LENGTH);
     std::println("Switched to AES");
     return OK;
+  } else if (this->_originalPath.empty()) {
+    if (StringOpt sslOpt = readSocketAES(this->_fd); !sslOpt.has_value()) {
+      std::println("Unable to read what node is the client writing to");
+      return ERR;
+    } else {
+      this->_originalPath = sslOpt.value().toString();
+      return OK;
+    }
   } else if (this->_node == 0) {
     if (StringOpt sslOpt = readSocketAES(this->_fd); !sslOpt.has_value()) {
       std::println("Unable to read what node is the client writing to");
@@ -131,110 +142,105 @@ bool FSManager::Connection::confirmFile() noexcept {
   this->_hash = Node::hash(decom.getData());
   if (StringOpt msgOpt = readSocketAES(this->_fd); !msgOpt.has_value()) {
     std::println("Unable to get the client hash, closing connection");
-    const SSLString msg(FSCodeStr(FSCode::ERR) +
-                        " Unable to get the client hash, closing connection");
-    const bool _ = writeToSocketAES(this->_fd, msg);
+    sendErrorMessage("Unable to get the client hash, closing connection");
     return false;
   } else {
     const SSLString msg = msgOpt.value();
     if (msg._length != this->_hash.size()) {
       std::println("Message has different length than our hash");
-      const SSLString msg(FSCodeStr(FSCode::ERR) +
-                          " Message has different length than our hash");
-      const bool _ = writeToSocketAES(this->_fd, msg);
+      sendErrorMessage("Message has different length than our hash");
       return false;
     }
     std::span<const unsigned char> dataView =
         std::span<const unsigned char>(msg._data, msg._length);
     if (std::string(dataView.begin(), dataView.end()) != this->_hash) {
       std::println("Hash is not the same");
-      const SSLString msg(FSCodeStr(FSCode::ERR) + " Hash is not the same");
-      const bool _ = writeToSocketAES(this->_fd, msg);
+      sendErrorMessage("Hash is not the same");
       return false;
     }
   }
-  const SSLString msg(FSCodeStr(FSCode::OK) + " Hash is the same");
-  const bool _ = writeToSocketAES(this->_fd, msg);
+  sendReply("Hash is the same");
   return true;
 }
 
-bool FSManager::Connection::handleValidation() noexcept {
-  if (FILE *fp = fopen(PUBKEY_PATH, "r"); !fp) {
-    std::println("Unable to open own public key file");
-    return false;
-  } else {
-    fseek(fp, 0, SEEK_END);
-    const long length = ftell(fp);
-    std::vector<unsigned char> key(length);
-    rewind(fp);
-    if (fread(key.data(), sizeof(unsigned char), length, fp) < (size_t)length) {
-      std::println("Unable to read own public key");
-      fclose(fp);
-      return false;
-    }
-    fclose(fp);
-    alignas(32) std::array<unsigned char, LENGTH_SIZE> lengthArr =
-        toArray(length);
-    key.insert(key.begin(), lengthArr.begin(), lengthArr.end());
-    if (!writePrimitive(this->_fd, key.data(), LENGTH_SIZE + length)) {
-      std::println("Unable to send primitive string");
-      return false;
-    }
-    key.clear();
-    if (!readPacket(this->_fd, lengthArr.data(), LENGTH_SIZE)) {
-      std::println("Unable to read key length");
-      return false;
-    }
-    auto clientKeyLengthOpt = toNumber(lengthArr);
-    if (!clientKeyLengthOpt.has_value()) {
-      std::println("Unable to get key length");
-      return false;
-    }
-    const long clientKeyLength = clientKeyLengthOpt.value();
-    key.resize(clientKeyLength);
-    if (!readPacket(this->_fd, key.data(), clientKeyLength)) {
-      std::println("Unable to read key");
-      return false;
-    }
-    if (!checkIfAuthorized(key)) {
-      std::println("Key is not authorized");
-      return false;
-    }
-    this->_public = std::make_unique<RSAKey>(key);
-    if (!this->_public) {
-      std::println("Unable to load public key");
-      return false;
-    }
+// bool FSManager::Connection::handleValidation() noexcept {
+//   if (FILE *fp = fopen(PUBKEY_PATH, "r"); !fp) {
+//     std::println("Unable to open own public key file");
+//     return false;
+//   } else {
+//     fseek(fp, 0, SEEK_END);
+//     const long length = ftell(fp);
+//     std::vector<unsigned char> key(length);
+//     rewind(fp);
+//     if (fread(key.data(), sizeof(unsigned char), length, fp) <
+//     (size_t)length) {
+//       std::println("Unable to read own public key");
+//       fclose(fp);
+//       return false;
+//     }
+//     fclose(fp);
+//     alignas(32) std::array<unsigned char, LENGTH_SIZE> lengthArr =
+//         toArray(length);
+//     key.insert(key.begin(), lengthArr.begin(), lengthArr.end());
+//     if (!writePrimitive(this->_fd, key.data(), LENGTH_SIZE + length)) {
+//       std::println("Unable to send primitive string");
+//       return false;
+//     }
+//     key.clear();
+//     if (!readPacket(this->_fd, lengthArr.data(), LENGTH_SIZE)) {
+//       std::println("Unable to read key length");
+//       return false;
+//     }
+//     auto clientKeyLengthOpt = toNumber(lengthArr);
+//     if (!clientKeyLengthOpt.has_value()) {
+//       std::println("Unable to get key length");
+//       return false;
+//     }
+//     const long clientKeyLength = clientKeyLengthOpt.value();
+//     key.resize(clientKeyLength);
+//     if (!readPacket(this->_fd, key.data(), clientKeyLength)) {
+//       std::println("Unable to read key");
+//       return false;
+//     }
+//     if (!checkIfAuthorized(key)) {
+//       std::println("Key is not authorized");
+//       return false;
+//     }
+//     this->_public = std::make_unique<RSAKey>(key);
+//     if (!this->_public) {
+//       std::println("Unable to load public key");
+//       return false;
+//     }
+//
+//     return true;
+//   }
+// }
 
-    return true;
-  }
-}
-
-bool FSManager::Connection::checkIfAuthorized(
-    const std::vector<unsigned char> &key) noexcept {
-  for (const auto &file :
-       std::filesystem::directory_iterator(CLIENTS_CERTS_PATH)) {
-    if (file.is_directory())
-      continue;
-
-    if (int fd = open(file.path().c_str(), O_RDONLY, 0); fd < 0) {
-      std::cerr << "Unable to open file " << file << "\n";
-      return false;
-    } else {
-      unsigned char *buf = (unsigned char *)mmap(
-          NULL, file.file_size(), PROT_READ, MAP_FILE | MAP_SHARED, fd, 0);
-      if (key.size() == file.file_size() &&
-          !memcmp(key.data(), buf, key.size())) {
-        munmap(buf, file.file_size());
-        close(fd);
-        return true;
-      }
-      munmap(buf, file.file_size());
-      close(fd);
-    }
-  }
-  return false;
-}
+// bool FSManager::Connection::checkIfAuthorized(
+//     const std::vector<unsigned char> &key) noexcept {
+//   for (const auto &file :
+//        std::filesystem::directory_iterator(CLIENTS_CERTS_PATH)) {
+//     if (file.is_directory())
+//       continue;
+//
+//     if (int fd = open(file.path().c_str(), O_RDONLY, 0); fd < 0) {
+//       std::cerr << "Unable to open file " << file << "\n";
+//       return false;
+//     } else {
+//       unsigned char *buf = (unsigned char *)mmap(
+//           NULL, file.file_size(), PROT_READ, MAP_FILE | MAP_SHARED, fd, 0);
+//       if (key.size() == file.file_size() &&
+//           !memcmp(key.data(), buf, key.size())) {
+//         munmap(buf, file.file_size());
+//         close(fd);
+//         return true;
+//       }
+//       munmap(buf, file.file_size());
+//       close(fd);
+//     }
+//   }
+//   return false;
+// }
 
 void FSManager::run(const std::atomic_bool &running) noexcept {
   std::vector<std::unique_ptr<FSManager::Connection>> clientList;
@@ -298,7 +304,8 @@ void FSManager::run(const std::atomic_bool &running) noexcept {
             bool acquired = false;
             auto &nodeData = nodeOpt.value()->_data;
             for (auto &req : nodeData) {
-              if (req.id == -1) {
+              if (req.id == -1 &&
+                  req.filePath == clientList[i]->getOriginalPath()) {
                 acquired = true;
                 req.id = sd;
                 break;
@@ -308,6 +315,8 @@ void FSManager::run(const std::atomic_bool &running) noexcept {
               if (!removeDeadConnection(clientList[i]->getNode(), sd))
                 removeTimeoutConnections();
               clientList.erase(clientList.cbegin() + i);
+              this->_list.removeNode(
+                  this->_list.getId(nodeOpt.value()).value());
             }
           }
           break;
@@ -349,8 +358,9 @@ void FSManager::run(const std::atomic_bool &running) noexcept {
                 memcpy(arr.data(), current.value().data(), 64);
                 LTree tree = LTree(arr, "/FreeSync", true);
                 for (const auto &req : node->_data) {
-                  if (const auto result = tree.addCompressedFile(
-                          req.file.toSpan(), req.path, false, req.hash);
+                  if (const auto result =
+                          tree.addCompressedFile(req.file.toSpan(), req.fsPath,
+                                                 req.isExecutable, req.hash);
                       !result.has_value()) {
                     std::println("Error when adding file:{}", result.error());
                     errorFound = true;

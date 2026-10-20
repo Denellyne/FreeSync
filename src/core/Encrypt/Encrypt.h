@@ -207,8 +207,7 @@ private:
 
 class RSAKey final : public CypherKey {
 public:
-  RSAKey(const std::vector<unsigned char> &key,
-         bool isPrivateKey = false) noexcept
+  RSAKey(const std::span<unsigned char> key, bool isPrivateKey = false) noexcept
       : _isPrivateKey(isPrivateKey) {
     if (this->_isPrivateKey) {
       if (auto keyOpt = loadPrivateKey(key); !keyOpt) [[unlikely]]
@@ -241,8 +240,8 @@ public:
 private:
   KeyPtr loadPublicKey(const std::string_view path) noexcept;
   KeyPtr loadPrivateKey(const std::string_view path) noexcept;
-  KeyPtr loadPublicKey(const std::vector<unsigned char> &key) noexcept;
-  KeyPtr loadPrivateKey(const std::vector<unsigned char> &key) noexcept;
+  KeyPtr loadPublicKey(const std::span<unsigned char> key) noexcept;
+  KeyPtr loadPrivateKey(const std::span<unsigned char> key) noexcept;
 
   RSACtxPtr loadEncryptCtx() noexcept;
   RSACtxPtr loadDecryptCtx() noexcept;

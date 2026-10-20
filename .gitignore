@@ -1,5 +1,6 @@
 src/cores
 bin/
+*.gcda
 *.o
 compile_commands.json
 .cache

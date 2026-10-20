@@ -4,7 +4,6 @@
 #include <chrono>
 #include <cstring>
 #include <optional>
-#include <queue>
 #include <string>
 #include <sys/socket.h>
 #include <type_traits>
@@ -106,23 +105,26 @@ constexpr std::string FSCodeStr(const FSCode code) noexcept {
 
 struct Request {
   enum OP { ADD, DELETE } type = ADD;
-  Request(const std::string_view path, const Request::OP t) noexcept
-      : type(t), path(path) {}
+  Request(const std::string_view filePath, const std::string_view fsPath,
+          const bool isExecutable, const Request::OP t) noexcept
+      : type(t), filePath(filePath), fsPath(fsPath),
+        isExecutable(isExecutable) {}
   Request(const Request &) = delete;
   Request &operator=(const Request &) = delete;
 
   Request(Request &&) noexcept = default;
   Request &operator=(Request &&other) noexcept {
-    std::swap(this->path, other.path);
+    std::swap(this->filePath, other.filePath);
+    std::swap(this->fsPath, other.fsPath);
     std::swap(this->id, other.id);
     std::swap(this->complete, other.complete);
     std::swap(this->type, other.type);
     std::swap(this->file, other.file);
     return *this;
   }
-  std::string path = "", hash = "";
+  std::string filePath = "", fsPath = "", hash = "";
   int id = -1;
-  bool complete = type == DELETE;
+  bool complete = type == DELETE, isExecutable = false;
   DiskFile file = DiskFile(true);
   const int64_t timestamp =
       std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -134,20 +136,7 @@ public:
   ~FSProtocol() = default;
   virtual void run() = 0;
 
-  struct Command {
-    Command() = delete;
-    Command(std::string_view input);
-
-    std::string _command, _arg;
-  };
-
-  using CommandQueue = std::queue<FSProtocol::Command>;
-  using CommandQueueOpt = std::optional<CommandQueue>;
-
 protected:
-  CommandQueueOpt parseCommands(std::string_view input);
-  Command Command(std::string_view input);
-
   [[nodiscard]] bool writeToSocket(const int fd,
                                    const SSLString &message) noexcept;
   [[nodiscard]] bool writeToSocketAES(const int fd,

@@ -25,7 +25,6 @@ bool FSProtocol::writePrimitive(const int fd, void *data,
   return true;
 }
 
-using FSCommand = struct FSProtocol::Command;
 bool FSProtocol::writeToSocket(const int fd, const SSLString &data) noexcept {
   assert(fd >= 0 && this->_public && this->_private &&
          !this->_public->_isPrivateKey);
@@ -168,51 +167,4 @@ StringOpt FSProtocol::readSocket(const int fd) {
     }
     return SSLString(data);
   }
-}
-
-// FSProtocol::CommandQueueOpt FSProtocol::parseCommands(std::string_view input)
-// {
-//   this->_fragmentBuffer.clear();
-//   if (!input.ends_with("\r\n")) {
-//     const size_t idx = input.rfind("\r\n");
-//     if (idx != input.npos) {
-//       this->_fragmentBuffer = std::string{input.substr(idx + 2)};
-//       input = input.substr(0, idx + 2);
-//     } else {
-//       std::cerr << "Incomplete input passed\n";
-//       return std::nullopt;
-//     }
-//   }
-//
-//   auto split =
-//       input | std::views::split(std::string_view{"\r\n"}) |
-//       std::views::transform([](auto &&str) { return std::string_view(str);
-//       });
-//   std::queue<FSCommand> commands{};
-//   for (const auto str : split)
-//     if (!str.empty())
-//       commands.emplace(Command(str));
-//
-//   return commands;
-// }
-
-FSProtocol::Command::Command(std::string_view input) {
-  constexpr auto toUpper = [](std::string &str) {
-    for (auto &ch : str)
-      ch = std::toupper(ch);
-  };
-  auto split =
-      input | std::views::split(std::string_view{" "}) |
-      std::views::transform([](auto &&str) { return std::string_view(str); });
-  int idx = 0;
-  for (auto str : split) {
-    if (str.empty())
-      continue;
-    if (idx == 0)
-      this->_command = std::string{str};
-    else if (idx == 1)
-      this->_arg = std::string{str};
-    idx++;
-  }
-  toUpper(this->_command);
 }

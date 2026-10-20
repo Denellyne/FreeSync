@@ -48,5 +48,3 @@ int main(void) {
 #endif
 
 // Multiple files sending is bugged
-// Safe length on packets
-// RSA KEy length can be anything

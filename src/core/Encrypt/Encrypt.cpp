@@ -203,7 +203,7 @@ KeyPtr RSAKey::loadPrivateKey(const std::string_view path) noexcept {
   ERR_print_errors_fp(stderr);
   return nullptr;
 }
-KeyPtr RSAKey::loadPublicKey(const std::vector<unsigned char> &key) noexcept {
+KeyPtr RSAKey::loadPublicKey(const std::span<unsigned char> key) noexcept {
   BIO *bp(BIO_new_mem_buf((void *)key.data(), key.size()));
   if (!bp) {
     std::cerr << "Unable to load public key from buffer\n";
@@ -215,7 +215,7 @@ KeyPtr RSAKey::loadPublicKey(const std::vector<unsigned char> &key) noexcept {
   BIO_free(bp);
   return keyPtr;
 }
-KeyPtr RSAKey::loadPrivateKey(const std::vector<unsigned char> &key) noexcept {
+KeyPtr RSAKey::loadPrivateKey(const std::span<unsigned char> key) noexcept {
   BIO *bp(BIO_new_mem_buf((void *)key.data(), key.size()));
   if (!bp) {
     std::cerr << "Unable to load private key from buffer\n";

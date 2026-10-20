@@ -1,6 +1,7 @@
 #pragma once
 #include "../../FSLList/FSLList.h"
 #include "../FSProtocol.h"
+#include "../FSServer/FSConnection.hpp"
 #include <atomic>
 #include <netinet/in.h>
 #include <print>
@@ -32,6 +33,7 @@ public:
       this->_list.removeNode(connection);
     return true;
   }
+  operator bool() const noexcept { return !this->_error; }
 
 private:
   void removeTimeoutConnections() noexcept {
@@ -53,10 +55,11 @@ private:
     for (const auto &id : ids)
       this->_list.removeNode(id);
   }
-  class Connection final : public FSProtocol {
+  class Connection final : public FSConnection {
   public:
     Connection() = delete;
-    Connection(const int fd) noexcept : _fd(fd) {
+    Connection(const int fd) noexcept {
+      this->_fd = fd;
       this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
       if (!this->_private) {
         std::println("Unable to load private key");
@@ -86,26 +89,21 @@ private:
       return this->_file.toSpan();
     }
     bool acquireRequest() noexcept;
+    std::string_view getOriginalPath() const noexcept {
+      return this->_originalPath;
+    }
     std::string_view getFilePath() const noexcept {
       return this->_file.getFilePath();
     }
     DiskFile &&releaseFile() noexcept { return std::move(this->_file); }
     std::string_view getHash() const noexcept { return this->_hash; }
 
-  private:
-    // std::string generateRandomString();
-    bool handleValidation() noexcept;
-    bool handleAES() noexcept;
-    bool interpretCommand(const SSLString &command) noexcept;
-    bool checkIfAuthorized(const std::vector<unsigned char> &key) noexcept;
-
-    int _fd = -1;
     DiskFile _file;
-    std::string _hash = "";
+    std::string _hash = "", _originalPath = "";
     uint64_t _node = 0;
   };
   FSLList<Request> _list;
   struct sockaddr_in _serverAddr;
   int _serverFD = -1;
-  bool _isOk = false;
+  bool _error = false;
 };

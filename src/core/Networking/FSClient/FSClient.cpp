@@ -9,9 +9,10 @@
 #include <sys/mman.h>
 #include <utility>
 
-FSClient::FSManagerSocket::FSManagerSocket(const std::string &path,
+FSClient::FSManagerSocket::FSManagerSocket(const std::string &file,
+                                           const std::string &fsPath,
                                            const uint64_t nodeId)
-    : _path(std::move(path)), _nodeId(nodeId) {
+    : _file(std::move(file)), _fsPath(std::move(fsPath)), _nodeId(nodeId) {
   this->_fd = socket(AF_INET, SOCK_STREAM, 0);
 
   if (this->_fd < 0) {
@@ -249,12 +250,21 @@ FSClient::validateCommand(const SSLString &command) noexcept {
 
     std::span<const unsigned char> dataView = std::span<const unsigned char>(
         command._data + COMMAND_LENGTH + 1, dataViewLength);
-    auto split = std::string{dataView.cbegin(), dataView.cend()} |
-                 std::views::split(std::string_view{" "}) |
-                 std::views::adjacent<2> | std::views::stride(2);
-    for (const auto &[file, path] : split) {
-      if (!std::filesystem::exists(std::string_view(file)))
-        return std::unexpected("File doesn't exist");
+    auto split =
+        std::string{dataView.cbegin(), dataView.cend()} |
+        std::views::split(' ') |
+        std::views::transform([](auto &&rg) { return std::string_view{rg}; }) |
+        std::ranges::to<std::vector<std::string>>();
+
+    if (std::ranges::distance(split) % 2 != 0)
+      return std::unexpected(
+          "Every file should have a corresponding server path");
+
+    auto pairView = split | std::views::adjacent<2> | std::views::stride(2);
+
+    for (const auto &[file, path] : pairView) {
+      if (!std::filesystem::exists(file))
+        return std::unexpected("File doesn't exist:" + file);
     }
 
   }
@@ -295,18 +305,25 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
 
     std::span<const unsigned char> dataView = std::span<const unsigned char>(
         command._data + COMMAND_LENGTH + 1, dataViewLength);
-    auto filePaths = std::string{dataView.cbegin(), dataView.cend()} |
-                     std::views::split(std::string_view{" "}) |
-                     std::views::drop(1) | std::views::stride(2);
+    auto split =
+        std::string{dataView.cbegin(), dataView.cend()} |
+        std::views::split(' ') |
+        std::views::transform([](auto &&rg) { return std::string_view{rg}; }) |
+        std::ranges::to<std::vector<std::string>>() | std::views::adjacent<2> |
+        std::views::stride(2);
+    std::string raw = "";
+    for (const auto &[file, fsPath] : split) {
+      char isExecutable = '0';
+      if (const fs::perms permissions = fs::status(file).permissions();
+          (fs::perms::none != (permissions & fs::perms::owner_exec)) ||
+          (fs::perms::none != (permissions & fs::perms::group_exec)) ||
+          (fs::perms::none != (permissions & fs::perms::others_exec)))
+        isExecutable = '1';
 
-    std::string filePathsStr = "";
-    for (const auto &fsPath : filePaths)
-      filePathsStr =
-          filePathsStr + ' ' + std::string{fsPath.begin(), fsPath.end()};
+      raw += ' ' + file + ' ' + fsPath + ' ' + isExecutable;
+    }
 
-    SSLString request = SSLString(FSCodeStr(FSCode::STRU) + filePathsStr);
-
-    if (!this->writeToSocketAES(this->_fd, request)) {
+    if (!this->writeToSocketAES(this->_fd, SSLString(FSCodeStr(STRU) + raw))) {
       std::println("Unable to send request to server");
       return false;
     } else if (StringOpt msgOpt = readSocketAES(this->_fd);
@@ -333,14 +350,11 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
           std::println("Unable to get node id");
           return false;
         } else {
+
           const uint64_t nodeId = idOpt.value();
-          for (const auto &file :
-               std::string{dataView.cbegin(), dataView.cend()} |
-                   std::views::split(std::string_view{" "}) |
-                   std::views::stride(2)) {
+          for (const auto &[file, fsPath] : split) {
             this->_pool.enqueue(
-                std::bind(&FSClient::sendFile, this,
-                          std::string(file.begin(), file.end()),
+                std::bind(&FSClient::sendFile, this, file, fsPath,
                           nodeId)); // add a way to see if it sent or not
           }
         }
@@ -371,11 +385,11 @@ void FSClient::FSManagerSocket::run() noexcept {
     return;
   }
 
-  std::println("Sending {}", this->_path);
+  std::println("Sending {}", this->_file);
 
-  const ssize_t fileSize = std::filesystem::file_size(this->_path);
-  if (int fd = open(this->_path.c_str(), O_RDONLY, 0); fd < 0) {
-    std::cerr << "Unable to open file " << this->_path << "\n";
+  const ssize_t fileSize = std::filesystem::file_size(this->_file);
+  if (int fd = open(this->_file.c_str(), O_RDONLY, 0); fd < 0) {
+    std::cerr << "Unable to open file " << this->_file << "\n";
     return;
   } else {
     unsigned char *buf = (unsigned char *)mmap(NULL, fileSize, PROT_READ,
@@ -384,6 +398,11 @@ void FSClient::FSManagerSocket::run() noexcept {
     std::span<unsigned char> data(buf, fileSize);
     const std::string hash = Node::hash(data);
     Compressor c(data);
+    if (const SSLString msg = SSLString(this->_file);
+        !this->writeToSocketAES(this->_fd, msg)) {
+      std::println("Failed to send a packet to the server");
+      return;
+    }
 
     std::array<unsigned char, PTR_SIZE> ptrArray = ptrToArray(this->_nodeId);
     if (const SSLString packetMsg = SSLString(ptrArray);
@@ -435,23 +454,25 @@ void FSClient::FSManagerSocket::run() noexcept {
   }
 }
 
-void FSClient::sendFile(const std::string &path,
-                        const uint64_t nodeId) noexcept {
-  FSManagerSocket manager(path, nodeId);
+void FSClient::sendFile(const std::string &file, const std::string &fsPath,
+                        const uint64_t nodeId) const noexcept {
+  FSManagerSocket manager(file, fsPath, nodeId);
   manager.run();
 }
 
 void FSClient::run() noexcept {
   volatile bool shouldRun = this->validationStep();
-  shouldRun = this->switchAES();
+  shouldRun &= this->switchAES();
 
   while (shouldRun) {
     std::string str = "";
-    std::getline(std::cin, str);
+    if (!std::getline(std::cin, str))
+      break;
+
     SSLString command(str);
     if (auto valOpt = validateCommand(command);
         command._length < 3 || !valOpt.has_value()) {
-      std::println("{}", valOpt.error());
+      std::println("{}", valOpt.error_or("Command was too short"));
       continue;
     }
 

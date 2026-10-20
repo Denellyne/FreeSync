@@ -2,6 +2,7 @@
 #include "../FSManager/FSManager.h"
 #include "../FSProtocol.h"
 #include "../ThreadPool/ThreadPool.hpp"
+#include "FSConnection.hpp"
 #include <atomic>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -25,7 +26,7 @@ public:
   operator bool() const noexcept { return !this->_error; }
 
 private:
-  class Connection final : public FSProtocol {
+  class Connection final : public FSConnection {
   public:
     Connection() = delete;
     Connection(const int fd, const std::atomic_bool &running,
@@ -40,18 +41,12 @@ private:
     operator bool() const noexcept { return !this->_error; }
 
   private:
-    // std::string generateRandomString();
-    bool handleValidation() noexcept;
-    bool handleAES() noexcept;
     bool interpretCommand(const SSLString &command) noexcept;
     bool interpretCommandRSA(const SSLString &command) noexcept;
-    bool checkIfAuthorized(const std::vector<unsigned char> &key) noexcept;
 
-    int _fd = -1;
     uint64_t _requestId = 0;
     const std::atomic_bool &_running;
     FSManager &_manager;
-    bool _error = false;
   };
   ThreadPool _pool{maxThreads()};
   FSManager _manager;

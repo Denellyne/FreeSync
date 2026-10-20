@@ -17,7 +17,8 @@ public:
 private:
   class FSManagerSocket final : public FSProtocol {
   public:
-    FSManagerSocket(const std::string &path, const uint64_t nodeId);
+    FSManagerSocket(const std::string &file, const ::std::string &fsPath,
+                    const uint64_t nodeId);
     ~FSManagerSocket() noexcept {
       if (this->_fd != -1)
         close(this->_fd);
@@ -27,7 +28,7 @@ private:
 
   private:
     int _fd = -1;
-    const std::string _path;
+    const std::string _file = "", _fsPath = "";
     const uint64_t _nodeId = 0;
     bool validationStep() noexcept;
     bool switchAES() noexcept;
@@ -41,5 +42,6 @@ private:
   std::expected<bool, std::string>
   validateCommand(const SSLString &command) noexcept;
   bool processCommand(const SSLString &command) noexcept;
-  void sendFile(const std::string &path, const uint64_t nodeId) noexcept;
+  void sendFile(const std::string &file, const std::string &fsPath,
+                const uint64_t nodeId) const noexcept;
 };
