@@ -43,6 +43,45 @@ private:
   private:
     bool interpretCommand(const SSLString &command) noexcept;
     bool interpretCommandRSA(const SSLString &command) noexcept;
+    bool changeTimeout() {
+      struct timeval timeout;
+      timeout.tv_sec = 60 * 3;
+      timeout.tv_usec = 0;
+      if (setsockopt(this->_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                     sizeof(timeout))) [[unlikely]] {
+        std::println("Unable to update timeout value");
+        return false;
+      }
+      if (setsockopt(this->_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout,
+                     sizeof(timeout))) [[unlikely]] {
+        std::println("Unable to update timeout value");
+        return false;
+      }
+
+      int idle = 120;
+      int intvl = 30;
+      int cnt = 5;
+
+      if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle)))
+          [[unlikely]] {
+        this->_error = true;
+        std::println("Unable to update timeout value");
+        return false;
+      }
+      if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl,
+                     sizeof(intvl))) [[unlikely]] {
+        this->_error = true;
+        std::println("Unable to update timeout value");
+        return false;
+      }
+      if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt)))
+          [[unlikely]] {
+        this->_error = true;
+        std::println("Unable to update timeout value");
+        return false;
+      }
+      return true;
+    }
 
     uint64_t _requestId = 0;
     const std::atomic_bool &_running;

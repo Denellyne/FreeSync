@@ -119,7 +119,7 @@ FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
   }
 
   struct timeval timeout;
-  timeout.tv_sec = 60 * 15;
+  timeout.tv_sec = 15;
   timeout.tv_usec = 0;
   if (setsockopt(this->_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)))
       [[unlikely]] {
@@ -135,8 +135,8 @@ FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
   int yes = 1;
   setsockopt(this->_fd, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes));
 
-  int idle = 120;
-  int intvl = 30;
+  int idle = 3;
+  int intvl = 5;
   int cnt = 5;
 
   if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle)))
@@ -177,6 +177,9 @@ bool FSServer::Connection::interpretCommandRSA(
     if (command._length < AES_KEY_BYTES + COMMAND_LENGTH)
       return false;
     this->_aes = std::make_unique<AESKey>(command._data + COMMAND_LENGTH);
+    if (!changeTimeout())
+      return false;
+
     std::println("Switched to AES encryption");
   } break;
   case OK:
@@ -311,6 +314,7 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
           }
           msgRaw += entry + fileSize + child._fileName + '\n';
         }
+        return sendReply(msgRaw);
       }
     }
 
