@@ -106,9 +106,14 @@ constexpr std::string FSCodeStr(const FSCode code) noexcept {
 struct Request {
   enum OP { ADD, DELETE } type = ADD;
   Request(const std::string_view filePath, const std::string_view fsPath,
-          const bool isExecutable, const Request::OP t) noexcept
-      : type(t), filePath(filePath), fsPath(fsPath),
+          const bool isExecutable) noexcept
+      : type(ADD), filePath(filePath), fsPath(fsPath),
         isExecutable(isExecutable) {}
+
+  Request(const std::string_view fsPath) noexcept
+      : type(DELETE), fsPath(fsPath) {
+    this->complete = true;
+  }
   Request(const Request &) = delete;
   Request &operator=(const Request &) = delete;
 

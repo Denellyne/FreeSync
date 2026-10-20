@@ -215,6 +215,26 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
   const FSCode code = FSStrCode(codeView);
   switch (code) {
   case DEL: {
+    if (dataView.empty())
+      return sendErrorMessage("No path was passed");
+
+    auto split =
+        std::string{dataView.cbegin(), dataView.cend()} |
+        std::views::split(' ') |
+        std::views::transform([](auto &&rg) { return std::string_view{rg}; }) |
+        std::ranges::to<std::vector<std::string>>();
+    std::vector<std::string> context = {};
+    std::vector<Request> requests;
+    for (const auto &file : split) {
+      if (const auto valOpt = Node::validatePath(file, context);
+          !valOpt.has_value())
+        return sendErrorMessage("Path must be a valid path: " + valOpt.error());
+      else
+        requests.emplace_back(Request(std::move(file)));
+    }
+
+    this->_manager.addNewNode(std::move(requests));
+    return sendReply("Delete transaction sent successfully");
   } break;
   case RETR: {
     if (dataView.empty())
@@ -254,7 +274,6 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
 
     auto pairView = split | std::views::adjacent<3> | std::views::stride(3);
 
-    // Change this if it becomes too slow
     std::vector<Request> requests;
 
     std::vector<std::string> context = {};
@@ -264,8 +283,8 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
           !valOpt.has_value())
         return sendErrorMessage("Path must be a valid path: " + valOpt.error());
       else
-        requests.emplace_back(Request(std::move(file), std::move(fsPath),
-                                      executable[0] == '1', Request::ADD));
+        requests.emplace_back(
+            Request(std::move(file), std::move(fsPath), executable[0] == '1'));
     }
 
     const uint64_t id = this->_manager.addNewNode(std::move(requests));

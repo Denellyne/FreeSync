@@ -46,5 +46,3 @@ int main(void) {
 }
 
 #endif
-
-// Multiple files sending is bugged

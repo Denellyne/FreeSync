@@ -210,6 +210,53 @@ LTree::getChild(const std::filesystem::path &filePath) const noexcept {
   return std::unexpected("Unable to find file");
 }
 
+std::expected<std::string, std::string>
+LTree::removeFile(const std::filesystem::path &filePath) noexcept {
+  constexpr auto isSubPath = [](const fs::path &path, const fs::path &base) {
+    const auto mismatchPair =
+        std::mismatch(path.begin(), path.end(), base.begin(), base.end());
+    return mismatchPair.second == base.end();
+  };
+  if (filePath.empty())
+    return std::unexpected("Passed file is empty");
+
+  if (filePath.parent_path() == this->_filePath) {
+    const std::string fileName = filePath.filename();
+    for (auto it = this->_children.begin(); it != this->_children.end(); it++)
+      if ((*it)._fileName == fileName) {
+        this->_children.erase(it);
+        break;
+      }
+  } else if (isSubPath(filePath, this->_filePath)) {
+    for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
+      if ((*it)._entry == DIRECTORY) {
+        const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
+        if (isSubPath(filePath, p)) {
+          std::string obj = OBJFOLDER;
+          obj.append((*it)._hash, 0, 2);
+          obj += '/';
+          obj.append((*it)._hash, 2, 62);
+          if (auto tree = getTreeFromBlob(obj, p); tree.has_value()) {
+            if (const auto newHash = tree.value().removeFile(filePath);
+                !newHash.has_value())
+              return std::unexpected(newHash.error());
+            else
+              it->_hash = newHash.value();
+          } else
+            return std::unexpected(tree.error());
+          break;
+        }
+      }
+    }
+  }
+
+  this->hashTree();
+  if (!this->writeBlob())
+    return std::unexpected("Unable to save tree blob\n");
+
+  return this->_hash;
+}
+
 std::expected<std::string, std::string> LTree::addCompressedFile(
     const std::span<unsigned char> data, const std::filesystem::path &filePath,
     const bool isExecutable, const std::string_view hash) noexcept {

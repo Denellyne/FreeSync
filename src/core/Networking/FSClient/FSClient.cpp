@@ -238,8 +238,21 @@ FSClient::validateCommand(const SSLString &command) noexcept {
     // case PUBK:
     return std::unexpected("The command passed is prohibited to users");
     break;
-  case RETR:
-    break;
+  case DEL: {
+    const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1 > 0
+                                        ? command._length - COMMAND_LENGTH - 1
+                                        : 0;
+    if (dataViewLength == 0)
+      return std::unexpected("Need to know what files to delete");
+  } break;
+
+  case RETR: {
+    const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1 > 0
+                                        ? command._length - COMMAND_LENGTH - 1
+                                        : 0;
+    if (dataViewLength == 0)
+      return std::unexpected("Need to know what file to read");
+  } break;
   case STRU: {
 
     const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1 > 0
@@ -273,7 +286,6 @@ FSClient::validateCommand(const SSLString &command) noexcept {
     // Validate files exist
   case QUIT:
   case LIST:
-  case DEL:
   case ATTR:
     break;
   }

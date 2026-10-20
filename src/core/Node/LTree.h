@@ -59,6 +59,10 @@ public:
                     const std::filesystem::path &filePath,
                     const bool isExecutable,
                     const std::string_view hash) noexcept;
+
+  [[nodiscard]] std::expected<std::string, std::string>
+  removeFile(const std::filesystem::path &filePath) noexcept;
+
   std::expected<std::vector<unsigned char>, std::string>
   getChild(const std::filesystem::path &filePath) const noexcept;
   std::expected<std::vector<Commit>, std::string> getAllCommits() noexcept;

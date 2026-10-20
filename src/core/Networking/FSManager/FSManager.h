@@ -13,7 +13,6 @@ public:
             const int port = FSMANAGER_PORT, const int backlog = 128) noexcept;
   void run(const std::atomic_bool &running) noexcept;
   uint64_t addNewNode(std::vector<Request> &&requests) noexcept {
-    // Check if path is valid for all requests
     return this->_list.addNode(std::move(requests));
   }
   [[nodiscard]] bool removeDeadConnection(const uint64_t connection,
@@ -36,9 +35,27 @@ public:
   operator bool() const noexcept { return !this->_error; }
 
 private:
+  class Connection;
+  std::optional<std::string>
+  finalizeDownload(LListPtr<Request> &node,
+                   std::unique_ptr<FSManager::Connection> &client,
+                   const int sd) noexcept;
+
+  std::optional<std::string>
+  commitAddTransaction(const LListPtr<Request> &node) noexcept;
+
+  std::optional<std::string>
+  commitDeleteTransaction(const LListPtr<Request> &node) noexcept;
+  std::optional<std::string>
+  setNode(std::unique_ptr<FSManager::Connection> &client,
+          const int sd) noexcept;
+
+  void processTransactions() noexcept;
+
   void removeTimeoutConnections() noexcept {
     std::vector<uint64_t> ids;
-    for (const auto &node : this->_list) {
+    for (const FSLList<Request>::LListIterator &it : this->_list) {
+      const LListPtr<Request> &node = it._ptr;
       const auto currentTime =
           std::chrono::duration_cast<std::chrono::milliseconds>(
               std::chrono::system_clock::now().time_since_epoch())

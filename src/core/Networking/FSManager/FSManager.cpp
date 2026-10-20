@@ -3,11 +3,10 @@
 #include "../../Node/LTree.h"
 #include "../../Node/Node.h"
 #include <arpa/inet.h>
-#include <array>
 #include <fcntl.h>
-#include <filesystem>
 #include <iostream>
 #include <netinet/tcp.h>
+#include <optional>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -242,6 +241,111 @@ bool FSManager::Connection::confirmFile() noexcept {
 //   return false;
 // }
 
+std::optional<std::string>
+FSManager::finalizeDownload(LListPtr<Request> &node,
+                            std::unique_ptr<FSManager::Connection> &client,
+                            const int sd) noexcept {
+  for (auto &req : node->_data) {
+    if (req.id == sd) {
+      req.complete = true;
+      if (!client->confirmFile())
+        return std::string("Unable to confirm file");
+
+      req.file = std::move(client->releaseFile());
+      req.hash = client->getHash();
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string>
+FSManager::commitDeleteTransaction(const LListPtr<Request> &node) noexcept {
+
+  if (const auto current = Node::getHeadFile(); !current.has_value()) {
+    return std::string("Unable to get current head file");
+  } else {
+    std::array<char, 64> arr;
+    memcpy(arr.data(), current.value().data(), 64);
+    LTree tree = LTree(arr, "/FreeSync", true);
+    for (const auto &req : node->_data)
+      if (const auto result = tree.removeFile(req.fsPath); !result.has_value())
+        return std::string("Error when adding file:" + result.error());
+
+    if (!tree.commit())
+      return std::string("Unable to commit transaction");
+  }
+  return std::nullopt;
+}
+std::optional<std::string>
+FSManager::commitAddTransaction(const LListPtr<Request> &node) noexcept {
+
+  if (const auto current = Node::getHeadFile(); !current.has_value()) {
+    return std::string("Unable to get current head file");
+  } else {
+    std::array<char, 64> arr;
+    memcpy(arr.data(), current.value().data(), 64);
+    LTree tree = LTree(arr, "/FreeSync", true);
+    for (const auto &req : node->_data) {
+      if (const auto result = tree.addCompressedFile(
+              req.file.toSpan(), req.fsPath, req.isExecutable, req.hash);
+          !result.has_value())
+        return std::string("Error when adding file:" + result.error());
+    }
+
+    if (!tree.commit())
+      return std::string("Unable to commit transaction");
+  }
+  return std::nullopt;
+}
+
+void FSManager::processTransactions() noexcept {
+  std::vector<uint64_t> completedTransactions = {};
+
+  for (const auto &node : this->_list) {
+    bool ready = true;
+    for (const auto &req : node->_data)
+      ready &= req.complete;
+
+    if (!ready)
+      break;
+
+    completedTransactions.emplace_back(this->_list.getId(node).value());
+    switch (node->_data[0].type) {
+    case Request::ADD:
+      if (const auto valOpt = this->commitAddTransaction(node);
+          valOpt.has_value())
+        std::println("Error completing add transaction:{}", valOpt.value());
+      break;
+    case Request::DELETE:
+      if (const auto valOpt = this->commitDeleteTransaction(node);
+          valOpt.has_value())
+        std::println("Error completing delete transaction:{}", valOpt.value());
+      break;
+    }
+  }
+
+  for (const auto &nodeId : completedTransactions)
+    this->_list.removeNode(nodeId);
+}
+
+std::optional<std::string>
+FSManager::setNode(std::unique_ptr<FSManager::Connection> &client,
+                   const int sd) noexcept {
+
+  if (auto nodeOpt = this->_list.getNode(client->getNode());
+      !nodeOpt.has_value())
+    return std::string("Can't find node associated with client");
+  else {
+    auto &nodeData = nodeOpt.value()->_data;
+    for (auto &req : nodeData) {
+      if (req.id == -1 && req.filePath == client->getOriginalPath()) {
+        req.id = sd;
+        return std::nullopt;
+      }
+    }
+  }
+  return std::string("Unable to acquire a request in the node");
+}
 void FSManager::run(const std::atomic_bool &running) noexcept {
   std::vector<std::unique_ptr<FSManager::Connection>> clientList;
   int clientFd = -1;
@@ -279,128 +383,55 @@ void FSManager::run(const std::atomic_bool &running) noexcept {
 
       clientList.emplace_back(
           std::make_unique<FSManager::Connection>(clientFd));
-
-      // std::cout << "new client connected\n";
-      // std::cout << "new connection, socket fd is " << clientFd
-      //           << ", ip is: " << inet_ntoa(this->_serverAddr.sin_addr)
-      //           << ", port: " << ntohs(this->_serverAddr.sin_port) << "\n";
     }
 
-    for (size_t i = 0; i < clientList.size(); i++) {
-      sd = clientList[i]->getFd();
+    for (auto it = clientList.begin(); it != clientList.end();) {
+      sd = (*it)->getFd();
       if (FD_ISSET(sd, &readfds) || FD_ISSET(sd, &writefds)) {
-        const Connection::processStatus retVal = clientList[i]->process();
+        const Connection::processStatus retVal = (*it)->process();
         switch (retVal) {
         case Connection::OK:
+          ++it;
           break;
         case Connection::NODESET:
-          if (auto nodeOpt = this->_list.getNode(clientList[i]->getNode());
-              !nodeOpt.has_value()) {
-            std::println("Can't find node associated with client");
-            if (!removeDeadConnection(clientList[i]->getNode(), sd))
+          if (const auto valOpt = setNode((*it), sd); valOpt.has_value()) {
+            std::println("{}", valOpt.value());
+            if (!removeDeadConnection((*it)->getNode(), sd))
               removeTimeoutConnections();
-            clientList.erase(clientList.cbegin() + i);
-          } else {
-            bool acquired = false;
-            auto &nodeData = nodeOpt.value()->_data;
-            for (auto &req : nodeData) {
-              if (req.id == -1 &&
-                  req.filePath == clientList[i]->getOriginalPath()) {
-                acquired = true;
-                req.id = sd;
-                break;
-              }
-            }
-            if (!acquired) {
-              if (!removeDeadConnection(clientList[i]->getNode(), sd))
-                removeTimeoutConnections();
-              clientList.erase(clientList.cbegin() + i);
-              this->_list.removeNode(
-                  this->_list.getId(nodeOpt.value()).value());
-            }
-          }
+            it = clientList.erase(it);
+          } else
+            ++it;
           break;
         case Connection::FINISHED:
-          if (auto nodeOpt = this->_list.getNode(clientList[i]->getNode());
+          if (auto nodeOpt = this->_list.getNode((*it)->getNode());
               !nodeOpt.has_value()) {
             std::println("Can't find node associated with client");
 
-            if (!removeDeadConnection(clientList[i]->getNode(), sd))
+            if (!removeDeadConnection((*it)->getNode(), sd))
               removeTimeoutConnections();
-            clientList.erase(clientList.cbegin() + i);
           } else {
             std::println("Finished downloading");
-
-            bool allDone = true;
-            bool errorFound = false;
             LListPtr<Request> node = nodeOpt.value();
-            for (auto &req : node->_data) {
-              if (req.id == sd) {
-                req.complete = true;
-                if (!clientList[i]->confirmFile()) {
-                  std::println("Unable to confirm file");
-                  errorFound = true;
-                  break;
-                }
-                req.file = std::move(clientList[i]->releaseFile());
-                req.hash = clientList[i]->getHash();
-              }
-
-              allDone &= req.complete;
+            if (const auto valOpt = this->finalizeDownload(node, (*it), sd);
+                valOpt.has_value()) {
+              std::println("{}", valOpt.value());
+              if (!removeDeadConnection((*it)->getNode(), sd))
+                removeTimeoutConnections();
             }
-
-            if (allDone && !errorFound) {
-              if (const auto current = Node::getHeadFile();
-                  !current.has_value()) {
-                std::println("Unable to get current head file");
-              } else {
-                std::array<char, 64> arr;
-                memcpy(arr.data(), current.value().data(), 64);
-                LTree tree = LTree(arr, "/FreeSync", true);
-                for (const auto &req : node->_data) {
-                  if (const auto result =
-                          tree.addCompressedFile(req.file.toSpan(), req.fsPath,
-                                                 req.isExecutable, req.hash);
-                      !result.has_value()) {
-                    std::println("Error when adding file:{}", result.error());
-                    errorFound = true;
-                    break;
-                  }
-                }
-
-                if (errorFound || !tree.commit())
-                  std::println("Unable to commit transaction");
-              }
-              this->_list.removeNode(this->_list.getId(node).value());
-            } else if (!allDone && errorFound)
-              this->_list.removeNode(this->_list.getId(node).value());
-
-            clientList.erase(clientList.cbegin() + i);
           }
+          it = clientList.erase(it);
+
           break;
         case Connection::ERR:
           std::println("There was an error when processing a client");
-          if (!removeDeadConnection(clientList[i]->getNode(), sd))
+          if (!removeDeadConnection((*it)->getNode(), sd))
             removeTimeoutConnections();
-          clientList.erase(clientList.cbegin() + i);
-
+          it = clientList.erase(it);
           break;
         }
-        // std::cout << "client disconnected\n";
-        // getpeername(sd, (struct sockaddr *)&this->_serverAddr,
-        //             (socklen_t *)&this->_serverAddr);
-        // std::cout << "host disconnected, ip: "
-        //           << inet_ntoa(this->_serverAddr.sin_addr)
-        //           << ", port: " << ntohs(this->_serverAddr.sin_port) <<
-        //           "\n";
-
-        // else {
-        //   auto &[nodePtr, file] = this->_files[i];
-        //   if (std::fwrite(message.data(), sizeof(unsigned char), valread,
-        //                   file) < valread)
-        //     std::cerr << "Error occurred\n";
-        // }
-      }
+      } else
+        ++it;
     }
+    processTransactions();
   }
 }
