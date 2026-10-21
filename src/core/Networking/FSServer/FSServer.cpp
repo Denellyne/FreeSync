@@ -357,7 +357,7 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
           if (child._entry == DIRECTORY)
             entry = "Directory - ";
           else {
-            fileSize = std::to_string(child.getFileSize()) + " - ";
+            fileSize = prettyFileSize(child.getFileSize()) + " - ";
             if (child._entry != REGULAR_FILE)
               entry = "Executable - ";
           }

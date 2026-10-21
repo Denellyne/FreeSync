@@ -4,6 +4,7 @@
 #include "../ThreadPool/ThreadPool.hpp"
 #include "FSConnection.hpp"
 #include <atomic>
+#include <math.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <print>
@@ -41,6 +42,14 @@ private:
     operator bool() const noexcept { return !this->_error; }
 
   private:
+    std::string prettyFileSize(const size_t size) const noexcept {
+      int o{};
+      double mantissa = size;
+      for (; mantissa >= 1024.; mantissa /= 1024., ++o)
+        ;
+      return std::to_string(std::ceil(mantissa * 10.) / 10.) + "BKMGTPE"[o];
+    }
+
     bool interpretCommand(const SSLString &command) noexcept;
     bool interpretCommandRSA(const SSLString &command) noexcept;
     bool changeTimeout() {
