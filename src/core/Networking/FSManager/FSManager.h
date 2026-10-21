@@ -54,8 +54,8 @@ private:
 
   void removeTimeoutConnections() noexcept {
     std::vector<uint64_t> ids;
-    for (const FSLList<Request>::LListIterator &it : this->_list) {
-      const LListPtr<Request> &node = it._ptr;
+    for (const auto &it : this->_list) {
+      const LListPtr<Request> &node = it;
       const auto currentTime =
           std::chrono::duration_cast<std::chrono::milliseconds>(
               std::chrono::system_clock::now().time_since_epoch())
