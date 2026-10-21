@@ -13,7 +13,7 @@
 class FSServer {
 public:
   FSServer() = delete;
-  FSServer(std::atomic_bool &running) noexcept;
+  explicit FSServer(std::atomic_bool &running) noexcept;
   ~FSServer() noexcept {
     std::println("Closing server...");
     if (this->_serverFD != -1)

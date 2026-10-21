@@ -9,7 +9,8 @@
 #include <sys/random.h>
 #include <thread>
 
-FSServer::FSServer(std::atomic_bool &running) noexcept : _running(running) {
+FSServer::FSServer(std::atomic_bool &running) noexcept
+    : _manager(FSManager("localhost", FSMANAGER_PORT, 128)), _running(running) {
   int opt = 1;
   struct timeval timeout;
   timeout.tv_sec = 10;
@@ -113,7 +114,7 @@ FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
     : _running(running), _manager(manager) {
   this->_fd = fd;
   this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
-  if (!this->_private) {
+  if (!this->_private || !this->_private->isOk()) {
     std::println("Unable to load private key");
     this->_error = true;
     return;
@@ -164,13 +165,6 @@ bool FSServer::Connection::interpretCommandRSA(
   const std::string_view codeView(
       (const char *)(command._data),
       (const char *)(command._data + COMMAND_LENGTH));
-  const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1 > 0
-                                      ? command._length - COMMAND_LENGTH - 1
-                                      : 0;
-  std::span<const unsigned char> dataView;
-  if (dataViewLength > 0)
-    dataView = std::span<const unsigned char>(
-        command._data + COMMAND_LENGTH + 1, dataViewLength);
 
   const FSCode code = FSStrCode(codeView);
   switch (code) {
@@ -407,22 +401,21 @@ void FSServer::Connection::run() noexcept {
 
   while (this->_running.load()) {
     if (!this->_aes) {
-      if (const auto commandOpt = readSocketRSA(this->_fd);
-          !commandOpt.has_value())
+      if (auto commandOpt = readSocketRSA(this->_fd); !commandOpt.has_value())
         return;
       else {
-        const SSLString command = commandOpt.value();
+        const SSLString command = std::move(commandOpt.value());
         if (!interpretCommandRSA(command))
           return;
       }
       // std::cout << command << '\n';
       continue;
     }
-    if (const auto commandOpt = readSocketAES(this->_fd);
+    if (StringOpt commandOpt = readSocketAES(this->_fd);
         !commandOpt.has_value())
       return;
     else {
-      const SSLString command = commandOpt.value();
+      const SSLString command = std::move(commandOpt.value());
       if (!interpretCommand(command))
         return;
     }

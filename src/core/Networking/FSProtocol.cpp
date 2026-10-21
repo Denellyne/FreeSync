@@ -28,18 +28,18 @@ bool FSProtocol::writePrimitive(const int fd, void *data,
 bool FSProtocol::writeToSocket(const int fd, const SSLString &data) noexcept {
   assert(fd >= 0 && this->_public && this->_private &&
          !this->_public->_isPrivateKey);
-  if (const auto blob = this->_public->encryptBlob(data); blob.has_value()) {
-    const SSLString str = blob.value();
+  if (auto blob = this->_public->encryptBlob(data); blob.has_value()) {
+    const SSLString str = std::move(blob.value());
 
     alignas(32) std::array<unsigned char, LENGTH_SIZE> sizeArray =
         toArray(str._length);
     std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
     packet.resize(packet.size() + str._length, 0);
     memcpy(&packet[LENGTH_SIZE], str._data, str._length);
-    const auto sigOpt = this->_private->signBlob(data);
+    auto sigOpt = this->_private->signBlob(data);
     if (!sigOpt.has_value())
       return false;
-    const SSLString sig = sigOpt.value();
+    const SSLString sig = std::move(sigOpt.value());
     const size_t packetLength = packet.size();
     packet.resize(packet.size() + sig._length, 0);
     memcpy(&packet[packetLength], sig._data, sig._length);
@@ -61,18 +61,18 @@ bool FSProtocol::writeToSocketAES(const int fd,
     std::println("No AES Key available");
     return false;
   }
-  if (const auto blob = this->_aes->encryptBlob(data); blob.has_value()) {
-    const SSLString str = blob.value();
+  if (auto blob = this->_aes->encryptBlob(data); blob.has_value()) {
+    const SSLString str = std::move(blob.value());
 
     alignas(32) std::array<unsigned char, LENGTH_SIZE> sizeArray =
         toArray(str._length);
     std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
     packet.resize(packet.size() + str._length, 0);
     memcpy(&packet[LENGTH_SIZE], str._data, str._length);
-    const auto sigOpt = this->_private->signBlob(data);
+    auto sigOpt = this->_private->signBlob(data);
     if (!sigOpt.has_value())
       return false;
-    const SSLString sig = sigOpt.value();
+    const SSLString sig = std::move(sigOpt.value());
     const size_t packetLength = packet.size();
     packet.resize(packet.size() + sig._length, 0);
     memcpy(&packet[packetLength], sig._data, sig._length);
@@ -86,7 +86,7 @@ bool FSProtocol::writeToSocketAES(const int fd,
 
   return false;
 }
-StringOpt FSProtocol::readSocketAES(const int fd) {
+StringOpt FSProtocol::readSocketAES(const int fd) noexcept {
   assert(fd >= 0);
   StringOpt strOpt = readSocket(fd);
   if (!strOpt.has_value())
@@ -99,14 +99,14 @@ StringOpt FSProtocol::readSocketAES(const int fd) {
       !sslOpt.has_value())
     return std::nullopt;
   else {
-    const SSLString ssl = sslOpt.value();
+    SSLString ssl = std::move(sslOpt.value());
     const SSLString signature = SSLString(sig);
     if (!this->_public->validateBlob(ssl, signature))
       return std::nullopt;
     return ssl;
   }
 }
-StringOpt FSProtocol::readSocketRSA(const int fd) {
+StringOpt FSProtocol::readSocketRSA(const int fd) noexcept {
   assert(fd >= 0);
   assert(this->_private->_isPrivateKey);
   StringOpt strOpt = readSocket(fd);
@@ -120,7 +120,7 @@ StringOpt FSProtocol::readSocketRSA(const int fd) {
       !sslOpt.has_value())
     return std::nullopt;
   else {
-    const SSLString ssl = sslOpt.value();
+    SSLString ssl = std::move(sslOpt.value());
     const SSLString signature = SSLString(sig);
     if (!this->_public->validateBlob(ssl, signature))
       return std::nullopt;
@@ -137,7 +137,7 @@ bool FSProtocol::readPacket(const int fd, void *data,
   do {
     const uint32_t valRead =
         read(fd, (unsigned char *)data + bytesRead, numBytes - bytesRead);
-    if (valRead > 0)
+    if (valRead > 0) [[likely]]
       bytesRead += valRead;
     else if (valRead == 0)
       return false;
@@ -150,7 +150,7 @@ bool FSProtocol::readPacket(const int fd, void *data,
   } while (numBytes > bytesRead);
   return true;
 }
-StringOpt FSProtocol::readSocket(const int fd) {
+StringOpt FSProtocol::readSocket(const int fd) noexcept {
   assert(fd >= 0);
   alignas(32) std::array<unsigned char, LENGTH_SIZE> packetSize{'0'};
 

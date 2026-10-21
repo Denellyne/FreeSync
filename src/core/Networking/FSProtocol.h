@@ -110,12 +110,13 @@ constexpr std::string FSCodeStr(const FSCode code) noexcept {
 
 struct Request {
   enum OP { ADD, DELETE } type = ADD;
-  Request(const std::string_view filePath, const std::string_view fsPath,
-          const bool isExecutable) noexcept
+  explicit Request(const std::string_view filePath,
+                   const std::string_view fsPath,
+                   const bool isExecutable) noexcept
       : type(ADD), filePath(filePath), fsPath(fsPath),
         isExecutable(isExecutable) {}
 
-  Request(const std::string_view fsPath) noexcept
+  explicit Request(const std::string_view fsPath) noexcept
       : type(DELETE), fsPath(fsPath) {
     this->complete = true;
   }
@@ -155,15 +156,15 @@ protected:
                                     const uint32_t size) noexcept;
   // virtual bool writeToSocket(std::string_view message, bool aes = true) = 0;
   // virtual StringOpt readSocket(bool aes = true) = 0;
-  [[nodiscard]] bool readPacket(const int fd, void *data,
-                                uint32_t numBytes) noexcept;
-  [[nodiscard]] StringOpt readSocket(const int fd);
-  [[nodiscard]] StringOpt readSocketRSA(const int fd);
-  [[nodiscard]] StringOpt readSocketAES(const int fd);
+  [[nodiscard]] static bool readPacket(const int fd, void *data,
+                                       uint32_t numBytes) noexcept;
+  [[nodiscard]] static StringOpt readSocket(const int fd) noexcept;
+  [[nodiscard]] StringOpt readSocketRSA(const int fd) noexcept;
+  [[nodiscard]] StringOpt readSocketAES(const int fd) noexcept;
   // constexpr void clearBuffer() { memset(this->_buffer.data(), 0,
   // BUFFER_SIZE); }
   template <ByteSpan... Args>
-  SSLString generatePacket(FSCode code, Args... arg) {
+  static SSLString generatePacket(FSCode code, Args... arg) noexcept {
     uint32_t size = COMMAND_LENGTH;
     for (const auto &vec : {arg...})
       size += vec.size();

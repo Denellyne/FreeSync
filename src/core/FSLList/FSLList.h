@@ -14,18 +14,18 @@ template <typename T> struct LListNode {
   std::vector<T> _data;
   LListPtr<T> _next = nullptr;
   mutable std::shared_mutex _mutex;
-  void removeNext() noexcept {
-    std::scoped_lock lock{this->_mutex};
-    if (!this->_next)
-      return;
-    std::scoped_lock guard{this->_next->_mutex};
-    if (LListPtr<T> tail = this->_next->_next; tail) {
-      std::scoped_lock lock{tail->_mutex};
-      this->_next.swap(tail);
-      return;
-    } else
-      this->_next.swap(tail);
-  }
+  // void removeNext() noexcept {
+  //   std::scoped_lock lock{this->_mutex};
+  //   if (!this->_next)
+  //     return;
+  //   std::scoped_lock guard{this->_next->_mutex};
+  //   if (LListPtr<T> tail = this->_next->_next; tail) {
+  //     std::scoped_lock lock{tail->_mutex};
+  //     this->_next.swap(tail);
+  //     return;
+  //   } else
+  //     this->_next.swap(tail);
+  // }
 };
 
 template <typename T> class FSLList {
@@ -66,11 +66,11 @@ public:
         if (this->_last == cur)
           this->_last = prev;
 
-        return;
+        cur = nullptr;
+      } else {
+        prev = cur;
+        cur = cur->_next;
       }
-
-      prev = cur;
-      cur = cur->_next;
     }
   }
 
@@ -91,14 +91,14 @@ public:
     return std::nullopt;
   }
 
-  std::optional<uint64_t> getId(LListPtr<T> const &node) const noexcept {
+  static std::optional<uint64_t> getId(LListPtr<T> const &node) noexcept {
     if (!node.get())
       return std::nullopt;
     return reinterpret_cast<uint64_t>(node.get());
   }
 
   struct LListIterator {
-    LListIterator(LListPtr<T> ptr) noexcept : _ptr(ptr) {}
+    explicit LListIterator(LListPtr<T> ptr) noexcept : _ptr(ptr) {}
     LListPtr<T> _ptr = nullptr;
     LListIterator &operator++() noexcept {
       if (!this->_ptr)
@@ -129,14 +129,14 @@ public:
     return LListIterator{this->_list};
   }
 
-  LListIterator end() noexcept { return LListIterator{nullptr}; }
+  static LListIterator end() noexcept { return LListIterator{nullptr}; }
 
   LListIterator cbegin() const noexcept {
     std::shared_lock listLock{this->_mutex};
     return LListIterator{this->_list};
   }
 
-  LListIterator cend() const noexcept { return LListIterator{nullptr}; }
+  static LListIterator cend() noexcept { return LListIterator{nullptr}; }
 
 private:
   LListPtr<T> getLastNode() noexcept {
@@ -156,23 +156,23 @@ private:
     // return nodeLoad;
   }
 
-  std::optional<LListPtr<T>> getPrevNode(const uint64_t id) const noexcept {
-    LListPtr<T> node = this->_list;
-    while (node) {
-      std::shared_lock lock(node->_mutex);
-      LListPtr<T> prev = node;
-      LListPtr<T> cur = node->_next;
-      if (!cur)
-        return std::nullopt;
-      else {
-        std::shared_lock lock{cur->_mutex};
-        if (getId(cur) == id)
-          return prev;
-      }
-      node = cur;
-    }
-    return std::nullopt;
-  }
+  // std::optional<LListPtr<T>> getPrevNode(const uint64_t id) const noexcept {
+  //   LListPtr<T> node = this->_list;
+  //   while (node) {
+  //     std::shared_lock lock(node->_mutex);
+  //     LListPtr<T> prev = node;
+  //     LListPtr<T> cur = node->_next;
+  //     if (!cur)
+  //       return std::nullopt;
+  //     else {
+  //       std::shared_lock lock{cur->_mutex};
+  //       if (getId(cur) == id)
+  //         return prev;
+  //     }
+  //     node = cur;
+  //   }
+  //   return std::nullopt;
+  // }
   void freeList(LListPtr<T> &node) noexcept {
     LListPtr<T> ptr = node;
     while (ptr) {

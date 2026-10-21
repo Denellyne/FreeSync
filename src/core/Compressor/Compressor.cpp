@@ -42,8 +42,10 @@ bool Compressor::compressData(std::vector<unsigned char> &vec) noexcept {
   const int flush = this->_data.empty() ? Z_FINISH : Z_NO_FLUSH;
   const int ret = zng_deflate(&_strm, flush);
 
-  if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR)
+  if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR) {
+    _strm.next_out = nullptr;
     return false;
+  }
 
   const std::size_t have = FSMANAGER_PACKET - _strm.avail_out;
   vec.insert(vec.end(), out, out + have);
@@ -51,6 +53,7 @@ bool Compressor::compressData(std::vector<unsigned char> &vec) noexcept {
   if (ret == Z_STREAM_END)
     this->_finished = true;
 
+  _strm.next_out = nullptr;
   return true;
 }
 bool compressData(std::vector<unsigned char> &data) {
@@ -184,7 +187,7 @@ DiskFile compressData(std::string_view path) noexcept {
   return out;
 }
 
-DiskFile compressData(DiskFile &file) noexcept {
+DiskFile compressData(const DiskFile &file) noexcept {
   Compressor comp(file.toSpan());
   if (!comp) {
     std::println("Unable to initialize compressor");

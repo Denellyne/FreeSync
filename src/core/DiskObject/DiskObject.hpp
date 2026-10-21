@@ -10,8 +10,9 @@ public:
   DiskObject(const DiskObject &) = delete;
   DiskObject(DiskObject &other) = delete;
   DiskObject &operator=(const DiskObject &other) = delete;
+  DiskObject &operator=(DiskObject &other) = delete;
   virtual ~DiskObject() noexcept = default;
-  operator bool() const noexcept { return !this->_error; }
+  explicit operator bool() const noexcept { return !this->_error; }
   std::span<unsigned char> toSpan() const noexcept {
     if (!this->_buf) {
       const_cast<DiskObject *>(this)->_buf = (unsigned char *)::mmap(

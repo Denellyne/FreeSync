@@ -33,7 +33,7 @@ FSClient::FSManagerSocket::FSManagerSocket(const std::string &file,
     exit(EXIT_FAILURE);
   }
   this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
-  if (!this->_private) {
+  if (!this->_private || !this->_private->isOk()) {
     std::println("Unable to load private key");
     exit(EXIT_FAILURE);
   }
@@ -57,7 +57,7 @@ bool FSClient::FSManagerSocket::validationStep() noexcept {
     return false;
   }
   this->_public = std::make_unique<RSAKey>(key);
-  if (!this->_public) {
+  if (!this->_public || !this->_public->isOk()) {
     std::println("Unable to load public key");
     return false;
   }
@@ -98,7 +98,7 @@ bool FSClient::FSManagerSocket::validationStep() noexcept {
 }
 bool FSClient::FSManagerSocket::switchAES() noexcept {
   this->_aes = std::make_unique<AESKey>();
-  if (!this->_aes) {
+  if (!this->_aes || !this->_aes->isOk()) {
     std::println("Unable to generate AES key");
     return false;
   }
@@ -134,7 +134,7 @@ FSClient::FSClient() noexcept {
     exit(EXIT_FAILURE);
   }
   this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
-  if (!this->_private) {
+  if (!this->_private || !this->_private->isOk()) {
     std::println("Unable to load private key");
     exit(EXIT_FAILURE);
   }
@@ -159,7 +159,7 @@ bool FSClient::validationStep() noexcept {
     return false;
   }
   this->_public = std::make_unique<RSAKey>(key);
-  if (!this->_public) {
+  if (!this->_public || !this->_public->isOk()) {
     std::println("Unable to load public key");
     return false;
   }
@@ -199,7 +199,7 @@ bool FSClient::validationStep() noexcept {
 }
 bool FSClient::switchAES() noexcept {
   this->_aes = std::make_unique<AESKey>();
-  if (!this->_aes) {
+  if (!this->_aes || !this->_aes->isOk()) {
     std::println("Unable to generate AES key");
     return false;
   }
@@ -288,7 +288,7 @@ FSClient::validateCommand(const SSLString &command) noexcept {
           "Every file should have a corresponding server path");
 
     auto pairView = split | std::views::adjacent<2> | std::views::stride(2);
-
+#pragma GCC ivdep
     for (const auto &[file, path] : pairView) {
       if (!std::filesystem::exists(file))
         return std::unexpected("File doesn't exist:" + file);
@@ -344,10 +344,15 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
           std::println("Unable to read from server");
           return false;
         } else {
-          SSLString ssl = sslOpt.value();
+          SSLString ssl = std::move(sslOpt.value());
           const std::span<const unsigned char> view{ssl._data, ssl._length};
-          if (view.size() >= 3 && FSStrCode(std::string_view(
-                                      (char *)view.data(), 3)) == FSCode::OK) {
+          if (view.size() < 3) {
+            std::println("Buffer is too small, an error occured");
+            continue;
+          }
+
+          if (FSStrCode(std::string_view((char *)view.data(), 3)) ==
+              FSCode::OK) {
             if (StringOpt msgOpt = readSocketAES(this->_fd);
                 !msgOpt.has_value()) {
               std::println("Unable to get the server hash, closing connection");
@@ -355,7 +360,7 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
             } else {
               if (!file)
                 return false;
-              const SSLString msg = msgOpt.value();
+              const SSLString msg = std::move(msgOpt.value());
               file = decompressData(file.toSpan());
               if (!file) {
                 std::println("Unable to decompress file");
@@ -381,15 +386,12 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
             }
             std::println("Finished receiving file");
             return true;
-          } else if (view.size() >= 3 &&
-                     FSStrCode(std::string_view((char *)view.data(), 3)) ==
-                         FSCode::ERR) {
-            std::println(
-                "Error from server:{}",
-                std::string_view((char *)view.data() + 3, view.size() - 3));
+          } else if (FSStrCode(std::string_view((char *)view.data(), 3)) ==
+                     FSCode::ERR) {
+            const std::string err = std::string(view.begin() + 3, view.end());
+            std::println("Error from server:{}", err);
             return false;
-          } else if (view.size() >= 3 &&
-                     FSStrCode(std::string_view((char *)view.data(), 3)) ==
+          } else if (FSStrCode(std::string_view((char *)view.data(), 3)) ==
                          FSCode::DATA &&
                      file && !file.write(view.subspan(3))) {
             std::println("Unable to write to temporary file");
@@ -411,6 +413,7 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
         std::ranges::to<std::vector<std::string>>() | std::views::adjacent<2> |
         std::views::stride(2);
     std::string raw = "";
+#pragma GCC ivdep
     for (const auto &[file, fsPath] : split) {
       char isExecutable = '0';
       if (const fs::perms permissions = fs::status(file).permissions();
@@ -430,7 +433,7 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
       std::println("Unable to get the server answer, closing connection");
       return false;
     } else {
-      const SSLString msg = msgOpt.value();
+      const SSLString msg = std::move(msgOpt.value());
       if (const FSCode answer =
               FSStrCode(std::string_view((char *)msg._data, COMMAND_LENGTH));
           answer != OK) {
@@ -450,6 +453,7 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
           return false;
         } else {
           const uint64_t nodeId = idOpt.value();
+#pragma GCC ivdep
           for (const auto &[file, fsPath] : split) {
             this->_pool.enqueue(
                 std::bind(&FSClient::sendFile, this, file, fsPath,
@@ -539,7 +543,7 @@ void FSClient::FSManagerSocket::run() noexcept {
       std::println("Unable to get the server answer, closing connection");
       return;
     } else {
-      const SSLString msg = msgOpt.value();
+      const SSLString msg = std::move(msgOpt.value());
       if (const FSCode answer =
               FSStrCode(std::string_view((char *)msg._data, msg._length));
           answer != OK) {

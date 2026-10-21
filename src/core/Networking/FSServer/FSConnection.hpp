@@ -59,7 +59,7 @@ protected:
         return false;
       }
       this->_public = std::make_unique<RSAKey>(key);
-      if (!this->_public) {
+      if (!this->_public || !this->_public->isOk()) {
         std::println("Unable to load public key");
         return false;
       }
@@ -67,7 +67,7 @@ protected:
       return true;
     }
   }
-  bool checkIfAuthorized(const std::span<unsigned char> key) const noexcept {
+  static bool checkIfAuthorized(const std::span<unsigned char> key) noexcept {
     if (key.size() > 512)
       return false;
 

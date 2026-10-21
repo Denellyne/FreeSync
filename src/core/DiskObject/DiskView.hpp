@@ -4,10 +4,10 @@
 
 class DiskView : public DiskObject {
 public:
-  DiskView() noexcept { this->_error = true; }
+  explicit DiskView() noexcept { this->_error = true; }
   virtual ~DiskView() noexcept override {}
 
-  DiskView(std::string_view filePath) noexcept {
+  explicit DiskView(std::string_view filePath) noexcept {
     if (!std::filesystem::exists(filePath)) {
       this->_error = true;
       return;
@@ -35,5 +35,4 @@ public:
       return;
     }
   }
-  std::string_view getFilePath() const noexcept { return this->_path; }
 };

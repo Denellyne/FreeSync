@@ -9,8 +9,10 @@
 #include <unistd.h>
 class FSManager {
 public:
-  FSManager(const std::string_view ip = "localhost",
-            const int port = FSMANAGER_PORT, const int backlog = 128) noexcept;
+  FSManager() = delete;
+  explicit FSManager(const std::string_view ip = "localhost",
+                     const int port = FSMANAGER_PORT,
+                     const int backlog = 128) noexcept;
   void run(const std::atomic_bool &running) noexcept;
   uint64_t addNewNode(std::vector<Request> &&requests) noexcept {
     return this->_list.addNode(std::move(requests));
@@ -21,14 +23,11 @@ public:
     if (!nodeOpt.has_value())
       return false;
     auto node = nodeOpt.value();
-    bool remove = false;
-    for (const auto &request : node->_data) {
-      if (request.complete == false && (request.id == id || request.id == -1)) {
-        remove = true;
-        break;
-      }
-    }
-    if (remove)
+
+    if (std::any_of(node->_data.cbegin(), node->_data.cend(),
+                    [id](const Request &req) {
+                      return !req.complete && (req.id == id || req.id == -1);
+                    }))
       this->_list.removeNode(connection);
     return true;
   }
@@ -36,16 +35,15 @@ public:
 
 private:
   class Connection;
-  std::optional<std::string>
-  finalizeDownload(LListPtr<Request> &node,
-                   std::unique_ptr<FSManager::Connection> &client,
-                   const int sd) noexcept;
+  std::optional<std::string> static finalizeDownload(
+      const LListPtr<Request> &node,
+      std::unique_ptr<FSManager::Connection> &client, const int sd) noexcept;
 
-  std::optional<std::string>
-  commitAddTransaction(const LListPtr<Request> &node) noexcept;
+  std::optional<std::string> static commitAddTransaction(
+      const LListPtr<Request> &node) noexcept;
 
-  std::optional<std::string>
-  commitDeleteTransaction(const LListPtr<Request> &node) noexcept;
+  std::optional<std::string> static commitDeleteTransaction(
+      const LListPtr<Request> &node) noexcept;
   std::optional<std::string>
   setNode(std::unique_ptr<FSManager::Connection> &client,
           const int sd) noexcept;
@@ -60,14 +58,16 @@ private:
           std::chrono::duration_cast<std::chrono::milliseconds>(
               std::chrono::system_clock::now().time_since_epoch())
               .count();
-      for (const auto &req : node->_data) {
-        if (!req.complete && req.id == -1 &&
-            req.timestamp + std::chrono::milliseconds(30000).count() >
-                currentTime) {
-          ids.emplace_back(this->_list.getId(node).value());
-          break;
-        }
-      }
+
+      if (std::any_of(
+              node->_data.cbegin(), node->_data.cend(),
+              [&currentTime](const Request &req) {
+                return !req.complete && req.id == -1 &&
+                       req.timestamp +
+                               std::chrono::milliseconds(30000).count() >
+                           currentTime;
+              }))
+        ids.emplace_back(this->_list.getId(node).value());
     }
     for (const auto &id : ids)
       this->_list.removeNode(id);
@@ -75,10 +75,10 @@ private:
   class Connection final : public FSConnection {
   public:
     Connection() = delete;
-    Connection(const int fd) noexcept {
+    explicit Connection(const int fd) noexcept {
       this->_fd = fd;
       this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
-      if (!this->_private) {
+      if (!this->_private || !this->_private->isOk()) {
         std::println("Unable to load private key");
         this->_fd = -1;
       }

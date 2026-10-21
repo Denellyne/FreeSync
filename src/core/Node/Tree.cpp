@@ -20,6 +20,7 @@ Tree::Tree(const std::string_view folder, bool root) : _root(root) {
     return;
   }
   this->_filePath = path;
+#pragma GCC ivdep
   for (const auto &p : fs::directory_iterator(path)) {
     if (const auto &str = p.path().string();
         str.contains(".freesync") || str.contains(".git"))
@@ -54,7 +55,7 @@ std::unique_ptr<Node> Tree::newNode(const std::string_view filePath) noexcept {
   if (!fs::exists(filePath)) [[unlikely]] {
     std::string err = "Passed file doesn't exist ";
     err += filePath;
-    err += '\n';
+    std::println("{}", err);
     return nullptr;
   }
   if (fs::is_directory(filePath))
@@ -66,6 +67,7 @@ std::unique_ptr<Node> Tree::newNode(const std::string_view filePath) noexcept {
 void Tree::hashTree() noexcept {
   this->_hash.reserve(this->_children.size() * 64);
   std::sort(this->_children.begin(), this->_children.end());
+#pragma GCC ivdep
   for (const auto &child : this->_children)
     this->_hash += child->getHash();
   this->_hash = Node::hash(this->_hash);
@@ -98,6 +100,7 @@ bool Tree::writeBlob() noexcept {
     return false;
   }
 
+#pragma GCC ivdep
   for (const auto &children : this->_children) {
     const fs::path &p = children->getFilePath();
     std::string entry = "";

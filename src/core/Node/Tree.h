@@ -4,8 +4,8 @@
 
 class Tree : public Node {
 public:
-  Tree(const std::string_view folder, bool root = false);
-  Tree(const std::array<char, 64> &hash, bool root = false);
+  explicit Tree(const std::string_view folder, bool root = false);
+  explicit Tree(const std::array<char, 64> &hash, bool root = false);
   [[nodiscard]] bool writeMerkleTree();
 
   constexpr const std::string_view getHash() const noexcept override {

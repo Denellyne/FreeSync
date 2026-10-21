@@ -12,7 +12,8 @@
 
 class Compressor {
 public:
-  Compressor(std::span<unsigned char> data) noexcept : _data(data) {
+  Compressor() = delete;
+  explicit Compressor(std::span<unsigned char> data) noexcept : _data(data) {
 
     _strm.zalloc = Z_NULL;
     _strm.zfree = Z_NULL;
@@ -41,7 +42,8 @@ private:
 };
 class Decompressor {
 public:
-  Decompressor(const std::string_view filePath) noexcept
+  Decompressor() = delete;
+  explicit Decompressor(const std::string_view filePath) noexcept
       : _file(DiskFile(filePath)) {
     this->_data = this->_file.toSpan();
 
@@ -61,7 +63,7 @@ private:
   bool _error = false;
 };
 DiskFile compressData(std::string_view path) noexcept;
-DiskFile compressData(DiskFile &file) noexcept;
+DiskFile compressData(const DiskFile &file) noexcept;
 DiskFile compressData(std::span<unsigned char> data) noexcept;
 DiskFile decompressData(std::span<unsigned char> data) noexcept;
 

@@ -11,15 +11,16 @@
                                                   DiskFile &&diffs);
 class Leaf : public Node {
 public:
-  Leaf(const std::string_view filePath) noexcept;
-  Leaf(const std::string_view filePath, std::span<unsigned char> data,
-       const bool isExecutable) noexcept;
-  Leaf(const std::string_view filePath, std::span<unsigned char> data,
-       const bool isExecutable, const std::string_view hash) noexcept;
-  Leaf(const std::string_view filePath, std::span<unsigned char> data,
-       const std::string_view parentHash, const bool isExecutable) noexcept;
-  Leaf(const std::string_view filePath, const std::string_view hash,
-       const bool isExecutable) noexcept
+  explicit Leaf(const std::string_view filePath) noexcept;
+  explicit Leaf(const std::string_view filePath, std::span<unsigned char> data,
+                const bool isExecutable) noexcept;
+  explicit Leaf(const std::string_view filePath, std::span<unsigned char> data,
+                const bool isExecutable, const std::string_view hash) noexcept;
+  explicit Leaf(const std::string_view filePath, std::span<unsigned char> data,
+                const std::string_view parentHash,
+                const bool isExecutable) noexcept;
+  explicit Leaf(const std::string_view filePath, const std::string_view hash,
+                const bool isExecutable) noexcept
       : _isExecutable(isExecutable) {
     this->_hash = hash;
     this->_filePath = filePath;
@@ -53,8 +54,9 @@ public:
   std::expected<DiskFile, std::string> getFinalDecompressFile() noexcept;
   std::expected<std::vector<unsigned char>, std::string>
   getFinalDecompressBlob() noexcept;
-  [[nodiscard]] bool writeFile(const std::string_view path,
-                               const std::span<unsigned char> data) noexcept;
+  [[nodiscard]] static bool
+  writeFile(const std::string_view path,
+            const std::span<unsigned char> data) noexcept;
 
   static std::span<unsigned char>
   readBlobData(std::span<unsigned char> data) noexcept;

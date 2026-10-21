@@ -64,8 +64,8 @@ typedef std::shared_ptr<RSAKey> RSASPtr;
 
 struct SSLString {
   SSLString() = delete;
-  SSLString(unsigned char *data, const size_t length,
-            const bool isSSLAllocated = true) noexcept
+  explicit SSLString(const unsigned char *data, const size_t length,
+                     const bool isSSLAllocated = true) noexcept
       : _length(length) {
     if (isSSLAllocated)
       this->_data = data;
@@ -100,7 +100,8 @@ struct SSLString {
     }
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
-  SSLString(const std::vector<unsigned char> &v) noexcept : _length(v.size()) {
+  explicit SSLString(const std::vector<unsigned char> &v) noexcept
+      : _length(v.size()) {
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
         !this->_data) {
       std::cerr << "Unable to allocate memory for cipherText blob\n";
@@ -108,7 +109,8 @@ struct SSLString {
     }
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
-  SSLString(const std::span<unsigned char> v) noexcept : _length(v.size()) {
+  explicit SSLString(const std::span<unsigned char> v) noexcept
+      : _length(v.size()) {
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
         !this->_data) {
       std::cerr << "Unable to allocate memory for cipherText blob\n";
@@ -117,15 +119,16 @@ struct SSLString {
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
 
-  SSLString(const SSLString &other) noexcept : _length(other._length) {
-    if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
-        !this->_data) {
-      std::cerr << "Unable to allocate memory for cipherText blob\n";
-      ERR_print_errors_fp(stderr);
-    }
-    memcpy(const_cast<unsigned char *>(this->_data), other._data,
-           this->_length);
-  }
+  // explicit SSLString(const SSLString &other) noexcept :
+  // _length(other._length) {
+  //   if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
+  //       !this->_data) {
+  //     std::cerr << "Unable to allocate memory for cipherText blob\n";
+  //     ERR_print_errors_fp(stderr);
+  //   }
+  //   memcpy(const_cast<unsigned char *>(this->_data), other._data,
+  //          this->_length);
+  // }
   ~SSLString() noexcept {
     if (this->_data)
       OPENSSL_free(const_cast<unsigned char *>(this->_data));
@@ -168,29 +171,31 @@ public:
   encryptBlob(const SSLString &data) noexcept = 0;
   // virtual std::optional<SSLString> decryptBlob(std::string &data) = 0;
   virtual std::optional<SSLString> decryptBlob(SSLString &data) noexcept = 0;
+
+  explicit operator bool() const noexcept { return !this->_error; }
+  bool isOk() const noexcept { return !this->_error; };
+
+protected:
+  bool _error = false;
 };
 
 class AESKey final : public CypherKey {
 public:
-  AESKey() noexcept {
-    if (RAND_bytes(this->_key.data(), 32) < 1) {
+  explicit AESKey() noexcept {
+    if (RAND_bytes(this->_key.data(), 32) < 1) [[unlikely]] {
       std::cerr << "Unable to generate random AES Key\n";
       ERR_print_errors_fp(stderr);
       memset(this->_key.data(), 0, 32);
+      this->_error = true;
     }
   }
-  AESKey(const std::span<unsigned char, 32> bytes) noexcept {
+  explicit AESKey(const std::span<unsigned char, 32> bytes) noexcept {
     memcpy(this->_key.data(), bytes.data(), 32);
   }
-  AESKey(const unsigned char *bytes) noexcept {
+  explicit AESKey(const unsigned char *bytes) noexcept {
     memcpy(this->_key.data(), bytes, 32);
   }
   ~AESKey() noexcept override = default;
-  operator bool() const noexcept {
-    alignas(32) std::array<unsigned char, 32> invalid;
-    std::ranges::fill(invalid, 0);
-    return memcmp(invalid.data(), this->_key.data(), 32);
-  }
 
   std::optional<SSLString> encryptBlob(const SSLString &data) noexcept override;
   // std::optional<SSLString> encryptBlob(const std::string &data) override;
@@ -202,12 +207,14 @@ private:
   AESCtxPtr loadDecryptCtx(AESIV &iv) noexcept;
   AESCtxPtr loadEncryptCtx(AESIV &iv) noexcept;
   alignas(32) AESKeyBuf _key;
-  std::optional<AESIV> getIV() noexcept;
+  static std::optional<AESIV> getIV() noexcept;
 };
 
 class RSAKey final : public CypherKey {
 public:
-  RSAKey(const std::span<unsigned char> key, bool isPrivateKey = false) noexcept
+  RSAKey() = delete;
+  explicit RSAKey(const std::span<unsigned char> key,
+                  bool isPrivateKey = false) noexcept
       : _isPrivateKey(isPrivateKey) {
     if (this->_isPrivateKey) {
       if (auto keyOpt = loadPrivateKey(key); !keyOpt) [[unlikely]]
@@ -221,7 +228,8 @@ public:
         this->_key.swap(keyOpt);
     }
   }
-  RSAKey(const std::string_view path, bool isPrivateKey = false) noexcept
+  explicit RSAKey(const std::string_view path,
+                  bool isPrivateKey = false) noexcept
       : _isPrivateKey(isPrivateKey) {
     if (this->_isPrivateKey) {
       if (auto keyOpt = loadPrivateKey(path); !keyOpt) [[unlikely]]
@@ -252,7 +260,6 @@ public:
   std::optional<SSLString> decryptBlob(SSLString &data) noexcept override;
   std::optional<SSLString> signBlob(const SSLString &data) noexcept;
   bool validateBlob(const SSLString &raw, const SSLString &sig) noexcept;
-  operator bool() const noexcept { return !this->_error; }
 
   // std::optional<SSLString> decryptBlob(std::string &data) override;
 
@@ -261,5 +268,4 @@ private:
 
 public:
   bool _isPrivateKey = false;
-  bool _error = false;
 };

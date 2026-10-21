@@ -18,7 +18,7 @@ typedef std::function<void()> Job;
 class ThreadPool {
 public:
   ThreadPool() = delete;
-  ThreadPool(const size_t threadCount = 1) noexcept {
+  explicit ThreadPool(const size_t threadCount = 1) noexcept {
     std::println("Starting ThreadPool with {} threads", threadCount);
     this->_workers.reserve(threadCount);
     for (size_t i = 0; i < threadCount; i++) {

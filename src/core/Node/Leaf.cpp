@@ -16,19 +16,18 @@ Leaf::Leaf(const std::string_view filePath) noexcept {
   if (!fs::exists(filePath)) [[unlikely]] {
     std::string err = "Passed file doesn't exist ";
     err += filePath;
-    err += '\n';
-    {
-      this->_error = true;
-      return;
-    }
+    std::println("{}", err);
+
+    this->_error = true;
+    return;
+
   } else if (!fs::is_regular_file(filePath)) [[unlikely]] {
     std::string err = "Passed path isn't a file ";
     err += filePath;
-    err += '\n';
-    {
-      this->_error = true;
-      return;
-    }
+    std::println("{}", err);
+
+    this->_error = true;
+    return;
   }
   this->_filePath = filePath;
   if (const fs::perms permissions = fs::status(this->_filePath).permissions();
@@ -191,6 +190,7 @@ Leaf::getBlob() noexcept {
 }
 
 std::expected<DiskFile, std::string> Leaf::getFinalDecompressFile() noexcept {
+  std::expected<DiskFile, std::string> result;
   DiskView file(this->_objPath.string());
   if (!file)
     return std::unexpected("Invalid file");
@@ -206,7 +206,8 @@ std::expected<DiskFile, std::string> Leaf::getFinalDecompressFile() noexcept {
     DiskFile decompressedRes = decompressData(res);
     if (!decompressedRes)
       return std::unexpected("Unable to decompress blob");
-    return decompressedRes;
+    result.emplace(std::move(decompressedRes));
+    return result;
   }
   if (length - 5 < 64)
     return std::unexpected(
@@ -220,12 +221,12 @@ std::expected<DiskFile, std::string> Leaf::getFinalDecompressFile() noexcept {
     DiskFile decompressedRes = decompressData(res);
     if (!decompressedRes)
       return std::unexpected("Unable to decompress diff blob");
-    DiskFile final = std::move(dataOpt.value());
-    final = applyDiffsUncompressedFile(std::move(final),
-                                       std::move(decompressedRes));
+    DiskFile final = applyDiffsUncompressedFile(std::move(dataOpt.value()),
+                                                std::move(decompressedRes));
     if (!final)
       return std::unexpected("Unable to apply diffs");
-    return final;
+    result.emplace(std::move(final));
+    return result;
   }
 }
 std::expected<std::vector<unsigned char>, std::string>
@@ -274,6 +275,7 @@ bool applyDiffsUncompressed(std::vector<unsigned char> &old,
     return true;
   const std::vector<unsigned char> original = std::move(old);
   old.clear();
+
   for (size_t idx = 0; idx < diffs.size();) {
     if (diffs[idx] == 'C') {
       idx++;
@@ -374,7 +376,7 @@ std::span<unsigned char>
 Leaf::readBlobData(std::span<unsigned char> data) noexcept {
 
   std::string size = "";
-  int pos = 0;
+  size_t pos = 0;
   for (const char c : data) {
     if (c == '\0')
       break;

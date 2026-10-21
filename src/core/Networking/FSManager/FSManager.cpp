@@ -73,7 +73,7 @@ FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
       std::println("Unable to read AES key");
       return ERR;
     }
-    SSLString command = opt.value();
+    SSLString command = std::move(opt.value());
     if (command._length < AES_KEY_BYTES + COMMAND_LENGTH) {
       std::println("Command doesn't have the appropriate length");
       return ERR;
@@ -85,9 +85,8 @@ FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
                                         ? command._length - COMMAND_LENGTH
                                         : 0;
     std::vector<unsigned char> dataView(dataViewLength);
-    if (dataViewLength > 0)
-      memcpy(dataView.data(), command._data + COMMAND_LENGTH,
-             command._length - COMMAND_LENGTH);
+    memcpy(dataView.data(), command._data + COMMAND_LENGTH,
+           command._length - COMMAND_LENGTH);
     if (const FSCode code = FSStrCode(codeView); code != AESK) {
       std::println("Command isn't AESK");
       return ERR;
@@ -108,7 +107,7 @@ FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
       std::println("Unable to read what node is the client writing to");
       return ERR;
     } else {
-      SSLString ssl = sslOpt.value();
+      SSLString ssl = std::move(sslOpt.value());
       if (auto packetsOpt = ptrToNumber(ssl); !packetsOpt.has_value()) {
         std::println("Packet sent by client isn't a valid node id");
         return ERR;
@@ -122,7 +121,7 @@ FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
       std::println("Unable to read from client");
       return ERR;
     } else {
-      SSLString ssl = sslOpt.value();
+      SSLString ssl = std::move(sslOpt.value());
       const std::span<const unsigned char> view{ssl._data, ssl._length};
       if (view.size() >= 3 &&
           FSStrCode(std::string_view((char *)view.data(), 3)) == FSCode::OK)
@@ -147,7 +146,7 @@ bool FSManager::Connection::confirmFile() noexcept {
     sendErrorMessage("Unable to get the client hash, closing connection");
     return false;
   } else {
-    const SSLString msg = msgOpt.value();
+    const SSLString msg = std::move(msgOpt.value());
     if (msg._length != this->_hash.size()) {
       std::println("Message has different length than our hash");
       sendErrorMessage("Message has different length than our hash");
@@ -245,9 +244,10 @@ bool FSManager::Connection::confirmFile() noexcept {
 // }
 
 std::optional<std::string>
-FSManager::finalizeDownload(LListPtr<Request> &node,
+FSManager::finalizeDownload(const LListPtr<Request> &node,
                             std::unique_ptr<FSManager::Connection> &client,
                             const int sd) noexcept {
+#pragma GCC ivdep
   for (auto &req : node->_data) {
     if (req.id == sd) {
       req.complete = true;
@@ -270,6 +270,7 @@ FSManager::commitDeleteTransaction(const LListPtr<Request> &node) noexcept {
     std::array<char, 64> arr;
     memcpy(arr.data(), current.value().data(), 64);
     LTree tree = LTree(arr, "/FreeSync", true);
+#pragma GCC ivdep
     for (const auto &req : node->_data)
       if (const auto result = tree.removeFile(req.fsPath); !result.has_value())
         return std::string("Error when adding file:" + result.error());
@@ -288,6 +289,7 @@ FSManager::commitAddTransaction(const LListPtr<Request> &node) noexcept {
     std::array<char, 64> arr;
     memcpy(arr.data(), current.value().data(), 64);
     LTree tree = LTree(arr, "/FreeSync", true);
+#pragma GCC ivdep
     for (const auto &req : node->_data) {
       if (const auto result = tree.addCompressedFile(
               req.file.toSpan(), req.fsPath, req.isExecutable, req.hash);
@@ -304,8 +306,10 @@ FSManager::commitAddTransaction(const LListPtr<Request> &node) noexcept {
 void FSManager::processTransactions() noexcept {
   std::vector<uint64_t> completedTransactions = {};
 
+#pragma GCC ivdep
   for (const auto &node : this->_list) {
     bool ready = true;
+#pragma GCC ivdep
     for (const auto &req : node->_data)
       ready &= req.complete;
 
@@ -327,6 +331,7 @@ void FSManager::processTransactions() noexcept {
     }
   }
 
+#pragma GCC ivdep
   for (const auto &nodeId : completedTransactions)
     this->_list.removeNode(nodeId);
 }
@@ -340,11 +345,13 @@ FSManager::setNode(std::unique_ptr<FSManager::Connection> &client,
     return std::string("Can't find node associated with client");
   else {
     auto &nodeData = nodeOpt.value()->_data;
-    for (auto &req : nodeData) {
-      if (req.id == -1 && req.filePath == client->getOriginalPath()) {
-        req.id = sd;
-        return std::nullopt;
-      }
+    auto it = std::find_if(
+        nodeData.begin(), nodeData.end(), [&client](Request const &req) {
+          return req.id == -1 && req.filePath == client->getOriginalPath();
+        });
+    if (it != nodeData.end()) {
+      (*it).id = sd;
+      return std::nullopt;
     }
   }
   return std::string("Unable to acquire a request in the node");
@@ -362,6 +369,7 @@ void FSManager::run(const std::atomic_bool &running) noexcept {
     FD_SET(this->_serverFD, &readfds);
     FD_SET(this->_serverFD, &writefds);
     int maxfd = this->_serverFD;
+#pragma GCC ivdep
     for (const auto &client : clientList) {
       FD_SET(client->getFd(), &readfds);
       FD_SET(client->getFd(), &writefds);
@@ -388,6 +396,7 @@ void FSManager::run(const std::atomic_bool &running) noexcept {
           std::make_unique<FSManager::Connection>(clientFd));
     }
 
+#pragma GCC ivdep
     for (auto it = clientList.begin(); it != clientList.end();) {
       sd = (*it)->getFd();
       if (FD_ISSET(sd, &readfds) || FD_ISSET(sd, &writefds)) {

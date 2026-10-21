@@ -22,6 +22,7 @@ std::string Node::hash(const std::span<unsigned char> data) noexcept {
   EVP_MD_CTX_free(mdctx);
   std::ostringstream ss;
   ss << std::hex << std::setfill('0');
+#pragma GCC ivdep
   for (size_t i = 0; i < 32; ++i)
     ss << std::setw(2) << static_cast<unsigned>(hash[i]);
 
@@ -41,6 +42,7 @@ std::string Node::hash(const std::vector<unsigned char> &data) noexcept {
   EVP_MD_CTX_free(mdctx);
   std::ostringstream ss;
   ss << std::hex << std::setfill('0');
+#pragma GCC ivdep
   for (size_t i = 0; i < 32; ++i)
     ss << std::setw(2) << static_cast<unsigned>(hash[i]);
 
@@ -60,6 +62,7 @@ std::string Node::hash(const std::string_view data) noexcept {
   EVP_MD_CTX_free(mdctx);
   std::ostringstream ss;
   ss << std::hex << std::setfill('0');
+#pragma GCC ivdep
   for (size_t i = 0; i < 32; ++i)
     ss << std::setw(2) << static_cast<unsigned>(hash[i]);
 

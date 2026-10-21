@@ -2,11 +2,10 @@
 #include "DiskObject.hpp"
 #include <cassert>
 #include <filesystem>
-#include <print>
 #include <unistd.h>
 class DiskFile : public DiskObject {
 public:
-  DiskFile(const bool error = false) noexcept {
+  explicit DiskFile(const bool error = false) noexcept {
     this->_error = error;
     if (this->_error)
       return;
@@ -37,7 +36,8 @@ public:
     std::swap(this->_path, other._path);
     std::swap(this->_error, other._error);
   }
-  DiskFile(std::string_view filePath, const bool newFile = false) noexcept
+  explicit DiskFile(std::string_view filePath,
+                    const bool newFile = false) noexcept
       : _newFile(newFile) {
     if (!std::filesystem::exists(filePath) && !this->_newFile) {
       this->_error = true;
