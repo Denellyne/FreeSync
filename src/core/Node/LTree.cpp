@@ -172,6 +172,46 @@ bool LTree::writeTree() noexcept {
   return true;
 }
 
+std::expected<DiskFile, std::string>
+LTree::getChildFile(const std::filesystem::path &filePath) const noexcept {
+
+  constexpr auto isSubPath = [](const fs::path &path, const fs::path &base) {
+    const auto mismatchPair =
+        std::mismatch(path.begin(), path.end(), base.begin(), base.end());
+    return mismatchPair.second == base.end();
+  };
+
+  if (filePath.parent_path() == this->_filePath) {
+    const std::string fileName = filePath.filename();
+    for (auto it = this->_children.begin(); it != this->_children.end(); it++)
+      if ((*it)._fileName == fileName) {
+        Leaf l(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
+        if (auto finalOpt = l.getFinalDecompressFile(); !finalOpt.has_value())
+          return std::unexpected(finalOpt.error());
+        else
+          return std::move(finalOpt.value());
+      }
+
+  } else if (isSubPath(filePath, this->_filePath)) {
+    for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
+      if ((*it)._entry == DIRECTORY) {
+        const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
+        if (isSubPath(filePath, p)) {
+          std::string obj = OBJFOLDER;
+
+          obj.append((*it)._hash, 0, 2);
+          obj += '/';
+          obj.append((*it)._hash, 2, 62);
+          if (auto tree = getTreeFromBlob(obj, p); tree.has_value())
+            return tree->getChildFile(filePath);
+          else
+            return std::unexpected(tree.error());
+        }
+      }
+    }
+  }
+  return std::unexpected("Unable to find file");
+}
 std::expected<std::vector<unsigned char>, std::string>
 LTree::getChild(const std::filesystem::path &filePath) const noexcept {
 

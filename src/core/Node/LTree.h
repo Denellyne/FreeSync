@@ -1,4 +1,5 @@
 #pragma once
+#include "../DiskObject/DiskFile.hpp"
 #include "Node.h"
 #include <expected>
 class LTree : public Node {
@@ -65,11 +66,16 @@ public:
 
   std::expected<std::vector<unsigned char>, std::string>
   getChild(const std::filesystem::path &filePath) const noexcept;
+
+  std::expected<DiskFile, std::string>
+  getChildFile(const std::filesystem::path &filePath) const noexcept;
+
   std::expected<std::vector<Commit>, std::string> getAllCommits() noexcept;
   const std::vector<LNode> &getChildren() const noexcept {
     return this->_children;
   }
   std::optional<LTree> getChildTree(std::string_view path) const noexcept;
+
   std::string getBlobSize() noexcept;
   bool commit() noexcept { return this->writeMerkleTree(); }
 

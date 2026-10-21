@@ -190,6 +190,44 @@ Leaf::getBlob() noexcept {
   return res;
 }
 
+std::expected<DiskFile, std::string> Leaf::getFinalDecompressFile() noexcept {
+  DiskView file(this->_objPath.string());
+  if (!file)
+    return std::unexpected("Invalid file");
+  std::span<unsigned char> data = file.toSpan();
+
+  int length = data.size();
+  if (length < 6)
+    return std::unexpected("Invalid file contents");
+  char type[5]{'\0'};
+  memcpy(type, data.data(), 4);
+  if (!strcmp(type, "blob")) {
+    std::span<unsigned char> res = Leaf::readBlobData(data.subspan(5));
+    DiskFile decompressedRes = decompressData(res);
+    if (!decompressedRes)
+      return std::unexpected("Unable to decompress blob");
+    return decompressedRes;
+  }
+  if (length - 5 < 64)
+    return std::unexpected(
+        "Invalid file contents, couldn't read leaf parent hash");
+
+  Leaf parent = this->getParentLeaf(data.subspan(5));
+  if (auto dataOpt = parent.getFinalDecompressFile(); !dataOpt.has_value())
+    return std::unexpected(dataOpt.error());
+  else {
+    std::span<unsigned char> res = Leaf::readBlobData(data.subspan(5 + 64));
+    DiskFile decompressedRes = decompressData(res);
+    if (!decompressedRes)
+      return std::unexpected("Unable to decompress diff blob");
+    DiskFile final = std::move(dataOpt.value());
+    final = applyDiffsUncompressedFile(std::move(final),
+                                       std::move(decompressedRes));
+    if (!final)
+      return std::unexpected("Unable to apply diffs");
+    return final;
+  }
+}
 std::expected<std::vector<unsigned char>, std::string>
 Leaf::getFinalDecompressBlob() noexcept {
   DiskView file(this->_objPath.string());
@@ -352,4 +390,53 @@ Leaf::readBlobData(std::span<unsigned char> data) noexcept {
 Leaf Leaf::getParentLeaf(const std::span<unsigned char> data) noexcept {
   const std::string_view parentHash = std::string_view((char *)data.data(), 64);
   return Leaf(this->getFilePath().string(), parentHash, this->_isExecutable);
+}
+
+DiskFile applyDiffsUncompressedFile(DiskFile &&old, DiskFile &&diffs) {
+
+  const std::span<const unsigned char> diffsSpan = diffs.toSpan();
+  const std::span<const unsigned char> originalSpan = old.toSpan();
+  if (diffsSpan.empty())
+    return old;
+
+  DiskFile final;
+  if (!final)
+    return DiskFile(true);
+
+  for (size_t idx = 0; idx < diffsSpan.size();) {
+    if (diffsSpan[idx] == 'C') {
+      idx++;
+      alignas(32) std::array<unsigned char, 32> beg, end;
+      strncpy((char *)beg.data(), (char *)&diffsSpan[idx], 32);
+      idx += 32;
+      strncpy((char *)end.data(), (char *)&diffsSpan[idx], 32);
+      idx += 32;
+      if (const auto begIdxOpt = toNumber(beg); !begIdxOpt.has_value())
+        return DiskFile(true);
+      else if (const auto endIdxOpt = toNumber(end); !endIdxOpt.has_value())
+        return DiskFile(true);
+      else {
+        const uint32_t begIdx = begIdxOpt.value();
+        const uint32_t endIdx = endIdxOpt.value();
+        if (!final.write(originalSpan.subspan(begIdx, 1 + endIdx - begIdx)))
+          return DiskFile(true);
+      }
+    } else if (diffsSpan[idx] == 'I') {
+      idx++;
+      alignas(32) std::array<unsigned char, 32> size;
+      strncpy((char *)size.data(), (char *)&diffsSpan[idx], 32);
+      idx += 32;
+      if (const auto lengthOpt = toNumber(size); !lengthOpt.has_value())
+        return DiskFile(true);
+      else {
+        const uint32_t length = lengthOpt.value();
+        if (!final.write(diffsSpan.subspan(idx, 1 + length - idx)))
+          return DiskFile(true);
+
+        idx += length;
+      }
+    } else
+      return DiskFile(true);
+  }
+  return final;
 }

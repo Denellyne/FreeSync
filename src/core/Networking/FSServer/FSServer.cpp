@@ -1,4 +1,5 @@
 #include "FSServer.h"
+#include "../../Compressor/Compressor.h"
 #include "../../Node/LTree.h"
 #include <cstring>
 #include <fcntl.h>
@@ -247,14 +248,43 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
       alignas(32) std::array<char, 64> arr;
       memcpy(arr.data(), current.value().data(), 64);
       LTree tree = LTree(arr, "/FreeSync", true);
-      if (auto treeOpt =
-              tree.getChild(std::string{dataView.cbegin(), dataView.cend()});
-          !treeOpt.has_value())
-        return sendErrorMessage(treeOpt.error());
+      if (auto fileOpt = tree.getChildFile(
+              std::string{dataView.cbegin(), dataView.cend()});
+          !fileOpt.has_value())
+        return sendErrorMessage(fileOpt.error());
       else {
-        std::vector<unsigned char> data = treeOpt.value();
-        return sendReply(std::string{data.begin(), data.end()} + ' ' +
-                         std::to_string(data.size()));
+        std::println("Sending {}",
+                     std::string{dataView.cbegin(), dataView.cend()});
+        DiskFile file = std::move(fileOpt.value());
+        const std::string hash = Node::hash(file.toSpan());
+        Compressor comp(file.toSpan());
+
+        while (!comp._finished) {
+          const std::string dataHeader = FSCodeStr(DATA);
+          std::vector<unsigned char> buf;
+          if (!comp.compressData(buf))
+            return sendErrorMessage("Unable to compress chunk");
+          buf.insert(buf.begin(), dataHeader.begin(), dataHeader.end());
+
+          if (const SSLString msg = SSLString(buf);
+              !this->writeToSocketAES(this->_fd, msg)) {
+            std::println("Failed to send a packet to the client");
+            return false;
+          }
+        }
+
+        if (const SSLString msg = SSLString(FSCodeStr(OK));
+            !this->writeToSocketAES(this->_fd, msg)) {
+          std::println("Failed to send a packet to the client");
+          return false;
+        }
+        std::println("Finished sending file");
+
+        if (const SSLString hashMsg = SSLString(hash);
+            !this->writeToSocketAES(this->_fd, hashMsg)) {
+          std::println("Unable to send hash to client");
+          return false;
+        }
       }
     }
   } break;
@@ -345,10 +375,15 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
     return false;
     break;
 
-  default:
   case ERR:
     std::println("Error received");
     return false;
+    break;
+  case DATA:
+    std::println("Shouldn't be receiving a data packet");
+    return false;
+  case AUTH:
+  case AES:
     break;
   }
   return true;

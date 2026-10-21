@@ -1,4 +1,5 @@
 #pragma once
+#include "../DiskObject/DiskFile.hpp"
 #include "Node.h"
 #include <expected>
 #include <vector>
@@ -6,6 +7,8 @@
 [[nodiscard]] bool applyDiffsUncompressed(std::vector<unsigned char> &old,
                                           const std::span<unsigned char> diffs);
 
+[[nodiscard]] DiskFile applyDiffsUncompressedFile(DiskFile &&file,
+                                                  DiskFile &&diffs);
 class Leaf : public Node {
 public:
   Leaf(const std::string_view filePath) noexcept;
@@ -47,6 +50,7 @@ public:
            const bool isCompressed = false) noexcept;
 
   std::expected<std::vector<unsigned char>, std::string> getBlob() noexcept;
+  std::expected<DiskFile, std::string> getFinalDecompressFile() noexcept;
   std::expected<std::vector<unsigned char>, std::string>
   getFinalDecompressBlob() noexcept;
   [[nodiscard]] bool writeFile(const std::string_view path,

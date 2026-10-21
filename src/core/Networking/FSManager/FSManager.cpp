@@ -124,10 +124,13 @@ FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
     } else {
       SSLString ssl = sslOpt.value();
       const std::span<const unsigned char> view{ssl._data, ssl._length};
-      if (FSStrCode(std::string_view((char *)view.data(), 3)) == FSCode::OK)
+      if (view.size() >= 3 &&
+          FSStrCode(std::string_view((char *)view.data(), 3)) == FSCode::OK)
         return FINISHED;
 
-      if (!this->_file.write(view)) {
+      if (view.size() >= 3 &&
+          FSStrCode(std::string_view((char *)view.data(), 3)) == FSCode::DATA &&
+          !this->_file.write(view.subspan(3))) {
         std::println("Unable to write to temporary file");
         return ERR;
       }

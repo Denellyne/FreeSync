@@ -25,6 +25,7 @@ enum FSCode {
   LIST = 201, // Start of list of current directory
   AESK = 202, // Gives the AES-256 key to the other User
   INV = 203,  // Invalidates the aes encryption
+  DATA = 204, // The packet is a data packet and not a command
   AUTH = 300, // Asks for Public Key of Client
   RETR = 301, // Asks to download file in current directory, RETR file.txt
   STRU = 302, // Asks to store file in current directory, STRU file.txt
@@ -60,6 +61,8 @@ constexpr std::string FSPrint(const FSCode code) noexcept {
     return "ATTR";
   else if (code == AES)
     return "AES";
+  else if (code == DATA)
+    return "DATA";
   // else if (code == PUBK)
   //   return "PUBK";
 
@@ -81,6 +84,8 @@ constexpr FSCode FSStrCode(const std::string_view command) noexcept {
     return AESK;
   else if (code == "203")
     return INV;
+  else if (code == "204")
+    return DATA;
   else if (code == "300")
     return AUTH;
   else if (code == "301")
