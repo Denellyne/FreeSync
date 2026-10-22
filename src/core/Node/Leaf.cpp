@@ -170,7 +170,7 @@ Leaf::getBlob() noexcept {
     return std::unexpected("Invalid file");
 
   file.seekg(0, file.end);
-  int length = file.tellg();
+  size_t length = file.tellg();
   if (length < 6)
     return std::unexpected("Invalid file contents");
   file.seekg(5, file.beg);
@@ -192,11 +192,11 @@ Leaf::getBlob() noexcept {
 std::expected<DiskFile, std::string> Leaf::getFinalDecompressFile() noexcept {
   std::expected<DiskFile, std::string> result;
   DiskView file(this->_objPath.string());
+  std::span<unsigned char> data = file.toSpan();
   if (!file)
     return std::unexpected("Invalid file");
-  std::span<unsigned char> data = file.toSpan();
 
-  int length = data.size();
+  size_t length = data.size();
   if (length < 6)
     return std::unexpected("Invalid file contents");
   char type[5]{'\0'};
@@ -236,7 +236,7 @@ Leaf::getFinalDecompressBlob() noexcept {
     return std::unexpected("Invalid file");
   std::span<unsigned char> data = file.toSpan();
 
-  int length = data.size();
+  size_t length = data.size();
   if (length < 6)
     return std::unexpected("Invalid file contents");
   char type[5]{'\0'};
@@ -384,7 +384,7 @@ Leaf::readBlobData(std::span<unsigned char> data) noexcept {
     pos++;
   }
   assert(!size.empty());
-  const uint32_t length = std::stoul(size);
+  const size_t length = std::stoull(size);
 
   return data.subspan(pos + 1, length);
 }

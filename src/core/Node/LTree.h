@@ -9,7 +9,7 @@ private:
     std::string _entry;
     std::string _fileName;
     std::string _hash;
-    unsigned getFileSize() const noexcept;
+    size_t getFileSize() const noexcept;
   };
 
 public:

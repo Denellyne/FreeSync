@@ -185,15 +185,13 @@ LTree::getChildFile(const std::filesystem::path &filePath) const noexcept {
 
   if (filePath.parent_path() == this->_filePath) {
     const std::string fileName = filePath.filename();
-#pragma GCC ivdep
-    for (auto it = this->_children.begin(); it != this->_children.end(); it++)
-      if ((*it)._fileName == fileName) {
-        Leaf l(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
-        if (auto finalOpt = l.getFinalDecompressFile(); !finalOpt.has_value())
-          return std::unexpected(finalOpt.error());
-        else
-          return finalOpt;
-      }
+    auto it = std::find_if(
+        this->_children.begin(), this->_children.end(),
+        [&fileName](auto &child) { return child._fileName == fileName; });
+    if (it != this->_children.end()) {
+      Leaf l(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
+      return l.getFinalDecompressFile();
+    }
 
   } else if (isSubPath(filePath, this->_filePath)) {
 #pragma GCC ivdep
@@ -331,6 +329,7 @@ std::expected<std::string, std::string> LTree::addCompressedFile(
         if (!leaf)
           return std::unexpected("Unable to find leaf");
 
+#warning "THIS IS BAD BECAUSE OF BIG FILES"
         if (const auto dataOpt = leaf.diffFile(data, true);
             !dataOpt.has_value())
           return std::unexpected(dataOpt.error());
@@ -558,9 +557,9 @@ LTree::getAllCommits() noexcept {
   return commits;
 }
 std::optional<LTree> LTree::getChildTree(std::string_view path) const noexcept {
-  if (!path.starts_with(' '))
+  if (path.starts_with(' '))
     path.remove_prefix(1);
-  if (!path.starts_with('/'))
+  if (path.starts_with('/'))
     path.remove_prefix(1);
   if (path.empty()) {
     std::println("Path is empty");
@@ -593,7 +592,7 @@ std::optional<LTree> LTree::getChildTree(std::string_view path) const noexcept {
 
   return std::nullopt;
 }
-unsigned LTree::LNode::getFileSize() const noexcept {
+size_t LTree::LNode::getFileSize() const noexcept {
   assert(!this->_hash.empty());
   if (this->_entry == DIRECTORY)
     return 0;

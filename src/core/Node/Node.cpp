@@ -79,7 +79,7 @@ std::optional<std::string> Node::getHeadFile() noexcept {
     return std::nullopt;
 
   file.seekg(0, file.end);
-  const int length = file.tellg();
+  const size_t length = file.tellg();
   data.resize(length);
   file.seekg(0, file.beg);
 

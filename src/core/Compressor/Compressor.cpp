@@ -9,7 +9,7 @@
 //   std::string tmp = "";
 //   tmp.resize(compressBound(data.size()));
 //
-//   uLongf size = tmp.size();
+//   size_t size = tmp.size();
 //
 //   int res = compress2(reinterpret_cast<unsigned char *>(&tmp[0]), &size,
 //                       reinterpret_cast<unsigned char *>(&data[0]),
@@ -62,7 +62,7 @@ bool compressData(std::vector<unsigned char> &data) {
 
   std::vector<unsigned char> tmp(zng_compressBound(data.size()));
 
-  uLongf size = tmp.size();
+  size_t size = tmp.size();
 
   int res = zng_compress2(tmp.data(), &size, data.data(), data.size(),
                           COMPRESSION_LEVEL);
