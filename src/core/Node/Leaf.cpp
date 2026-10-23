@@ -128,11 +128,11 @@ bool Leaf::writeFile(const std::string_view path,
     return false;
   }
   if (!file.write(data)) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to write to temporary leaf blob");
     return false;
   }
   if (!file.moveFile(p)) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to move temporary leaf blob");
     return false;
   }
   return true;
@@ -148,27 +148,27 @@ bool Leaf::writeDiffBlob(const std::span<unsigned char> data,
     return false;
   }
   if (!file.write("diff ")) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to write to temporary leaf blob");
     return false;
   }
   if (!file.write(parentHash)) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to write to temporary leaf blob");
     return false;
   }
   if (!file.write(std::to_string(data.size()))) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to write to temporary leaf blob");
     return false;
   }
-  if (!file.write("\0")) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+  if (!file.write('\0')) [[unlikely]] {
+    std::println("Unable to write to temporary leaf blob");
     return false;
   }
   if (!file.write(data)) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to write to temporary leaf blob");
     return false;
   }
   if (!file.moveFile(path)) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to move temporary leaf blob");
     return false;
   }
   return true;
@@ -183,23 +183,23 @@ bool Leaf::writeBlob(const std::span<unsigned char> data) noexcept {
     return false;
   }
   if (!file.write("blob ")) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to write to temporary leaf blob");
     return false;
   }
   if (!file.write(std::to_string(data.size()))) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to write to temporary leaf blob");
     return false;
   }
-  if (!file.write("\0")) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+  if (!file.write('\0')) [[unlikely]] {
+    std::println("Unable to write to temporary leaf blob");
     return false;
   }
   if (!file.write(data)) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to write to temporary leaf blob");
     return false;
   }
   if (!file.moveFile(path)) [[unlikely]] {
-    std::println("Unable to move temporary tree blob");
+    std::println("Unable to move temporary leaf blob");
     return false;
   }
 

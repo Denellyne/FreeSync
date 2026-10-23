@@ -2,6 +2,7 @@
 #include "DiskObject.hpp"
 #include <cassert>
 #include <filesystem>
+#include <print>
 #include <unistd.h>
 class DiskFile : public DiskObject {
 public:
@@ -91,6 +92,25 @@ public:
       unlink(this->_path.c_str());
   }
 
+  [[nodiscard]] bool put(const unsigned char data) noexcept {
+    assert(this->_fd >= 0);
+    size_t bytesWritten = 0;
+    while (bytesWritten < 1) {
+      const ssize_t wrote = ::write(this->_fd, &data, 1);
+      if (wrote < 0) [[unlikely]] {
+        if (errno == EINTR)
+          continue;
+        return false;
+      }
+
+      bytesWritten += wrote;
+      this->_length += wrote;
+      this->_sync += wrote;
+    }
+    if (this->_sync > (1024 * 1024 * 512))
+      this->sync();
+    return true;
+  }
   [[nodiscard]] bool write(const std::string_view data) noexcept {
     assert(this->_fd >= 0);
     std::size_t bytesWritten = 0;
@@ -137,6 +157,7 @@ public:
     std::filesystem::rename(this->_path, newPath, ec);
 
     if (!(ec.value() == 0)) [[unlikely]] {
+      std::println("Unable to move file to new path: {}", ec.message());
       this->_error = true;
       return false;
     }
