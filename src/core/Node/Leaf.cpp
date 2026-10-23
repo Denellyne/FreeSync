@@ -219,11 +219,15 @@ Leaf::getBlob() noexcept {
   contents = contents.subspan(5);
   std::string size = "";
   char c = contents.front();
-  contents = contents.subspan(1);
+  if (contents.size() > 1) [[likely]]
+    contents = contents.subspan(1);
   while (c != '\0') {
     size += c;
     c = contents.front();
-    contents = contents.subspan(1);
+    if (contents.size() > 1) [[likely]]
+      contents = contents.subspan(1);
+    else
+      return std::unexpected("Blob doens't contain it's own size");
   }
   assert(!size.empty());
   length = std::stoul(size);

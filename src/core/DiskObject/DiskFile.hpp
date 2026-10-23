@@ -154,7 +154,9 @@ public:
   [[nodiscard]] bool moveFile(const std::filesystem::path &newPath) noexcept {
     std::error_code ec;
     std::filesystem::create_directories(newPath.parent_path());
+    sync();
     std::filesystem::rename(this->_path, newPath, ec);
+    sync();
 
     if (!(ec.value() == 0)) [[unlikely]] {
       std::println("Unable to move file to new path: {}", ec.message());
@@ -162,7 +164,6 @@ public:
       return false;
     }
 
-    sync();
     this->_newFile = true;
     this->_path = newPath;
     return true;

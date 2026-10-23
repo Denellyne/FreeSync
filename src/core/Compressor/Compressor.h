@@ -8,7 +8,7 @@
 #include <sys/mman.h>
 #include <vector>
 #include <zlib-ng.h>
-#define COMPRESSION_LEVEL Z_BEST_COMPRESSION
+#define COMPRESSION_LEVEL Z_DEFAULT_COMPRESSION
 
 class Compressor {
 public:
