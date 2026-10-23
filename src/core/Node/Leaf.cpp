@@ -159,7 +159,7 @@ bool Leaf::writeDiffBlob(const std::span<unsigned char> data,
     std::println("Unable to write to temporary leaf blob");
     return false;
   }
-  if (!file.write('\0')) [[unlikely]] {
+  if (!file.put('\0')) [[unlikely]] {
     std::println("Unable to write to temporary leaf blob");
     return false;
   }
@@ -190,7 +190,7 @@ bool Leaf::writeBlob(const std::span<unsigned char> data) noexcept {
     std::println("Unable to write to temporary leaf blob");
     return false;
   }
-  if (!file.write('\0')) [[unlikely]] {
+  if (!file.put('\0')) [[unlikely]] {
     std::println("Unable to write to temporary leaf blob");
     return false;
   }
