@@ -46,3 +46,4 @@ int main(void) {
 }
 
 #endif
+// do huffman exchange for aes keys

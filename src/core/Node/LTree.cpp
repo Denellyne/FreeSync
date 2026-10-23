@@ -5,7 +5,6 @@
 #include <cassert>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <optional>
 #include <print>
@@ -79,7 +78,6 @@ void LTree::hashTree() noexcept {
   std::sort(this->_children.begin(), this->_children.end());
   this->_hash.clear();
   this->_hash.reserve(this->_children.size() * 64);
-#pragma GCC ivdep
   for (const auto &child : this->_children)
     this->_hash += child._hash;
   this->_hash = Node::hash(this->_hash);
@@ -95,11 +93,6 @@ void LTree::hashTree() noexcept {
 bool LTree::writeBlob() noexcept {
   fs::path path = this->_objPath;
   fs::create_directories(path.parent_path());
-  std::ofstream file(path, std::fstream::binary);
-  if (!file) {
-    std::cerr << "Unable to open file to path of tree object\n";
-    return false;
-  }
   std::string data = "";
   if (this->_root) {
     if (const auto str = Node::getHeadFile(); !str.has_value()) {
@@ -109,26 +102,43 @@ bool LTree::writeBlob() noexcept {
       data = "PARENT:" + str.value() + '\n';
   }
 
-#pragma GCC ivdep
   for (const auto &children : this->_children)
     data += children._entry + ' ' + children._fileName + '\0' + children._hash;
 
-  DiskFile dFile = compressData(
+  DiskFile file = compressData(
       std::span<unsigned char>((unsigned char *)data.data(), data.length()));
-  if (!dFile)
+  if (!file) [[unlikely]] {
+    std::println("Unable to compress tree blob");
     return false;
-  file.write((char *)dFile.toSpan().data(), dFile.toSpan().size());
+  }
+  if (!file.moveFile(path)) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
 
   return true;
 }
 
 bool LTree::writeHeadFile() noexcept {
-  std::ofstream file(HEADFILE, std::fstream::binary | std::fstream::trunc);
-  if (!file) {
-    std::cerr << "Unable to open head file\n";
+  assert(this->_hash.length() == 64);
+  DiskFile newHead("/var/tmp/FS_TMP_HEAD", true);
+  if (!newHead) [[unlikely]] {
+    std::println("Unable to create temporary head file");
     return false;
   }
-  file.write(this->_hash.c_str(), 64);
+
+  if (const std::span<const unsigned char> data =
+          std::span<const unsigned char>(
+              (const unsigned char *)this->_hash.data(), 64);
+      !newHead.write(data)) [[unlikely]] {
+    std::println("Unable to write new hash to temporary file");
+    return false;
+  }
+  if (!newHead.moveFile(HEADFILE)) [[unlikely]] {
+    std::println("Unable to replace existing head file");
+    return false;
+  }
+
   return true;
 }
 bool LTree::writeMerkleTree() noexcept {
@@ -139,40 +149,40 @@ bool LTree::writeMerkleTree() noexcept {
 
   return this->writeHeadFile();
 }
-bool LTree::writeTree() noexcept {
-
-  std::cout << "\nTree: " << this->_filePath << '\n';
-  for (const auto &child : this->_children) {
-    std::cout << "Child: " << child._fileName << ' ';
-    const std::string filePath =
-        this->_filePath.string() + '/' + child._fileName;
-    if (child._entry == DIRECTORY) {
-      std::string obj = OBJFOLDER;
-      obj.append(child._hash, 0, 2);
-      obj += '/';
-      obj.append(child._hash, 2, 62);
-      if (auto tree = getTreeFromBlob(obj, filePath); tree.has_value()) {
-        if (!tree.value().writeTree())
-          return false;
-      } else
-        return false;
-    } else {
-      bool isExecutable = false;
-      if (child._entry == EXECUTABLE_FILE)
-        isExecutable = true;
-      Leaf leaf = Leaf(filePath, child._hash, isExecutable);
-      if (auto data = leaf.getBlob(); data.has_value()) {
-        Decompressor decomp(leaf.getFilePath().string());
-        if (!leaf.writeFile(leaf.getFilePath().string(), decomp.getData()))
-          return false;
-      } else
-        return false;
-    }
-  }
-  std::cout << '\n';
-
-  return true;
-}
+// bool LTree::writeTree() noexcept {
+//
+//   std::cout << "\nTree: " << this->_filePath << '\n';
+//   for (const auto &child : this->_children) {
+//     std::cout << "Child: " << child._fileName << ' ';
+//     const std::string filePath =
+//         this->_filePath.string() + '/' + child._fileName;
+//     if (child._entry == DIRECTORY) {
+//       std::string obj = OBJFOLDER;
+//       obj.append(child._hash, 0, 2);
+//       obj += '/';
+//       obj.append(child._hash, 2, 62);
+//       if (auto tree = getTreeFromBlob(obj, filePath); tree.has_value()) {
+//         if (!tree.value().writeTree())
+//           return false;
+//       } else
+//         return false;
+//     } else {
+//       bool isExecutable = false;
+//       if (child._entry == EXECUTABLE_FILE)
+//         isExecutable = true;
+//       Leaf leaf = Leaf(filePath, child._hash, isExecutable);
+//       if (auto data = leaf.getBlob(); data.has_value()) {
+//         Decompressor decomp(leaf.getFilePath().string());
+//         if (!leaf.writeFile(leaf.getFilePath().string(), decomp.getData()))
+//           return false;
+//       } else
+//         return false;
+//     }
+//   }
+//   std::cout << '\n';
+//
+//   return true;
+// }
 
 std::expected<DiskFile, std::string>
 LTree::getChildFile(const std::filesystem::path &filePath) const noexcept {
@@ -194,7 +204,6 @@ LTree::getChildFile(const std::filesystem::path &filePath) const noexcept {
     }
 
   } else if (isSubPath(filePath, this->_filePath)) {
-#pragma GCC ivdep
     for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
       if ((*it)._entry == DIRECTORY) {
         const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
@@ -234,7 +243,6 @@ LTree::getChild(const std::filesystem::path &filePath) const noexcept {
     }
 
   } else if (isSubPath(filePath, this->_filePath)) {
-#pragma GCC ivdep
     for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
       if ((*it)._entry == DIRECTORY) {
         const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
@@ -274,7 +282,6 @@ LTree::removeFile(const std::filesystem::path &filePath) noexcept {
       this->_children.erase(it);
 
   } else if (isSubPath(filePath, this->_filePath)) {
-#pragma GCC ivdep
     for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
       if ((*it)._entry == DIRECTORY) {
         const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
@@ -319,7 +326,6 @@ std::expected<std::string, std::string> LTree::addCompressedFile(
   if (filePath.parent_path() == this->_filePath) {
     const std::string fileName = filePath.filename();
     bool newFile = true;
-#pragma GCC ivdep
     for (auto it = this->_children.begin(); it != this->_children.end(); it++)
       if ((*it)._fileName == fileName) {
         if (it->_hash == hash)
@@ -364,7 +370,6 @@ std::expected<std::string, std::string> LTree::addCompressedFile(
 
   } else if (isSubPath(filePath, this->_filePath)) {
     bool newDirectory = true;
-#pragma GCC ivdep
     for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
       if ((*it)._entry == DIRECTORY) {
         const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
@@ -428,7 +433,6 @@ LTree::addFile(const std::span<unsigned char> data,
   if (filePath.parent_path() == this->_filePath) {
     const std::string fileName = filePath.filename();
     bool newFile = true;
-#pragma GCC ivdep
     for (auto it = this->_children.begin(); it != this->_children.end(); it++)
       if ((*it)._fileName == fileName) {
         newFile = false;
@@ -470,7 +474,6 @@ LTree::addFile(const std::span<unsigned char> data,
 
   } else if (isSubPath(filePath, this->_filePath)) {
     bool newDirectory = true;
-#pragma GCC ivdep
     for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
       if ((*it)._entry == DIRECTORY) {
         const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
@@ -542,9 +545,9 @@ LTree::getAllCommits() noexcept {
     const std::string_view dataStr =
         std::string_view(reinterpret_cast<char *>(data.data()), data.size());
 
-    if (dataStr.contains("NOPARENT"))
+    if (dataStr.starts_with("NOPARENT"))
       break;
-    else if (dataStr.contains("PARENT:")) {
+    else if (dataStr.starts_with("PARENT:")) {
       const std::string hash = std::string(dataStr.substr(7, 64));
       obj.append(hash, 0, 2);
       obj += '/';
@@ -580,7 +583,6 @@ std::optional<LTree> LTree::getChildTree(std::string_view path) const noexcept {
   }
 
   const std::string_view folder = path.substr(0, path.find('/'));
-#pragma GCC ivdep
   for (const auto &child : this->_children)
     if (child._entry == DIRECTORY && child._fileName == folder) {
       memcpy(hash.data(), child._hash.data(), 64);

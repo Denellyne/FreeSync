@@ -4,7 +4,6 @@
 #include "Node.h"
 #include <cassert>
 #include <filesystem>
-#include <fstream>
 #include <print>
 
 Tree::Tree(const std::string_view folder, bool root) : _root(root) {
@@ -20,10 +19,9 @@ Tree::Tree(const std::string_view folder, bool root) : _root(root) {
     return;
   }
   this->_filePath = path;
-#pragma GCC ivdep
   for (const auto &p : fs::directory_iterator(path)) {
     if (const auto &str = p.path().string();
-        str.contains(".freesync") || str.contains(".git"))
+        str.starts_with(".freesync") || str.starts_with(".git"))
       continue;
 
     this->_children.emplace_back(Tree::newNode(p.path().c_str()));
@@ -67,7 +65,6 @@ std::unique_ptr<Node> Tree::newNode(const std::string_view filePath) noexcept {
 void Tree::hashTree() noexcept {
   this->_hash.reserve(this->_children.size() * 64);
   std::sort(this->_children.begin(), this->_children.end());
-#pragma GCC ivdep
   for (const auto &child : this->_children)
     this->_hash += child->getHash();
   this->_hash = Node::hash(this->_hash);
@@ -94,13 +91,7 @@ bool Tree::writeBlob() noexcept {
 
   fs::path path = this->_objPath;
   fs::create_directories(path.parent_path());
-  std::ofstream file(path, std::fstream::binary);
-  if (!file) {
-    std::println("Unable to open file to path of tree object");
-    return false;
-  }
 
-#pragma GCC ivdep
   for (const auto &children : this->_children) {
     const fs::path &p = children->getFilePath();
     std::string entry = "";
@@ -122,23 +113,41 @@ bool Tree::writeBlob() noexcept {
             children->getHash().data();
   }
 
-  DiskFile dFile = compressData(
+  DiskFile file = compressData(
       std::span<unsigned char>((unsigned char *)data.data(), data.length()));
-  if (!dFile)
+
+  if (!file) [[unlikely]] {
+    std::println("Unable to compress data of tree blob");
     return false;
-  file.write((char *)dFile.toSpan().data(), dFile.toSpan().size());
-  file.flush();
+  }
+  if (!file.moveFile(path)) [[unlikely]] {
+    std::println("Unable to move tree blob");
+    return false;
+  }
 
   return true;
 }
 
 bool Tree::writeHeadFile() noexcept {
-  std::ofstream file(HEADFILE, std::fstream::binary | std::fstream::trunc);
-  if (!file) {
-    std::println("Unable to open head file");
+  assert(this->_hash.length() == 64);
+  DiskFile newHead("/var/tmp/FS_TMP_HEAD", true);
+  if (!newHead) [[unlikely]] {
+    std::println("Unable to create temporary head file");
     return false;
   }
-  file.write(this->_hash.c_str(), 64);
+
+  if (const std::span<const unsigned char> data =
+          std::span<const unsigned char>(
+              (const unsigned char *)this->_hash.data(), 64);
+      !newHead.write(data)) [[unlikely]] {
+    std::println("Unable to write new hash to temporary file");
+    return false;
+  }
+  if (!newHead.moveFile(HEADFILE)) [[unlikely]] {
+    std::println("Unable to replace existing head file");
+    return false;
+  }
+
   return true;
 }
 bool Tree::writeMerkleTree() {

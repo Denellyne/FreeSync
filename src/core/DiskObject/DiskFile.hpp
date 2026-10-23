@@ -91,13 +91,13 @@ public:
       unlink(this->_path.c_str());
   }
 
-  [[nodiscard]] bool write(const std::span<const unsigned char> data) noexcept {
+  [[nodiscard]] bool write(const std::string_view data) noexcept {
     assert(this->_fd >= 0);
     std::size_t bytesWritten = 0;
     while (bytesWritten < data.size()) {
       const ssize_t wrote =
           ::write(this->_fd, &data[bytesWritten], data.size() - bytesWritten);
-      if (wrote < 0) {
+      if (wrote < 0) [[unlikely]] {
         if (errno == EINTR)
           continue;
         return false;
@@ -111,11 +111,46 @@ public:
       this->sync();
     return true;
   }
+  [[nodiscard]] bool write(const std::span<const unsigned char> data) noexcept {
+    assert(this->_fd >= 0);
+    std::size_t bytesWritten = 0;
+    while (bytesWritten < data.size()) {
+      const ssize_t wrote =
+          ::write(this->_fd, &data[bytesWritten], data.size() - bytesWritten);
+      if (wrote < 0) [[unlikely]] {
+        if (errno == EINTR)
+          continue;
+        return false;
+      }
+
+      bytesWritten += wrote;
+      this->_length += wrote;
+      this->_sync += wrote;
+    }
+    if (this->_sync > (1024 * 1024 * 512))
+      this->sync();
+    return true;
+  }
+  [[nodiscard]] bool moveFile(const std::filesystem::path &newPath) noexcept {
+    std::error_code ec;
+    std::filesystem::create_directories(newPath.parent_path());
+    std::filesystem::rename(this->_path, newPath, ec);
+
+    if (!(ec.value() == 0)) [[unlikely]] {
+      this->_error = true;
+      return false;
+    }
+
+    sync();
+    this->_newFile = true;
+    this->_path = newPath;
+    return true;
+  }
 
 private:
   void sync() noexcept {
     this->_sync = 0;
-    ::syncfs(this->_fd);
+    ::fsync(this->_fd);
   }
   uint32_t _sync = 0;
   bool _newFile = false;

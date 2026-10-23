@@ -6,7 +6,6 @@
 #include <cassert>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <print>
 #include <string>
 #include <zlib-ng.h>
@@ -122,70 +121,116 @@ bool Leaf::writeFile(const std::string_view path,
 
   fs::path p = path;
   fs::create_directories(p.parent_path());
-  std::ofstream file(p, std::fstream::binary);
-  if (!file)
-    return false;
 
-  file.write(reinterpret_cast<const char *>(data.data()), data.size());
-  file.flush();
+  DiskFile file;
+  if (!file) [[unlikely]] {
+    std::println("Unable to create temporary file");
+    return false;
+  }
+  if (!file.write(data)) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+  if (!file.moveFile(p)) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
   return true;
 }
 bool Leaf::writeDiffBlob(const std::span<unsigned char> data,
                          const std::string_view parentHash) noexcept {
   fs::path path = this->_objPath;
   fs::create_directories(path.parent_path());
-  std::ofstream file(path, std::fstream::binary);
-  if (!file)
-    return false;
 
-  file.write("diff ", 5);
-  file.write(parentHash.data(), 64);
-  const std::string stringSize = std::to_string(data.size());
-  file.write(stringSize.c_str(), stringSize.length());
-  file.put('\0');
-  file.write(reinterpret_cast<const char *>(data.data()), data.size());
-  file.flush();
+  DiskFile file;
+  if (!file) [[unlikely]] {
+    std::println("Unable to create temporary file");
+    return false;
+  }
+  if (!file.write("diff ")) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+  if (!file.write(parentHash)) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+  if (!file.write(std::to_string(data.size()))) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+  if (!file.write("\0")) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+  if (!file.write(data)) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+  if (!file.moveFile(path)) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
   return true;
 }
 bool Leaf::writeBlob(const std::span<unsigned char> data) noexcept {
   fs::path path = this->_objPath;
   fs::create_directories(path.parent_path());
-  std::ofstream file(path, std::fstream::binary);
-  if (!file)
-    return false;
 
-  file.write("blob ", 5);
-  const std::string stringSize = std::to_string(data.size());
-  file.write(stringSize.c_str(), stringSize.length());
-  file.put('\0');
-  file.write(reinterpret_cast<const char *>(data.data()), data.size());
-  file.flush();
+  DiskFile file;
+  if (!file) [[unlikely]] {
+    std::println("Unable to create temporary file");
+    return false;
+  }
+  if (!file.write("blob ")) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+  if (!file.write(std::to_string(data.size()))) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+  if (!file.write("\0")) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+  if (!file.write(data)) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+  if (!file.moveFile(path)) [[unlikely]] {
+    std::println("Unable to move temporary tree blob");
+    return false;
+  }
+
   return true;
 }
 std::expected<std::vector<unsigned char>, std::string>
 Leaf::getBlob() noexcept {
   std::vector<unsigned char> res;
-  std::ifstream file(this->_objPath, std::fstream::binary);
+  DiskView file(this->_objPath.c_str());
   if (!file)
     return std::unexpected("Invalid file");
+  auto contents = file.toSpan();
 
-  file.seekg(0, file.end);
-  size_t length = file.tellg();
+  size_t length = contents.size();
   if (length < 6)
     return std::unexpected("Invalid file contents");
-  file.seekg(5, file.beg);
+  contents = contents.subspan(5);
   std::string size = "";
-  char c = file.get();
+  char c = contents.front();
+  contents = contents.subspan(1);
   while (c != '\0') {
     size += c;
-    c = file.get();
+    c = contents.front();
+    contents = contents.subspan(1);
   }
   assert(!size.empty());
   length = std::stoul(size);
 
   res.resize(length);
+  memcpy(res.data(), contents.data(), length);
 
-  file.read(reinterpret_cast<char *>(res.data()), length);
   return res;
 }
 
@@ -420,7 +465,7 @@ DiskFile applyDiffsUncompressedFile(DiskFile &&old, DiskFile &&diffs) {
       else {
         const uint32_t begIdx = begIdxOpt.value();
         const uint32_t endIdx = endIdxOpt.value();
-        if (!final.write(originalSpan.subspan(begIdx, 1 + endIdx - begIdx)))
+        if (!final.write(originalSpan.subspan(begIdx, endIdx - begIdx)))
           return DiskFile(true);
       }
     } else if (diffsSpan[idx] == 'I') {
@@ -432,7 +477,7 @@ DiskFile applyDiffsUncompressedFile(DiskFile &&old, DiskFile &&diffs) {
         return DiskFile(true);
       else {
         const uint32_t length = lengthOpt.value();
-        if (!final.write(diffsSpan.subspan(idx, 1 + length - idx)))
+        if (!final.write(diffsSpan.subspan(idx, length)))
           return DiskFile(true);
 
         idx += length;

@@ -50,7 +50,7 @@ bool FSClient::FSManagerSocket::validationStep() noexcept {
     std::println("Unable to get key length");
     return false;
   }
-  const long clientKeyLength = clientKeyLengthOpt.value();
+  const size_t clientKeyLength = clientKeyLengthOpt.value();
   std::vector<unsigned char> key(clientKeyLength);
   if (!readPacket(this->_fd, key.data(), clientKeyLength)) {
     std::println("Unable to read key");
@@ -66,7 +66,7 @@ bool FSClient::FSManagerSocket::validationStep() noexcept {
     return false;
   } else {
     fseek(fp, 0, SEEK_END);
-    const long length = ftell(fp);
+    const size_t length = ftell(fp);
     key.resize(length);
     rewind(fp);
     if (fread(key.data(), sizeof(unsigned char), length, fp) < (size_t)length) {
@@ -152,7 +152,12 @@ bool FSClient::validationStep() noexcept {
     std::println("Unable to get key length");
     return false;
   }
-  const long clientKeyLength = clientKeyLengthOpt.value();
+  const size_t clientKeyLength = clientKeyLengthOpt.value();
+  if (clientKeyLength > 1024) {
+    std::println("Key is to large to be a RSA Key");
+    return false;
+  }
+
   std::vector<unsigned char> key(clientKeyLength);
   if (!readPacket(this->_fd, key.data(), clientKeyLength)) {
     std::println("Unable to read key");
@@ -168,7 +173,7 @@ bool FSClient::validationStep() noexcept {
     return false;
   } else {
     fseek(fp, 0, SEEK_END);
-    const long length = ftell(fp);
+    const size_t length = ftell(fp);
     key.resize(length);
     rewind(fp);
     if (fread(key.data(), sizeof(unsigned char), length, fp) < (size_t)length) {
@@ -226,6 +231,15 @@ bool FSClient::invalidateAES() noexcept {
 }
 std::expected<bool, std::string>
 FSClient::validateCommand(const SSLString &command) noexcept {
+  if (command._length < 3 || (command._length > 3 && command[3] != ' '))
+    return std::unexpected("String is too small to be a valid command");
+
+  const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1 > 0
+                                      ? command._length - COMMAND_LENGTH - 1
+                                      : 0;
+
+  std::span<const unsigned char> dataView = std::span<const unsigned char>(
+      command._data + COMMAND_LENGTH + 1, dataViewLength);
   const FSCode c =
       FSStrCode(std::string_view((char *)command._data, command._length));
   switch (c) {
@@ -239,22 +253,14 @@ FSClient::validateCommand(const SSLString &command) noexcept {
     return std::unexpected("The command passed is prohibited to users");
     break;
   case DEL: {
-    const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1 > 0
-                                        ? command._length - COMMAND_LENGTH - 1
-                                        : 0;
     if (dataViewLength == 0)
       return std::unexpected("Need to know what files to delete");
   } break;
 
   case RETR: {
-    const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1 > 0
-                                        ? command._length - COMMAND_LENGTH - 1
-                                        : 0;
+
     if (dataViewLength == 0)
       return std::unexpected("Need to know what file to read");
-
-    std::span<const unsigned char> dataView = std::span<const unsigned char>(
-        command._data + COMMAND_LENGTH + 1, dataViewLength);
 
     std::vector<std::string> split =
         std::string{dataView.cbegin(), dataView.cend()} |
@@ -269,14 +275,9 @@ FSClient::validateCommand(const SSLString &command) noexcept {
   } break;
   case STRU: {
 
-    const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1 > 0
-                                        ? command._length - COMMAND_LENGTH - 1
-                                        : 0;
     if (dataViewLength == 0)
       return std::unexpected("Need to know what files to send");
 
-    std::span<const unsigned char> dataView = std::span<const unsigned char>(
-        command._data + COMMAND_LENGTH + 1, dataViewLength);
     auto split =
         std::string{dataView.cbegin(), dataView.cend()} |
         std::views::split(' ') |
@@ -288,7 +289,6 @@ FSClient::validateCommand(const SSLString &command) noexcept {
           "Every file should have a corresponding server path");
 
     auto pairView = split | std::views::adjacent<2> | std::views::stride(2);
-#pragma GCC ivdep
     for (const auto &[file, path] : pairView) {
       if (!std::filesystem::exists(file))
         return std::unexpected("File doesn't exist:" + file);
@@ -312,16 +312,16 @@ FSClient::validateCommand(const SSLString &command) noexcept {
 
 bool FSClient::processCommand(const SSLString &command) noexcept {
 
+  const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1;
+
+  std::span<const unsigned char> dataView = std::span<const unsigned char>(
+      command._data + COMMAND_LENGTH + 1, dataViewLength);
   const FSCode c =
       FSStrCode(std::string_view((char *)command._data, command._length));
   switch (c) {
   default:
     std::unreachable();
   case RETR: {
-
-    const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1;
-    std::span<const unsigned char> dataView = std::span<const unsigned char>(
-        command._data + COMMAND_LENGTH + 1, dataViewLength);
 
     std::vector<std::string> split =
         std::string{dataView.cbegin(), dataView.cend()} |
@@ -402,10 +402,6 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
     }
   } break;
   case STRU: {
-    const uint32_t dataViewLength = command._length - COMMAND_LENGTH - 1;
-
-    std::span<const unsigned char> dataView = std::span<const unsigned char>(
-        command._data + COMMAND_LENGTH + 1, dataViewLength);
     auto split =
         std::string{dataView.cbegin(), dataView.cend()} |
         std::views::split(' ') |
@@ -413,7 +409,6 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
         std::ranges::to<std::vector<std::string>>() | std::views::adjacent<2> |
         std::views::stride(2);
     std::string raw = "";
-#pragma GCC ivdep
     for (const auto &[file, fsPath] : split) {
       char isExecutable = '0';
       if (const fs::perms permissions = fs::status(file).permissions();
@@ -453,7 +448,6 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
           return false;
         } else {
           const uint64_t nodeId = idOpt.value();
-#pragma GCC ivdep
           for (const auto &[file, fsPath] : split) {
             this->_pool.enqueue(
                 std::bind(&FSClient::sendFile, this, file, fsPath,

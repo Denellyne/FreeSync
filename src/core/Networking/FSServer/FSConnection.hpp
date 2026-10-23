@@ -21,7 +21,7 @@ protected:
       return false;
     } else {
       fseek(fp, 0, SEEK_END);
-      const long length = ftell(fp);
+      const size_t length = ftell(fp);
       std::vector<unsigned char> key(length);
       rewind(fp);
       if (fread(key.data(), sizeof(unsigned char), length, fp) <
@@ -48,7 +48,11 @@ protected:
         std::println("Unable to get key length");
         return false;
       }
-      const long clientKeyLength = clientKeyLengthOpt.value();
+      const size_t clientKeyLength = clientKeyLengthOpt.value();
+      if (clientKeyLength > 1024) {
+        std::println("Key is to large to be a RSA Key");
+        return false;
+      }
       key.resize(clientKeyLength);
       if (!readPacket(this->_fd, key.data(), clientKeyLength)) {
         std::println("Unable to read key");
