@@ -51,7 +51,11 @@ public:
   LTree tree;
 
   void SetUp() override {
-    testWorkspace = mkdtemp(std::string("/tmp/FSTests_XXXXXX").data());
+
+    std::error_code ec;
+    std::filesystem::create_directory(TEMP_FOLDER, ec);
+    ASSERT_TRUE(ec.value() == 0) << ec.message();
+    testWorkspace = mkdtemp(std::string(TEMP_FOLDER "FSTests_XXXXXX").data());
 
     ASSERT_NO_FATAL_FAILURE(generateRandomDirectory(testWorkspace.string()));
 

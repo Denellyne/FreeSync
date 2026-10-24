@@ -1,4 +1,5 @@
 src/cores
+.tmp
 bin/
 *.gcda
 *.o
