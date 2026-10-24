@@ -11,6 +11,13 @@
 
 FSServer::FSServer(std::atomic_bool &running) noexcept
     : _manager(FSManager("localhost", FSMANAGER_PORT, 128)), _running(running) {
+  std::error_code ec;
+  std::filesystem::create_directory(TEMP_FOLDER, ec);
+  if (ec.value() != 0) {
+    std::println("Unable to create temporary folder: {}", ec.message());
+    this->_error = true;
+    return;
+  }
   int opt = 1;
   struct timeval timeout;
   timeout.tv_sec = 10;

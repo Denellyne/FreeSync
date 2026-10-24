@@ -114,6 +114,13 @@ bool FSClient::FSManagerSocket::switchAES() noexcept {
 }
 
 FSClient::FSClient() noexcept {
+
+  std::error_code ec;
+  std::filesystem::create_directory(TEMP_FOLDER, ec);
+  if (ec.value() != 0) {
+    std::println("Unable to create temporary folder: {}", ec.message());
+    exit(EXIT_FAILURE);
+  }
   this->_fd = socket(AF_INET, SOCK_STREAM, 0);
 
   if (this->_fd < 0) {

@@ -20,8 +20,9 @@ Tree::Tree(const std::string_view folder, bool root) : _root(root) {
   }
   this->_filePath = path;
   for (const auto &p : fs::directory_iterator(path)) {
-    if (const auto &str = p.path().string();
-        str.starts_with(".freesync") || str.starts_with(".git"))
+    if (const auto &str = p.path().string(); str.starts_with(".freesync") ||
+                                             str.starts_with(".git") ||
+                                             str.starts_with(".tmp"))
       continue;
 
     this->_children.emplace_back(Tree::newNode(p.path().c_str()));
@@ -130,7 +131,7 @@ bool Tree::writeBlob() noexcept {
 
 bool Tree::writeHeadFile() noexcept {
   assert(this->_hash.length() == 64);
-  DiskFile newHead("/var/tmp/FS_TMP_HEAD", true);
+  DiskFile newHead(TEMP_FOLDER "FS_TMP_HEAD", true);
   if (!newHead) [[unlikely]] {
     std::println("Unable to create temporary head file");
     return false;

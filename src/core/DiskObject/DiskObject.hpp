@@ -1,4 +1,5 @@
 #pragma once
+#define TEMP_FOLDER "./.tmp/"
 #include <cstdint>
 #include <fcntl.h>
 #include <span>

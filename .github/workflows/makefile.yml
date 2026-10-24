@@ -1,0 +1,49 @@
+
+name: FreeSync CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:44
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          dnf install -y \
+            git \
+            gcc-c++ \
+            make \
+            cmake \
+            openssl-devel \
+            gtest-devel
+
+      - name: Build zlib-ng
+        run: |
+          git clone --depth 1 --branch 2.3.3 \
+            https://github.com/zlib-ng/zlib-ng.git \
+            "$RUNNER_TEMP/zlib-ng"
+
+          cmake \
+            -S "$RUNNER_TEMP/zlib-ng" \
+            -B "$RUNNER_TEMP/zlib-ng/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DCMAKE_INSTALL_LIBDIR=lib64 \
+            -DZLIB_COMPAT=OFF
+
+          cmake --build "$RUNNER_TEMP/zlib-ng/build" \
+            --parallel "$(nproc)"
+
+          cmake --install "$RUNNER_TEMP/zlib-ng/build"
+          echo "/usr/local/lib64" > /etc/ld.so.conf.d/zlib-ng.conf
+          ldconfig
+      - name : Checkout repo
+        uses: actions/checkout@main
+          
+      - name: Build tests
+        run: make -j$(nproc) -C tests CXX=g++

@@ -11,7 +11,7 @@ public:
     if (this->_error)
       return;
 
-    char TMP_TEMPLATE[] = "/var/tmp/FS_XXXXXX";
+    char TMP_TEMPLATE[] = TEMP_FOLDER "FS_XXXXXX";
     this->_fd = mkstemp(TMP_TEMPLATE);
     this->_path = TMP_TEMPLATE;
     this->_length = 0;
@@ -45,7 +45,7 @@ public:
       return;
     }
     if (!this->_newFile) {
-      char TMP_TEMPLATE[] = "/var/tmp/FS_XXXXXX";
+      char TMP_TEMPLATE[] = TEMP_FOLDER "FS_XXXXXX";
       this->_fd = mkstemp(TMP_TEMPLATE);
       this->_path = TMP_TEMPLATE;
       std::filesystem::copy_file(
