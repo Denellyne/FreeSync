@@ -40,33 +40,32 @@ LTree::getTreeFromBlob(const std::string_view objPath,
   Decompressor decomp(tree._objPath.string());
   std::span<unsigned char> data = decomp.getData();
 
-  std::string dataStr =
-      std::string(reinterpret_cast<const char *>(data.data()), data.size());
+  std::string_view dataStr = std::string_view(
+      reinterpret_cast<const char *>(data.data()), data.size());
   if (dataStr.starts_with("PARENT:")) {
     const size_t newline = dataStr.find('\n');
 
     if (newline == std::string::npos)
       return std::unexpected("Missing new line after Parent header");
-
-    dataStr.erase(0, newline + 1);
+    dataStr.remove_prefix(newline + 1);
   }
   // else
   //   return std::unexpected(std::string("Invalid tree blob\n"));
 
   while (!dataStr.empty()) {
     const std::string entry(dataStr.substr(0, 6));
-    dataStr.erase(0, 7);
+    dataStr.remove_prefix(7);
     const size_t fileNameIdx = dataStr.find('\0');
     if (fileNameIdx == std::string::npos)
       return std::unexpected("Unabled to find filename delimiter");
     const std::string fileName(dataStr.substr(0, fileNameIdx));
-    dataStr.erase(0, fileName.length() + 1);
+    dataStr.remove_prefix(fileName.length() + 1);
     if (dataStr.size() < 64) {
       std::println("{}", dataStr);
       return std::unexpected("DataStr doesn't have the length of a hash");
     }
     const std::string hash(dataStr.substr(0, 64));
-    dataStr.erase(0, 64);
+    dataStr.remove_prefix(64);
     tree._children.emplace_back(LNode{entry, fileName, hash});
   }
   tree.hashTree();
@@ -77,7 +76,18 @@ LTree::getTreeFromBlob(const std::string_view objPath,
 void LTree::hashTree() noexcept {
   std::sort(this->_children.begin(), this->_children.end());
   this->_hash.clear();
-  this->_hash.reserve(this->_children.size() * 64);
+
+  if (this->_root) {
+    if (const auto str = Node::getHeadFile(); !str.has_value()) {
+      std::cerr << "Head file is null optional\n";
+      return;
+    } else {
+      this->_hash.reserve((this->_children.size() * 64) + str.value().length());
+      this->_hash += str.value();
+    }
+  } else
+    this->_hash.reserve((this->_children.size() * 64));
+
   for (const auto &child : this->_children)
     this->_hash += child._hash;
   this->_hash = Node::hash(this->_hash);

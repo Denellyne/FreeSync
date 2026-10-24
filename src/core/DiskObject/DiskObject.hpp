@@ -14,6 +14,9 @@ public:
   virtual ~DiskObject() noexcept = default;
   explicit operator bool() const noexcept { return !this->_error; }
   std::span<unsigned char> toSpan() const noexcept {
+    if (this->_error)
+      return {};
+
     if (!this->_buf) {
       const_cast<DiskObject *>(this)->_buf = (unsigned char *)::mmap(
           0, this->_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, this->_fd, 0);

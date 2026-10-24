@@ -10,10 +10,13 @@ DEBUG = -g -Wall -Wextra -pedantic
 OUT = ../bin/main
 CORES = ./cores/core.*
 
-all: run
+all: build run
 cr : clean run
 
-build: $(OBJ)
+mkDir:
+	@mkdir -p ../bin
+
+build: mkDir $(OBJ)
 	@echo "Linking..."
 	$(CXX) $(CFLAGS_CMD) $(CFLAGS) $(OBJ) -o $(OUT) 
 	
@@ -24,8 +27,6 @@ build: $(OBJ)
 	@echo "Compiled:" $@
 
 run: $(OBJ)
-	@echo "Linking..."
-	$(CXX) $(CFLAGS_CMD) $(CFLAGS) $(OBJ) -o $(OUT) 
 	@$(OUT)
 
 debug: 
