@@ -46,6 +46,9 @@ public:
     return this->_filePath.filename().string();
   }
   [[nodiscard]] bool writeTree() noexcept;
+  [[nodiscard]] std::expected<std::string, std::string>
+  moveFile(const std::filesystem::path &oldPath,
+           const std::filesystem::path &newPath) noexcept;
   [[nodiscard]] static std::expected<LTree, std::string>
   getTreeFromBlob(const std::string_view objPath,
                   const std::string_view filePath,

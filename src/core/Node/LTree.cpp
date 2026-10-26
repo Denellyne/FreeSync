@@ -304,8 +304,12 @@ LTree::removeFile(const std::filesystem::path &filePath) noexcept {
             if (const auto newHash = tree.value().removeFile(filePath);
                 !newHash.has_value())
               return std::unexpected(newHash.error());
-            else
-              it->_hash = newHash.value();
+            else {
+              if (const std::string hash = newHash.value(); hash.empty())
+                this->_children.erase(it);
+              else
+                it->_hash = newHash.value();
+            }
           } else
             return std::unexpected(tree.error());
           break;
@@ -313,6 +317,8 @@ LTree::removeFile(const std::filesystem::path &filePath) noexcept {
       }
     }
   }
+  if (this->_children.empty())
+    return "";
 
   this->hashTree();
   if (!this->writeBlob())

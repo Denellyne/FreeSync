@@ -34,6 +34,7 @@ enum FSCode {
   AES = 305,  // Asks the User to generate a new AES key to be used for the
               // session, either after a set ammount of times the key is used or
               // for a transfer, there only exists one AES key at a time
+  MOV = 306,  // Moves the file to a new Path
   // PUBK = 306, // Sends the public key
 
 };
@@ -63,6 +64,8 @@ constexpr std::string FSPrint(const FSCode code) noexcept {
     return "AES";
   else if (code == DATA)
     return "DATA";
+  else if (code == MOV)
+    return "MOV";
   // else if (code == PUBK)
   //   return "PUBK";
 
@@ -98,8 +101,8 @@ constexpr FSCode FSStrCode(const std::string_view command) noexcept {
     return ATTR;
   else if (code == "305")
     return AES;
-  // else if (code == "306")
-  //   return PUBK;
+  else if (code == "306")
+    return MOV;
 
   return ERR;
 }

@@ -369,6 +369,8 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
     }
 
   } break;
+  case MOV:
+    break;
   case OK:
     break;
 
