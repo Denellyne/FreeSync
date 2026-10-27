@@ -205,7 +205,7 @@ bool Leaf::writeBlob(const std::span<unsigned char> data) noexcept {
 
   return true;
 }
-std::expected<std::vector<unsigned char>, std::string>
+std::expected<std::vector<unsigned char>, std::string_view>
 Leaf::getBlob() noexcept {
   std::vector<unsigned char> res;
   DiskView file(this->_objPath.c_str());
@@ -238,8 +238,9 @@ Leaf::getBlob() noexcept {
   return res;
 }
 
-std::expected<DiskFile, std::string> Leaf::getFinalDecompressFile() noexcept {
-  std::expected<DiskFile, std::string> result;
+std::expected<DiskFile, std::string_view>
+Leaf::getFinalDecompressFile() noexcept {
+  std::expected<DiskFile, std::string_view> result;
   DiskView file(this->_objPath.string());
   std::span<unsigned char> data = file.toSpan();
   if (!file)
@@ -278,7 +279,7 @@ std::expected<DiskFile, std::string> Leaf::getFinalDecompressFile() noexcept {
     return result;
   }
 }
-std::expected<std::vector<unsigned char>, std::string>
+std::expected<std::vector<unsigned char>, std::string_view>
 Leaf::getFinalDecompressBlob() noexcept {
   DiskView file(this->_objPath.string());
   if (!file)
@@ -362,7 +363,7 @@ bool applyDiffsUncompressed(std::vector<unsigned char> &old,
   return true;
 }
 
-std::expected<std::vector<unsigned char>, std::string>
+std::expected<std::vector<unsigned char>, std::string_view>
 Leaf::diffFile(const std::span<unsigned char> newer,
                const bool isCompressed) noexcept {
   if (auto dataOpt = this->getFinalDecompressBlob(); !dataOpt.has_value())

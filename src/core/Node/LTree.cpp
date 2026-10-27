@@ -29,7 +29,7 @@ LTree::LTree(const std::array<char, 64> &hash, const std::string_view filePath,
     this->_error = true;
 }
 
-std::expected<LTree, std::string>
+std::expected<LTree, std::string_view>
 LTree::getTreeFromBlob(const std::string_view objPath,
                        const std::string_view filePath,
                        const bool root) noexcept {
@@ -194,7 +194,7 @@ bool LTree::writeMerkleTree() noexcept {
 //   return true;
 // }
 
-std::expected<DiskFile, std::string>
+std::expected<DiskFile, std::string_view>
 LTree::getChildFile(const std::filesystem::path &filePath) const noexcept {
 
   constexpr auto isSubPath = [](const fs::path &path, const fs::path &base) {
@@ -233,7 +233,7 @@ LTree::getChildFile(const std::filesystem::path &filePath) const noexcept {
   }
   return std::unexpected("Unable to find file");
 }
-std::expected<std::vector<unsigned char>, std::string>
+std::expected<std::vector<unsigned char>, std::string_view>
 LTree::getChild(const std::filesystem::path &filePath) const noexcept {
 
   constexpr auto isSubPath = [](const fs::path &path, const fs::path &base) {
@@ -273,7 +273,7 @@ LTree::getChild(const std::filesystem::path &filePath) const noexcept {
   return std::unexpected("Unable to find file");
 }
 
-std::expected<std::string, std::string>
+std::expected<std::string, std::string_view>
 LTree::removeFile(const std::filesystem::path &filePath) noexcept {
   constexpr auto isSubPath = [](const fs::path &path, const fs::path &base) {
     const auto mismatchPair =
@@ -327,7 +327,7 @@ LTree::removeFile(const std::filesystem::path &filePath) noexcept {
   return this->_hash;
 }
 
-std::expected<std::string, std::string> LTree::addCompressedFile(
+std::expected<std::string, std::string_view> LTree::addCompressedFile(
     const std::span<unsigned char> data, const std::filesystem::path &filePath,
     const bool isExecutable, const std::string_view hash) noexcept {
 
@@ -435,7 +435,7 @@ std::expected<std::string, std::string> LTree::addCompressedFile(
 
   return this->_hash;
 }
-std::expected<std::string, std::string>
+std::expected<std::string, std::string_view>
 LTree::addFile(const std::span<unsigned char> data,
                const std::filesystem::path &filePath,
                const bool isExecutable) noexcept {
@@ -539,7 +539,7 @@ LTree::addFile(const std::span<unsigned char> data,
   return this->_hash;
 }
 
-std::expected<std::vector<LTree::Commit>, std::string>
+std::expected<std::vector<LTree::Commit>, std::string_view>
 LTree::getAllCommits() noexcept {
   const auto head = getHeadFile();
   if (!head.has_value())

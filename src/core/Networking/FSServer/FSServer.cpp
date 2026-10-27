@@ -230,7 +230,8 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
     for (const auto &file : split) {
       if (const auto valOpt = Node::validatePath(file, context);
           !valOpt.has_value())
-        return sendErrorMessage("Path must be a valid path: " + valOpt.error());
+        return sendErrorMessage("Path must be a valid path: " +
+                                std::string(valOpt.error()));
       else
         requests.emplace_back(Request(std::move(file)));
     }
@@ -312,7 +313,8 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
 
       if (const auto valOpt = Node::validatePath(fsPath, context);
           !valOpt.has_value())
-        return sendErrorMessage("Path must be a valid path: " + valOpt.error());
+        return sendErrorMessage("Path must be a valid path: " +
+                                std::string(valOpt.error()));
       else
         requests.emplace_back(
             Request(std::move(file), std::move(fsPath), executable[0] == '1'));

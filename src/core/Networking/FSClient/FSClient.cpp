@@ -236,7 +236,7 @@ bool FSClient::invalidateAES() noexcept {
   }
   return true;
 }
-std::expected<bool, std::string>
+std::expected<bool, std::string_view>
 FSClient::validateCommand(const SSLString &command) noexcept {
   if (command._length < 3 || (command._length > 3 && command[3] != ' '))
     return std::unexpected("String is too small to be a valid command");

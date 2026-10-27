@@ -247,7 +247,6 @@ std::optional<std::string>
 FSManager::finalizeDownload(const LListPtr<Request> &node,
                             std::unique_ptr<FSManager::Connection> &client,
                             const int sd) noexcept {
-#pragma GCC ivdep
   for (auto &req : node->_data) {
     if (req.id == sd) {
       req.complete = true;
@@ -270,10 +269,10 @@ FSManager::commitDeleteTransaction(const LListPtr<Request> &node) noexcept {
     std::array<char, 64> arr;
     memcpy(arr.data(), current.value().data(), 64);
     LTree tree = LTree(arr, "/FreeSync", true);
-#pragma GCC ivdep
     for (const auto &req : node->_data)
       if (const auto result = tree.removeFile(req.fsPath); !result.has_value())
-        return std::string("Error when adding file:" + result.error());
+        return std::string("Error when adding file:" +
+                           std::string(result.error()));
 
     if (!tree.commit())
       return std::string("Unable to commit transaction");
@@ -289,12 +288,12 @@ FSManager::commitAddTransaction(const LListPtr<Request> &node) noexcept {
     std::array<char, 64> arr;
     memcpy(arr.data(), current.value().data(), 64);
     LTree tree = LTree(arr, "/FreeSync", true);
-#pragma GCC ivdep
     for (const auto &req : node->_data) {
       if (const auto result = tree.addCompressedFile(
               req.file.toSpan(), req.fsPath, req.isExecutable, req.hash);
           !result.has_value())
-        return std::string("Error when adding file:" + result.error());
+        return std::string("Error when adding file:" +
+                           std::string(result.error()));
     }
 
     if (!tree.commit())
@@ -306,10 +305,8 @@ FSManager::commitAddTransaction(const LListPtr<Request> &node) noexcept {
 void FSManager::processTransactions() noexcept {
   std::vector<uint64_t> completedTransactions = {};
 
-#pragma GCC ivdep
   for (const auto &node : this->_list) {
     bool ready = true;
-#pragma GCC ivdep
     for (const auto &req : node->_data)
       ready &= req.complete;
 
@@ -331,7 +328,6 @@ void FSManager::processTransactions() noexcept {
     }
   }
 
-#pragma GCC ivdep
   for (const auto &nodeId : completedTransactions)
     this->_list.removeNode(nodeId);
 }
@@ -369,7 +365,6 @@ void FSManager::run(const std::atomic_bool &running) noexcept {
     FD_SET(this->_serverFD, &readfds);
     FD_SET(this->_serverFD, &writefds);
     int maxfd = this->_serverFD;
-#pragma GCC ivdep
     for (const auto &client : clientList) {
       FD_SET(client->getFd(), &readfds);
       FD_SET(client->getFd(), &writefds);
@@ -396,7 +391,6 @@ void FSManager::run(const std::atomic_bool &running) noexcept {
           std::make_unique<FSManager::Connection>(clientFd));
     }
 
-#pragma GCC ivdep
     for (auto it = clientList.begin(); it != clientList.end();) {
       sd = (*it)->getFd();
       if (FD_ISSET(sd, &readfds) || FD_ISSET(sd, &writefds)) {

@@ -46,34 +46,34 @@ public:
     return this->_filePath.filename().string();
   }
   [[nodiscard]] bool writeTree() noexcept;
-  [[nodiscard]] std::expected<std::string, std::string>
+  [[nodiscard]] std::expected<std::string, std::string_view>
   moveFile(const std::filesystem::path &oldPath,
            const std::filesystem::path &newPath) noexcept;
-  [[nodiscard]] static std::expected<LTree, std::string>
+  [[nodiscard]] static std::expected<LTree, std::string_view>
   getTreeFromBlob(const std::string_view objPath,
                   const std::string_view filePath,
                   const bool root = false) noexcept;
-  [[nodiscard]] std::expected<std::string, std::string>
+  [[nodiscard]] std::expected<std::string, std::string_view>
   addFile(const std::span<unsigned char> data,
           const std::filesystem::path &filePath,
           const bool isExecutable) noexcept;
 
-  [[nodiscard]] std::expected<std::string, std::string>
+  [[nodiscard]] std::expected<std::string, std::string_view>
   addCompressedFile(const std::span<unsigned char> data,
                     const std::filesystem::path &filePath,
                     const bool isExecutable,
                     const std::string_view hash) noexcept;
 
-  [[nodiscard]] std::expected<std::string, std::string>
+  [[nodiscard]] std::expected<std::string, std::string_view>
   removeFile(const std::filesystem::path &filePath) noexcept;
 
-  std::expected<std::vector<unsigned char>, std::string>
+  std::expected<std::vector<unsigned char>, std::string_view>
   getChild(const std::filesystem::path &filePath) const noexcept;
 
-  std::expected<DiskFile, std::string>
+  std::expected<DiskFile, std::string_view>
   getChildFile(const std::filesystem::path &filePath) const noexcept;
 
-  std::expected<std::vector<Commit>, std::string> getAllCommits() noexcept;
+  std::expected<std::vector<Commit>, std::string_view> getAllCommits() noexcept;
   const std::vector<LNode> &getChildren() const noexcept {
     return this->_children;
   }

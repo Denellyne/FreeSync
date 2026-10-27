@@ -39,7 +39,7 @@ private:
   bool validationStep() noexcept;
   bool switchAES() noexcept;
   bool invalidateAES() noexcept;
-  std::expected<bool, std::string>
+  std::expected<bool, std::string_view>
   validateCommand(const SSLString &command) noexcept;
   bool processCommand(const SSLString &command) noexcept;
   void sendFile(const std::string &file, const std::string &fsPath,

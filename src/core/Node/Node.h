@@ -30,7 +30,7 @@ public:
 
   // This just ensures it can be a valid path for the merkle tree, not that it
   // exists
-  static std::expected<bool, std::string>
+  static std::expected<bool, std::string_view>
   validatePath(std::string_view path,
                std::vector<std::string> &context) noexcept {
     const std::string_view originalPath = path;

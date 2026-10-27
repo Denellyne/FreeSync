@@ -46,13 +46,14 @@ public:
     return this->_filePath.filename().string();
   }
 
-  std::expected<std::vector<unsigned char>, std::string>
+  std::expected<std::vector<unsigned char>, std::string_view>
   diffFile(const std::span<unsigned char> newer,
            const bool isCompressed = false) noexcept;
 
-  std::expected<std::vector<unsigned char>, std::string> getBlob() noexcept;
-  std::expected<DiskFile, std::string> getFinalDecompressFile() noexcept;
-  std::expected<std::vector<unsigned char>, std::string>
+  std::expected<std::vector<unsigned char>, std::string_view>
+  getBlob() noexcept;
+  std::expected<DiskFile, std::string_view> getFinalDecompressFile() noexcept;
+  std::expected<std::vector<unsigned char>, std::string_view>
   getFinalDecompressBlob() noexcept;
   [[nodiscard]] static bool
   writeFile(const std::string_view path,
