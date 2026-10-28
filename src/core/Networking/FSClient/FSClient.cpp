@@ -1,6 +1,7 @@
 #include "FSClient.h"
 #include "../../Compressor/Compressor.h"
 #include "../../Node/Node.h"
+#include <arpa/inet.h>
 #include <cassert>
 #include <fcntl.h>
 #include <filesystem>
@@ -113,11 +114,11 @@ bool FSClient::FSManagerSocket::switchAES() noexcept {
   return true; // Check if received OK
 }
 
-FSClient::FSClient() noexcept {
+FSClient::FSClient(const std::string_view ip) noexcept {
 
   std::error_code ec;
   std::filesystem::create_directory(TEMP_FOLDER, ec);
-  if (ec.value() != 0) {
+  if (ec) {
     std::println("Unable to create temporary folder: {}", ec.message());
     exit(EXIT_FAILURE);
   }
@@ -131,7 +132,7 @@ FSClient::FSClient() noexcept {
   struct sockaddr_in serverAddr;
   serverAddr.sin_family = AF_INET;
   serverAddr.sin_port = htons(PORT);
-  serverAddr.sin_addr.s_addr = INADDR_ANY;
+  serverAddr.sin_addr.s_addr = inet_addr(ip.data());
 
   const int connStatus =
       connect(this->_fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr));

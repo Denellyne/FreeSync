@@ -38,7 +38,12 @@ int main(void) {
 
 #ifdef CLIENT
 #include "core/Networking/FSClient/FSClient.h"
-int main(void) {
+int main(int argc, char *argv[]) {
+  if (argc > 1) {
+    FSClient client = FSClient(argv[1]);
+    client.run();
+    return 0;
+  }
   FSClient client = FSClient();
   client.run();
 

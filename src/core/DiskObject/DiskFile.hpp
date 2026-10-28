@@ -158,7 +158,7 @@ public:
     std::filesystem::rename(this->_path, newPath, ec);
     sync();
 
-    if (!(ec.value() == 0)) [[unlikely]] {
+    if (ec) [[unlikely]] {
       std::println("Unable to move file to new path: {}", ec.message());
       this->_error = true;
       return false;

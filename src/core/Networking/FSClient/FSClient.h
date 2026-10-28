@@ -6,7 +6,7 @@
 
 class FSClient final : public FSProtocol {
 public:
-  FSClient() noexcept;
+  FSClient(const std::string_view ip = "localhost") noexcept;
   ~FSClient() noexcept {
     if (this->_fd != -1)
       close(this->_fd);

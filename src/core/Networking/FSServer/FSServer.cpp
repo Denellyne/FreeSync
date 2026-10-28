@@ -13,8 +13,15 @@ FSServer::FSServer(std::atomic_bool &running) noexcept
     : _manager(FSManager("localhost", FSMANAGER_PORT, 128)), _running(running) {
   std::error_code ec;
   std::filesystem::create_directory(TEMP_FOLDER, ec);
-  if (ec.value() != 0) {
+  if (ec) {
     std::println("Unable to create temporary folder: {}", ec.message());
+    this->_error = true;
+    return;
+  }
+
+  if (const bool res = std::filesystem::exists(CLIENTS_CERTS_PATH, ec);
+      ec || !res) {
+    std::println("Certs folder doesn't exist or another error occured");
     this->_error = true;
     return;
   }
