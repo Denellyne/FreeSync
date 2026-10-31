@@ -28,6 +28,8 @@ public:
     std::swap(this->_buf, other._buf);
     std::swap(this->_path, other._path);
     std::swap(this->_error, other._error);
+    std::swap(this->_newFile, other._newFile);
+    std::swap(this->_sync, other._sync);
     return *this;
   }
   DiskFile(DiskFile &&other) noexcept {
@@ -36,6 +38,8 @@ public:
     std::swap(this->_buf, other._buf);
     std::swap(this->_path, other._path);
     std::swap(this->_error, other._error);
+    std::swap(this->_newFile, other._newFile);
+    std::swap(this->_sync, other._sync);
   }
   explicit DiskFile(std::string_view filePath,
                     const bool newFile = false) noexcept
@@ -48,9 +52,16 @@ public:
       char TMP_TEMPLATE[] = TEMP_FOLDER "FS_XXXXXX";
       this->_fd = mkstemp(TMP_TEMPLATE);
       this->_path = TMP_TEMPLATE;
+      std::error_code ec;
       std::filesystem::copy_file(
           filePath, this->_path,
-          std::filesystem::copy_options::overwrite_existing);
+          std::filesystem::copy_options::overwrite_existing, ec);
+      if (ec) {
+        this->_error = true;
+        this->_buf = nullptr;
+        return;
+      }
+
       this->_length = std::filesystem::file_size(this->_path);
 
       this->_buf = (unsigned char *)::mmap(
