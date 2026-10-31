@@ -13,7 +13,7 @@ bool FSProtocol::writePrimitive(const int fd, void *data,
     const ssize_t res = send(fd, (unsigned char *)data + idx, size - idx, 0);
     if (res > 0) [[likely]]
       idx += res;
-    else if (res < 0) {
+    else if (res <= 0) {
       if (errno == EINTR)
         continue;
 

@@ -148,7 +148,7 @@ public:
     while (bytesWritten < data.size()) {
       const ssize_t wrote =
           ::write(this->_fd, &data[bytesWritten], data.size() - bytesWritten);
-      if (wrote < 0) [[unlikely]] {
+      if (wrote <= 0) [[unlikely]] {
         if (errno == EINTR)
           continue;
         return false;
