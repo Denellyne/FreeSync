@@ -3,6 +3,8 @@
 #include "core/Node/Tree.h"
 #include <csignal>
 #include <fcntl.h>
+#include <filesystem>
+#include <print>
 #include <unistd.h>
 std::atomic_bool running = true;
 void sigHandler(const int sig) noexcept {
@@ -15,6 +17,13 @@ void sigHandler(const int sig) noexcept {
 int main(void) {
   signal(SIGPIPE, SIG_IGN);
   signal(SIGINT, sigHandler);
+
+  std::error_code ec;
+  std::filesystem::create_directory(TEMP_FOLDER, ec);
+  if (ec) {
+    std::println("Unable to create temporary folder: {}", ec.message());
+    return 1;
+  }
   if (const auto current = Node::getHeadFile(); !current.has_value()) {
     std::println("Unable to get head file");
     return 1;
@@ -39,6 +48,7 @@ int main(void) {
 #ifdef CLIENT
 #include "core/Networking/FSClient/FSClient.h"
 int main(int argc, char *argv[]) {
+
   if (argc > 1) {
     FSClient client = FSClient(argv[1]);
     client.run();
