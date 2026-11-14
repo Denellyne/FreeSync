@@ -13,19 +13,32 @@ using StringOpt = std::optional<SSLString>;
 #define BUFFER_SIZE 512
 #define VALIDATION_LENGTH 48
 #define COMMAND_LENGTH 3
-#define PUBKEY_PATH "certs/pub.pem"
-#define PKEY_PATH "certs/priv.pem"
-#define CLIENTS_CERTS_PATH "clients/"
+#define PUBKEY_PATH "/.local/share/freesync/certs/pub.pem"
+#define PKEY_PATH "/.local/share/freesync/certs/priv.pem"
+#define CLIENTS_CERTS_PATH "/.local/share/freesync/clients/"
 #define FSMANAGER_PACKET 64 * 1024
+
+static std::string getCanonicalPath(std::string_view path) noexcept {
+  static char const *home = getenv("HOME");
+  if (home == NULL) {
+    std::println("Unable to get home env");
+    abort();
+  }
+  std::string str(home);
+  str.append(path);
+  return str;
+}
 
 enum FSCode {
   ERR = 100,  // Generic Error command followed by reason
   QUIT = 101, // Generic close connection command
+  PING = 102, // Generic heartbeat command
   OK = 200,   // Generic OK Command may contain message
   LIST = 201, // Start of list of current directory
   AESK = 202, // Gives the AES-256 key to the other User
   INV = 203,  // Invalidates the aes encryption
   DATA = 204, // The packet is a data packet and not a command
+  ITER = 205, // Start of list of current directory
   AUTH = 300, // Asks for Public Key of Client
   RETR = 301, // Asks to download file in current directory, RETR file.txt
   STRU = 302, // Asks to store file in current directory, STRU file.txt
@@ -38,39 +51,39 @@ enum FSCode {
   // PUBK = 306, // Sends the public key
 
 };
-constexpr std::string FSPrint(const FSCode code) noexcept {
-
-  if (code == OK)
-    return "OK";
-  else if (code == QUIT)
-    return "QUIT";
-  else if (code == LIST)
-    return "LIST";
-  else if (code == AESK)
-    return "AESK";
-  else if (code == INV)
-    return "INV";
-  else if (code == AUTH)
-    return "AUTH";
-  else if (code == RETR)
-    return "RETR";
-  else if (code == STRU)
-    return "STRU";
-  else if (code == DEL)
-    return "DEL";
-  else if (code == ATTR)
-    return "ATTR";
-  else if (code == AES)
-    return "AES";
-  else if (code == DATA)
-    return "DATA";
-  else if (code == MOV)
-    return "MOV";
-  // else if (code == PUBK)
-  //   return "PUBK";
-
-  return "ERR";
-}
+// constexpr std::string FSCodeStr(const FSCode code) noexcept {
+//
+//   if (code == OK)
+//     return "OK";
+//   else if (code == QUIT)
+//     return "QUIT";
+//   else if (code == LIST)
+//     return "LIST";
+//   else if (code == AESK)
+//     return "AESK";
+//   else if (code == INV)
+//     return "INV";
+//   else if (code == AUTH)
+//     return "AUTH";
+//   else if (code == RETR)
+//     return "RETR";
+//   else if (code == STRU)
+//     return "STRU";
+//   else if (code == DEL)
+//     return "DEL";
+//   else if (code == ATTR)
+//     return "ATTR";
+//   else if (code == AES)
+//     return "AES";
+//   else if (code == DATA)
+//     return "DATA";
+//   else if (code == MOV)
+//     return "MOV";
+//   // else if (code == PUBK)
+//   //   return "PUBK";
+//
+//   return "ERR";
+// }
 
 constexpr FSCode FSStrCode(const std::string_view command) noexcept {
   if (command.length() < 3 || (command.length() > 3 && command[3] != ' '))
@@ -81,6 +94,8 @@ constexpr FSCode FSStrCode(const std::string_view command) noexcept {
     return OK;
   else if (code == "101")
     return QUIT;
+  else if (code == "102")
+    return PING;
   else if (code == "201")
     return LIST;
   else if (code == "202")
@@ -89,6 +104,8 @@ constexpr FSCode FSStrCode(const std::string_view command) noexcept {
     return INV;
   else if (code == "204")
     return DATA;
+  else if (code == "205")
+    return ITER;
   else if (code == "300")
     return AUTH;
   else if (code == "301")
@@ -166,8 +183,10 @@ protected:
   [[nodiscard]] StringOpt readSocketAES(const int fd) noexcept;
   // constexpr void clearBuffer() { memset(this->_buffer.data(), 0,
   // BUFFER_SIZE); }
+
   template <ByteSpan... Args>
-  static SSLString generatePacket(FSCode code, Args... arg) noexcept {
+  static SSLString generatePacket(const FSCode code,
+                                  const Args... arg) noexcept {
     uint32_t size = COMMAND_LENGTH;
     for (const auto &vec : {arg...})
       size += vec.size();
@@ -175,7 +194,7 @@ protected:
     std::vector<unsigned char> packet(size);
     {
       const std::string command = FSCodeStr(code);
-      memcpy(packet.data(), command.c_str(), COMMAND_LENGTH);
+      memcpy(packet.data(), command.data(), COMMAND_LENGTH);
     }
 
     uint32_t idx = COMMAND_LENGTH;

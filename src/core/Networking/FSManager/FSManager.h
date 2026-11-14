@@ -1,5 +1,5 @@
 #pragma once
-#include "../../FSLList/FSLList.h"
+#include "../../FSLList/FSLList.hpp"
 #include "../FSProtocol.h"
 #include "../FSServer/FSConnection.hpp"
 #include <atomic>
@@ -77,7 +77,8 @@ private:
     Connection() = delete;
     explicit Connection(const int fd) noexcept {
       this->_fd = fd;
-      this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
+      this->_private =
+          std::make_unique<RSAKey>(getCanonicalPath(PKEY_PATH), true);
       if (!this->_private || !this->_private->isOk()) {
         std::println("Unable to load private key");
         this->_fd = -1;

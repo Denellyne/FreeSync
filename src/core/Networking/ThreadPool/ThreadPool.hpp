@@ -18,8 +18,11 @@ typedef std::function<void()> Job;
 class ThreadPool {
 public:
   ThreadPool() = delete;
-  explicit ThreadPool(const size_t threadCount = 1) noexcept {
-    std::println("Starting ThreadPool with {} threads", threadCount);
+  ThreadPool(const ThreadPool &) = delete;
+  ThreadPool &operator=(const ThreadPool &) = delete;
+
+  explicit ThreadPool(const size_t threadCount) noexcept {
+    // std::println("Starting ThreadPool with {} threads", threadCount);
     this->_workers.reserve(threadCount);
     for (size_t i = 0; i < threadCount; i++) {
       this->_workers.emplace_back(std::thread{[this, i] {
@@ -33,7 +36,7 @@ public:
             });
 
             if (this->_terminate && this->_tasks.empty()) {
-              std::println("Thread {} is shutting down", i);
+              // std::println("Thread {} is shutting down", i);
               return;
             }
 
@@ -53,10 +56,11 @@ public:
     }
   }
   ~ThreadPool() noexcept {
-    std::println("Shutting down ThreadPool");
+    // std::println("Shutting down ThreadPool");
     this->shutdown();
   }
 
+public:
   void enqueue(Job &&task) noexcept {
     {
       std::unique_lock<std::mutex> lock(this->_mutex);

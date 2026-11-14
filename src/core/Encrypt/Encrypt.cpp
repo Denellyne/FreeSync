@@ -427,7 +427,6 @@ std::optional<SSLString> RSAKey::decryptBlob(SSLString &data) noexcept {
 
 std::array<unsigned char, PTR_SIZE> ptrToArray(uint64_t n) noexcept {
   alignas(32) std::array<unsigned char, PTR_SIZE> res{'0'};
-#pragma GCC ivdep
   for (size_t i = PTR_SIZE; i > 0; i--) {
     res[i - 1] = (n % 10) + '0';
     n /= 10;
@@ -436,7 +435,6 @@ std::array<unsigned char, PTR_SIZE> ptrToArray(uint64_t n) noexcept {
 }
 std::array<unsigned char, LENGTH_SIZE> toArray(uint32_t n) noexcept {
   alignas(32) std::array<unsigned char, LENGTH_SIZE> res{'0'};
-#pragma GCC ivdep
   for (size_t i = LENGTH_SIZE; i > 0; i--) {
     res[i - 1] = (n % 10) + '0';
     n /= 10;
@@ -449,7 +447,6 @@ ptrToNumber(const std::span<const unsigned char> &vec) noexcept {
   if (vec.size() < LENGTH_SIZE)
     return std::nullopt;
   uint64_t num = 0;
-#pragma GCC ivdep
   for (const auto c : vec) {
     if (c < '0' || c > '9')
       return std::nullopt;
@@ -461,7 +458,6 @@ std::optional<uint64_t> ptrToNumber(const SSLString &str) noexcept {
   uint64_t num = 0;
   if (str._length == 0)
     return std::nullopt;
-#pragma GCC ivdep
   for (size_t i = 0; i < str._length; i++) {
     if (str[i] < '0' || str[i] > '9')
       return std::nullopt;
@@ -474,7 +470,6 @@ toNumber(const std::span<const unsigned char> &vec) noexcept {
   if (vec.size() < LENGTH_SIZE)
     return std::nullopt;
   uint32_t num = 0;
-#pragma GCC ivdep
   for (const auto c : vec) {
     if (c < '0' || c > '9')
       return std::nullopt;
@@ -485,7 +480,6 @@ toNumber(const std::span<const unsigned char> &vec) noexcept {
 std::optional<uint32_t>
 toNumber(const std::array<unsigned char, LENGTH_SIZE> &vec) noexcept {
   uint32_t num = 0;
-#pragma GCC ivdep
   for (const auto c : vec) {
     if (c < '0' || c > '9')
       return std::nullopt;
@@ -497,7 +491,6 @@ std::optional<uint32_t> toNumber(const SSLString &str) noexcept {
   uint32_t num = 0;
   if (str._length == 0)
     return std::nullopt;
-#pragma GCC ivdep
   for (size_t i = 0; i < str._length; i++) {
     if (str[i] < '0' || str[i] > '9')
       return std::nullopt;

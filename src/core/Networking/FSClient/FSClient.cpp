@@ -27,13 +27,13 @@ FSClient::FSManagerSocket::FSManagerSocket(const std::string &file,
   serverAddr.sin_addr.s_addr = INADDR_ANY;
 
   const int connStatus =
-      connect(this->_fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
+      ::connect(this->_fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
   if (connStatus < 0) {
     std::println("There was an error making a connection to the server {}",
                  connStatus);
     exit(EXIT_FAILURE);
   }
-  this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
+  this->_private = std::make_unique<RSAKey>(getCanonicalPath(PKEY_PATH), true);
   if (!this->_private || !this->_private->isOk()) {
     std::println("Unable to load private key");
     exit(EXIT_FAILURE);
@@ -62,7 +62,7 @@ bool FSClient::FSManagerSocket::validationStep() noexcept {
     std::println("Unable to load public key");
     return false;
   }
-  if (FILE *fp = fopen(PUBKEY_PATH, "r"); !fp) {
+  if (FILE *fp = fopen(getCanonicalPath(PUBKEY_PATH).data(), "r"); !fp) {
     std::println("Unable to open own public key file");
     return false;
   } else {
@@ -122,30 +122,48 @@ FSClient::FSClient(const std::string_view ip) noexcept {
     std::println("Unable to create temporary folder: {}", ec.message());
     exit(EXIT_FAILURE);
   }
-  this->_fd = socket(AF_INET, SOCK_STREAM, 0);
 
-  if (this->_fd < 0) {
-    std::println("Creating the socket failed {}", this->_fd);
-    exit(EXIT_FAILURE);
-  }
+  this->_serverAddr.sin_family = AF_INET;
+  this->_serverAddr.sin_port = htons(PORT);
+  this->_serverAddr.sin_addr.s_addr = inet_addr(ip.data());
 
-  struct sockaddr_in serverAddr;
-  serverAddr.sin_family = AF_INET;
-  serverAddr.sin_port = htons(PORT);
-  serverAddr.sin_addr.s_addr = inet_addr(ip.data());
-
-  const int connStatus =
-      connect(this->_fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
-  if (connStatus < 0) {
-    std::println("There was an error making a connection to the server {}",
-                 connStatus);
-    exit(EXIT_FAILURE);
-  }
-  this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
+  this->_private = std::make_unique<RSAKey>(getCanonicalPath(PKEY_PATH), true);
   if (!this->_private || !this->_private->isOk()) {
     std::println("Unable to load private key");
     exit(EXIT_FAILURE);
   }
+}
+
+bool FSClient::connect() noexcept {
+
+  if (this->checkConnection())
+    return true;
+  if (this->_fd >= 0)
+    close(this->_fd);
+
+  this->_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (this->_fd < 0) [[unlikely]] {
+    std::println("Creating the socket failed {}", this->_fd);
+    return false;
+  }
+  const int connStatus =
+      ::connect(this->_fd, (struct sockaddr *)&this->_serverAddr,
+                sizeof(this->_serverAddr));
+  if (connStatus < 0) [[unlikely]] {
+    std::println("There was an error making a connection to the server {}",
+                 connStatus);
+    return false;
+  }
+  if (!this->validationStep()) [[unlikely]] {
+    std::println("There was an error making a connection to the server, "
+                 "validation step ");
+    return false;
+  }
+  if (!this->switchAES()) [[unlikely]] {
+    std::println("There was an error while switching to AES");
+    return false;
+  }
+  return true;
 }
 
 bool FSClient::validationStep() noexcept {
@@ -176,7 +194,7 @@ bool FSClient::validationStep() noexcept {
     std::println("Unable to load public key");
     return false;
   }
-  if (FILE *fp = fopen(PUBKEY_PATH, "r"); !fp) {
+  if (FILE *fp = fopen(getCanonicalPath(PUBKEY_PATH).data(), "r"); !fp) {
     std::println("Unable to open own public key file");
     return false;
   } else {
@@ -209,6 +227,12 @@ bool FSClient::validationStep() noexcept {
     }
   }
   return true;
+}
+constexpr bool FSClient::checkConnection() noexcept {
+  if (this->_fd < 0 || !this->_aes->isOk()) [[unlikely]]
+    return false;
+  const SSLString packet = SSLString(FSCodeStr(PING));
+  return this->writeToSocketAES(this->_fd, packet);
 }
 bool FSClient::switchAES() noexcept {
   this->_aes = std::make_unique<AESKey>();
@@ -307,8 +331,10 @@ FSClient::validateCommand(const SSLString &command) noexcept {
   break;
     // Validate files exist
   case QUIT:
+  case ITER:
   case LIST:
   case ATTR:
+  case PING:
     break;
   case DATA:
     return std::unexpected("Shouldn't be receiving a data packet");
@@ -428,11 +454,8 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
       raw += ' ' + file + ' ' + fsPath + ' ' + isExecutable;
     }
 
-    if (!this->writeToSocketAES(this->_fd, SSLString(FSCodeStr(STRU) + raw))) {
-      std::println("Unable to send request to server");
-      return false;
-    } else if (StringOpt msgOpt = readSocketAES(this->_fd);
-               !msgOpt.has_value()) {
+    if (StringOpt msgOpt = issueCommand(SSLString(FSCodeStr(STRU) + raw));
+        !msgOpt.has_value()) {
       std::println("Unable to get the server answer, closing connection");
       return false;
     } else {
@@ -466,12 +489,11 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
     }
   } break;
   case QUIT:
+  case ITER:
   case LIST:
   case DEL:
   case ATTR:
-    if (!this->writeToSocketAES(this->_fd, command))
-      return false;
-    else if (StringOpt msgOpt = readSocketAES(this->_fd); !msgOpt.has_value()) {
+    if (StringOpt msgOpt = issueCommand(command); !msgOpt.has_value()) {
       std::println("Unable to get the server answer, closing connection");
       return false;
     } else {
@@ -482,6 +504,12 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
     break;
   }
   return true;
+}
+std::optional<SSLString>
+FSClient::issueCommand(const SSLString &command) noexcept {
+  if (!this->writeToSocketAES(this->_fd, command)) [[unlikely]]
+    return std::nullopt;
+  return readSocketAES(this->_fd);
 }
 void FSClient::FSManagerSocket::run() noexcept {
   if (!validationStep() || !switchAES()) {

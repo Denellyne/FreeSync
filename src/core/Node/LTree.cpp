@@ -580,6 +580,8 @@ std::optional<LTree> LTree::getChildTree(std::string_view path) const noexcept {
     path.remove_prefix(1);
   if (path.starts_with('/'))
     path.remove_prefix(1);
+  if (path.ends_with('/'))
+    path.remove_suffix(1);
   if (path.empty()) {
     std::println("Path is empty");
     return std::nullopt;

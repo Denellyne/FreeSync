@@ -64,8 +64,8 @@ typedef std::shared_ptr<RSAKey> RSASPtr;
 
 struct SSLString {
   SSLString() = delete;
-  explicit SSLString(const unsigned char *data, const size_t length,
-                     const bool isSSLAllocated = true) noexcept
+  constexpr explicit SSLString(const unsigned char *data, const size_t length,
+                               const bool isSSLAllocated = true) noexcept
       : _length(length) {
     if (isSSLAllocated)
       this->_data = data;
@@ -78,7 +78,7 @@ struct SSLString {
       memcpy(const_cast<unsigned char *>(this->_data), data, this->_length);
     }
   }
-  SSLString(SSLString &&other) noexcept
+  constexpr SSLString(SSLString &&other) noexcept
       : _data(other._data), _length(other._length) {
     other._data = nullptr;
   }
@@ -92,7 +92,8 @@ struct SSLString {
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
 
-  explicit SSLString(const std::string_view v) noexcept : _length(v.length()) {
+  constexpr explicit SSLString(const std::string_view v) noexcept
+      : _length(v.length()) {
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
         !this->_data) {
       std::cerr << "Unable to allocate memory for cipherText blob\n";
@@ -100,7 +101,7 @@ struct SSLString {
     }
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
-  explicit SSLString(const std::vector<unsigned char> &v) noexcept
+  constexpr explicit SSLString(const std::vector<unsigned char> &v) noexcept
       : _length(v.size()) {
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
         !this->_data) {
@@ -109,7 +110,7 @@ struct SSLString {
     }
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
-  explicit SSLString(const std::span<unsigned char> v) noexcept
+  constexpr explicit SSLString(const std::span<unsigned char> v) noexcept
       : _length(v.size()) {
     if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
         !this->_data) {
@@ -129,7 +130,7 @@ struct SSLString {
   //   memcpy(const_cast<unsigned char *>(this->_data), other._data,
   //          this->_length);
   // }
-  ~SSLString() noexcept {
+  constexpr ~SSLString() noexcept {
     if (this->_data)
       OPENSSL_free(const_cast<unsigned char *>(this->_data));
   }
@@ -146,8 +147,8 @@ struct SSLString {
     return str;
   }
 
-  SSLString &operator=(const SSLString &) = delete;
-  SSLString &operator=(SSLString &&other) noexcept {
+  constexpr SSLString &operator=(const SSLString &) = delete;
+  constexpr SSLString &operator=(SSLString &&other) noexcept {
     if (this->_data)
       OPENSSL_free(const_cast<unsigned char *>(this->_data));
 

@@ -46,16 +46,12 @@ int main(void) {
 #endif
 
 #ifdef CLIENT
+#include "core/FuseFS/FuseFS.h"
 #include "core/Networking/FSClient/FSClient.h"
+
 int main(int argc, char *argv[]) {
 
-  if (argc > 1) {
-    FSClient client = FSClient(argv[1]);
-    client.run();
-    return 0;
-  }
-  FSClient client = FSClient();
-  client.run();
+  FuseFS client = FuseFS(argc, argv);
 
   return 0;
 }

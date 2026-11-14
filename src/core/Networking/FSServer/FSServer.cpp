@@ -19,7 +19,8 @@ FSServer::FSServer(std::atomic_bool &running) noexcept
     return;
   }
 
-  if (const bool res = std::filesystem::exists(CLIENTS_CERTS_PATH, ec);
+  if (const bool res =
+          std::filesystem::exists(getCanonicalPath(CLIENTS_CERTS_PATH), ec);
       ec || !res) {
     std::println("Certs folder doesn't exist or another error occured");
     this->_error = true;
@@ -127,7 +128,7 @@ FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
                                  FSManager &manager) noexcept
     : _running(running), _manager(manager) {
   this->_fd = fd;
-  this->_private = std::make_unique<RSAKey>(PKEY_PATH, true);
+  this->_private = std::make_unique<RSAKey>(getCanonicalPath(PKEY_PATH), true);
   if (!this->_private || !this->_private->isOk()) {
     std::println("Unable to load private key");
     this->_error = true;
@@ -334,6 +335,53 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
 
   } break;
   case ATTR: {
+    if (dataView.empty())
+      return sendErrorMessage("No path was passed");
+
+    if (const auto current = Node::getHeadFile(); !current.has_value()) {
+      std::println("Unable to get current head file");
+      break;
+    } else {
+      alignas(32) std::array<char, 64> arr;
+      memcpy(arr.data(), current.value().data(), 64);
+      LTree tree = LTree(arr, "/FreeSync", true);
+      const std::string path(dataView.cbegin(), dataView.cend());
+      const size_t filePos = path.find_last_of("/");
+      if (filePos == path.npos)
+        return sendErrorMessage("Path must be a valid path");
+      const std::string dirPath = path.substr(0, filePos);
+      const std::string entry = path.substr(filePos + 1, path.size());
+      if (const auto treeOpt = tree.getChildTree(dirPath); !treeOpt.has_value())
+        return sendErrorMessage("Unable to find folder");
+      else {
+        for (const auto &child : treeOpt->getChildren())
+          if (child._fileName == entry) {
+            std::string msgRaw = "";
+            std::string type = "FILE ";
+            std::string nlink = "1 ";
+            std::string fileSize = std::to_string(child.getFileSize());
+            if (child._entry == DIRECTORY) {
+              type = "DIRECTORY ";
+
+              alignas(32) std::array<char, 64> hash;
+              memcpy(hash.data(), child._hash.data(), 64);
+              const LTree subTree = LTree(
+                  hash, treeOpt->getFileName() + '/' + child._fileName, false);
+              if (const auto dirOpt = subTree.getChildTree(entry);
+                  !dirOpt.has_value())
+                return sendErrorMessage("Unable to find folder");
+              else
+                nlink = std::to_string(2 + dirOpt->getChildren().size()) + " ";
+            } else {
+              if (child._entry != REGULAR_FILE)
+                type = "EXECUTABLE ";
+            }
+            msgRaw += type + nlink + fileSize;
+            return sendReply(msgRaw);
+          }
+        return sendErrorMessage("Unable to find folder");
+      }
+    }
   } break;
   case INV: {
     this->_aes = nullptr;
@@ -343,6 +391,31 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
       return false;
     this->_aes = std::make_unique<AESKey>(command._data + COMMAND_LENGTH);
     std::println("Switched to AES encryption");
+  } break;
+  case ITER: {
+
+    if (dataView.empty())
+      return sendErrorMessage("No path was passed");
+
+    if (const auto current = Node::getHeadFile(); !current.has_value()) {
+      std::println("Unable to get current head file");
+      break;
+    } else {
+      alignas(32) std::array<char, 64> arr;
+      memcpy(arr.data(), current.value().data(), 64);
+      LTree tree = LTree(arr, "/FreeSync", true);
+      const std::string path(dataView.cbegin(), dataView.cend());
+      if (const auto treeOpt = tree.getChildTree(path); !treeOpt.has_value())
+        return sendErrorMessage("Unable to find folder");
+      else {
+        std::string msgRaw = "";
+        const auto &children = treeOpt.value().getChildren();
+        for (const auto &child : children)
+          msgRaw += child._fileName + '\n';
+
+        return sendReply(msgRaw);
+      }
+    }
   } break;
   case LIST: {
     if (dataView.empty())
@@ -388,12 +461,14 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
     break;
 
   case ERR:
+    std::println("{}", command.toString());
     std::println("Error received");
     return false;
     break;
   case DATA:
     std::println("Shouldn't be receiving a data packet");
     return false;
+  case PING:
   case AUTH:
   case AES:
     break;

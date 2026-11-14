@@ -16,7 +16,7 @@ protected:
     return writeToSocketAES(this->_fd, msg);
   }
   bool handleValidation() noexcept {
-    if (FILE *fp = fopen(PUBKEY_PATH, "r"); !fp) {
+    if (FILE *fp = fopen(getCanonicalPath(PUBKEY_PATH).data(), "r"); !fp) {
       std::println("Unable to open own public key file");
       return false;
     } else {
@@ -75,8 +75,8 @@ protected:
     if (key.size() > 512)
       return false;
 
-    for (const auto &file :
-         std::filesystem::directory_iterator(CLIENTS_CERTS_PATH)) {
+    for (const auto &file : std::filesystem::directory_iterator(
+             getCanonicalPath(CLIENTS_CERTS_PATH))) {
       if (file.is_directory())
         continue;
 
