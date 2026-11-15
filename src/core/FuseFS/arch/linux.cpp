@@ -1,51 +1,105 @@
+#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <print>
 #define FUSE_USE_VERSION 30
 #include "../../Networking/FSClient/FSClient.h"
 #include "../FuseFS.h"
 #include "fuse3/fuse.h"
+std::mutex m;
 
 #define OPTION(t, p) {t, offsetof(struct options, p), 1}
+struct dirEntries {
+  size_t count = 0;
+  char **entries;
+};
+void freeDir(dirEntries *map) {
+  for (size_t i = 0; i < map->count; i++)
+    free(map->entries[i]);
+  free(map->entries);
+  free(map);
+}
 
-char filename[512];
-static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                         off_t offset, struct fuse_file_info *fi,
-                         enum fuse_readdir_flags flags) {
-  (void)offset;
-  (void)fi;
-  (void)flags;
+static int releasedir(const char *path, struct fuse_file_info *fi) {
+
+  dirEntries *map = (dirEntries *)fi->fh;
+  if (!map)
+    return -EIO;
+  freeDir(map);
+  fi->fh = 0;
+  return 0;
+}
+static int opendir(const char *path, struct fuse_file_info *fi) {
+  std::lock_guard lock(m);
+  dirEntries *map = (dirEntries *)malloc(sizeof(dirEntries));
+  if (!map) [[unlikely]]
+    return -ENOMEM;
 
   fuse_context *ctx = fuse_get_context();
-  if (!ctx)
+  if (!ctx) [[unlikely]] {
+    freeDir(map);
+    fi->fh = 0;
     return -EIO;
+  }
 
   FSClient *client = reinterpret_cast<FSClient *>(ctx->private_data);
-  if (!client->connect())
+  if (!client->connect()) [[unlikely]] {
+    freeDir(map);
+    fi->fh = 0;
     return -ENETUNREACH;
+  }
   const SSLString command(FSCodeStr(ITER) + " /FreeSync" + path);
-  if (!client->validateCommand(command).has_value())
+  if (!client->validateCommand(command).has_value()) [[unlikely]] {
+    freeDir(map);
+    fi->fh = 0;
     return -EIO;
+  }
   if (const auto sslOpt = client->issueCommand(command); !sslOpt.has_value())
-      [[unlikely]]
+      [[unlikely]] {
+    freeDir(map);
+    fi->fh = 0;
     return -EIO;
-  else {
-
-    const std::string msg = sslOpt->toString();
-    std::vector<std::string> strings =
+  } else {
+    std::string msg = sslOpt->toString();
+    if (msg.size() <= 4 || FSStrCode(msg) == ERR) {
+      freeDir(map);
+      fi->fh = 0;
+      return -ENOENT;
+    }
+    msg = msg.substr(4);
+    const std::vector<std::string> strings =
         std::string{msg.cbegin(), msg.cend()} | std::views::split('\n') |
         std::views::transform([](auto &&rg) { return std::string_view{rg}; }) |
         std::ranges::to<std::vector<std::string>>();
-    if (strings.size() == 0 || FSStrCode(strings[0]) == ERR)
-      return -ENOENT;
-    // std::println("{}", strings[0]);
-    strings[0] = strings[0].substr(4, strings[0].size());
 
-    filler(buf, ".", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
-    filler(buf, "..", NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+    map->count = 2 + strings.size();
+    map->entries = (char **)(malloc(map->count * sizeof(char *)));
+    asprintf(&map->entries[0], ".");
+    asprintf(&map->entries[1], "..");
     for (size_t i = 0; i < strings.size(); i++)
-      // if (!strings[i].empty())
-      filler(buf, strings[i].data(), NULL, 0, FUSE_FILL_DIR_DEFAULTS);
+      map->entries[i + 2] = strdup(strings[i].c_str());
+    fi->fh = (uintptr_t)map;
+  }
+  return 0;
+}
+static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+                         off_t offset, struct fuse_file_info *fi,
+                         enum fuse_readdir_flags flags) {
+  (void)flags;
+  (void)path;
+  dirEntries *map = (dirEntries *)fi->fh;
+  if (!map)
+    return -EIO;
+
+  if (offset < 0 || (size_t)offset > map->count)
+    return -EINVAL;
+
+  for (size_t i = offset; i < map->count; i++) {
+    offset = i;
+    if (filler(buf, map->entries[i], NULL, (off_t)(i + 1),
+               FUSE_FILL_DIR_DEFAULTS))
+      break;
   }
 
   return 0;
@@ -53,6 +107,7 @@ static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 static int hello_getattr(const char *path, struct stat *stbuf,
                          struct fuse_file_info *fi) {
+  std::lock_guard lock(m);
   (void)fi;
   memset(stbuf, 0, sizeof(struct stat));
   int res = 0;
@@ -110,13 +165,15 @@ static int hello_getattr(const char *path, struct stat *stbuf,
   return res;
 }
 static const fuse_operations fOps = {.getattr = hello_getattr,
-                                     .readdir = hello_readdir};
+                                     .opendir = opendir,
+                                     .readdir = hello_readdir,
+                                     .releasedir = releasedir};
 class FuseFS::Impl {
 public:
   Impl(int argc, char *argv[]) {
     fuse_args args = FUSE_ARGS_INIT(argc, argv);
     {
-      static struct options {
+      struct options {
         const char *ip;
         int show_help;
       } options;
@@ -138,7 +195,11 @@ public:
         abort();
       }
 
-      this->_client = std::make_unique<FSClient>(options.ip);
+      this->_client = std::make_shared<FSClient>(options.ip);
+      if (!this->_client.get()) {
+        std::println("Unable to initiate client");
+        abort();
+      }
     }
 
     fuse_main_fn(args.argc, args.argv, &fOps, this->_client.get());
@@ -146,7 +207,7 @@ public:
   }
 
 private:
-  std::unique_ptr<FSClient> _client;
+  std::shared_ptr<FSClient> _client;
 };
 
 FuseFS::FuseFS(int argc, char *argv[]) noexcept {

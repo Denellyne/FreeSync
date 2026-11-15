@@ -132,11 +132,11 @@ StringOpt FSProtocol::readSocketRSA(const int fd) noexcept {
 bool FSProtocol::readPacket(const int fd, void *data,
                             const uint32_t numBytes) noexcept {
   assert(fd >= 0);
-  uint32_t bytesRead = 0;
+  size_t bytesRead = 0;
 
   memset(data, 0, numBytes);
   do {
-    const uint32_t valRead =
+    const size_t valRead =
         read(fd, (unsigned char *)data + bytesRead, numBytes - bytesRead);
     if (valRead > 0) [[likely]]
       bytesRead += valRead;

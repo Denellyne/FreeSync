@@ -138,6 +138,7 @@ bool FSClient::connect() noexcept {
 
   if (this->checkConnection())
     return true;
+
   if (this->_fd >= 0)
     close(this->_fd);
 
