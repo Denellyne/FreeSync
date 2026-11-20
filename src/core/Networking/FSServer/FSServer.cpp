@@ -22,7 +22,7 @@ FSServer::FSServer(std::atomic_bool &running) noexcept
   if (const bool res =
           std::filesystem::exists(getCanonicalPath(CLIENTS_CERTS_PATH), ec);
       ec || !res) {
-    std::println("Certs folder doesn't exist or another error occured");
+    std::println("Clients folder doesn't exist or another error occured");
     this->_error = true;
     return;
   }

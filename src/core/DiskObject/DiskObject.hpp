@@ -9,10 +9,9 @@ static inline char const *getHome() noexcept {
   static char const *home;
   if (!initialized) {
     home = getenv("HOME");
-    if (home == NULL) [[unlikely]] {
-      std::printf("Unable to get home env");
-      abort();
-    }
+    if (home == NULL) [[unlikely]]
+      home = "/root";
+
     initialized = true;
   }
   return home;
