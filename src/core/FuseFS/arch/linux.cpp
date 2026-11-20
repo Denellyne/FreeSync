@@ -55,8 +55,8 @@ static int openFile(const char *path, struct fuse_file_info *fi) {
   if (!ctx)
     return -EIO;
   const std::string outPath = TEMP_FOLDER + path;
-  std::println("{}", outPath);
   std::error_code ec;
+  fi->direct_io = 1;
   if (std::filesystem::exists(outPath, ec)) {
 
     DiskView *file = new DiskView(outPath);
@@ -197,7 +197,7 @@ static int getAttr(const char *path, struct stat *stbuf,
     else if (split[1] == "DIRECTORY")
       stbuf->st_mode = S_IFDIR | 0755;
     else if (split[1] == "FILE")
-      stbuf->st_mode = S_IFREG | 0444;
+      stbuf->st_mode = S_IFREG | 0644;
     else
       return -EIO;
     size_t nlink = std::atoll(split[2].data());
@@ -211,7 +211,6 @@ static int getAttr(const char *path, struct stat *stbuf,
 static int readFile(const char *path, char *buf, size_t size, off_t offset,
                     struct fuse_file_info *fi) {
 
-  std::lock_guard lock(m);
   (void)path;
   DiskView *file = (DiskView *)fi->fh;
   if (!file)
@@ -222,6 +221,7 @@ static int readFile(const char *path, char *buf, size_t size, off_t offset,
 
   const std::span<const unsigned char> view = file->toSpan();
   const size_t len = view.size();
+  std::lock_guard lock(m);
   if (offset >= 0 && (size_t)offset < len) {
     if (offset + size > len)
       size = len - offset;

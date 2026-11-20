@@ -8,7 +8,8 @@ compile_commands.json
 .cache
 .freesync
 .clangd
-Unused
-certs
-clients
-CMakeLists.txt
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile

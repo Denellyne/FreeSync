@@ -1,4 +1,3 @@
-#ifndef CLIENT
 #include "core/Networking/FSServer/FSServer.h"
 #include "core/Node/Tree.h"
 #include <csignal>
@@ -43,18 +42,5 @@ int main(void) {
   sv.run();
   return 0;
 }
-#endif
 
-#ifdef CLIENT
-#include "core/FuseFS/FuseFS.h"
-#include "core/Networking/FSClient/FSClient.h"
-
-int main(int argc, char *argv[]) {
-
-  FuseFS client = FuseFS(argc, argv);
-
-  return 0;
-}
-
-#endif
 // do huffman exchange for aes keys
