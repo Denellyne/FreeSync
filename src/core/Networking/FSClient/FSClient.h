@@ -27,7 +27,9 @@ public:
   bool connect() noexcept;
   std::expected<bool, std::string_view>
   validateCommand(const SSLString &command) noexcept;
-  std::optional<SSLString> issueCommand(const SSLString &command) noexcept;
+  std::optional<SSLString> issueCommandRead(const SSLString &command) noexcept;
+  bool issueCommand(const SSLString &command) noexcept;
+  bool downloadFile(const std::string_view outPath);
 
   void disconnect() {
     if (this->_fd >= 0)

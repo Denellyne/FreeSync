@@ -368,73 +368,9 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
                                 SSLString(FSCodeStr(RETR) + ' ' + split[0]))) {
       std::println("Unable to send request to server");
       return false;
-    } else {
-      DiskFile file;
-      if (!file)
-        std::println("Unable to create file: {} {}", std::strerror(errno),
-                     file.getFilePath());
+    } else
+      return downloadFile(split[1]);
 
-      while (true) {
-        if (StringOpt sslOpt = readSocketAES(this->_fd); !sslOpt.has_value()) {
-          std::println("Unable to read from server");
-          return false;
-        } else {
-          SSLString ssl = std::move(sslOpt.value());
-          const std::span<const unsigned char> view{ssl._data, ssl._length};
-          if (view.size() < 3) {
-            std::println("Buffer is too small, an error occured");
-            continue;
-          }
-
-          if (FSStrCode(std::string_view((char *)view.data(), 3)) ==
-              FSCode::OK) {
-            if (StringOpt msgOpt = readSocketAES(this->_fd);
-                !msgOpt.has_value()) {
-              std::println("Unable to get the server hash, closing connection");
-              return false;
-            } else {
-              if (!file)
-                return false;
-              const SSLString msg = std::move(msgOpt.value());
-              file = decompressData(file.toSpan());
-              if (!file) {
-                std::println("Unable to decompress file");
-                return false;
-              }
-              const std::string hash = Node::hash(file.toSpan());
-              if (msg._length != hash.size()) {
-                std::println("Message has different length than our hash");
-                return false;
-              }
-              std::span<const unsigned char> dataView =
-                  std::span<const unsigned char>(msg._data, msg._length);
-              if (std::string(dataView.begin(), dataView.end()) != hash) {
-                std::println("Hash is not the same");
-                return false;
-              }
-
-              DiskFile out(split[1], true);
-              if (!out)
-                std::println("Unable to create file: {} {}",
-                             std::strerror(errno), out.getFilePath());
-              return out.write(file.toSpan());
-            }
-            std::println("Finished receiving file");
-            return true;
-          } else if (FSStrCode(std::string_view((char *)view.data(), 3)) ==
-                     FSCode::ERR) {
-            const std::string err = std::string(view.begin() + 3, view.end());
-            std::println("Error from server:{}", err);
-            return false;
-          } else if (FSStrCode(std::string_view((char *)view.data(), 3)) ==
-                         FSCode::DATA &&
-                     file && !file.write(view.subspan(3))) {
-            std::println("Unable to write to temporary file");
-            return false;
-          }
-        }
-      }
-    }
   } break;
   case STRU: {
     auto split =
@@ -455,7 +391,7 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
       raw += ' ' + file + ' ' + fsPath + ' ' + isExecutable;
     }
 
-    if (StringOpt msgOpt = issueCommand(SSLString(FSCodeStr(STRU) + raw));
+    if (StringOpt msgOpt = issueCommandRead(SSLString(FSCodeStr(STRU) + raw));
         !msgOpt.has_value()) {
       std::println("Unable to get the server answer, closing connection");
       return false;
@@ -494,7 +430,7 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
   case LIST:
   case DEL:
   case ATTR:
-    if (StringOpt msgOpt = issueCommand(command); !msgOpt.has_value()) {
+    if (StringOpt msgOpt = issueCommandRead(command); !msgOpt.has_value()) {
       std::println("Unable to get the server answer, closing connection");
       return false;
     } else {
@@ -506,12 +442,84 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
   }
   return true;
 }
+bool FSClient::downloadFile(const std::string_view outPath) {
+  DiskFile file;
+  if (!file)
+    std::println("Unable to create file: {} {}", std::strerror(errno),
+                 file.getFilePath());
+
+  while (true) {
+    if (StringOpt sslOpt = readSocketAES(this->_fd); !sslOpt.has_value()) {
+      std::println("Unable to read from server");
+      return false;
+    } else {
+      SSLString ssl = std::move(sslOpt.value());
+      const std::span<const unsigned char> view{ssl._data, ssl._length};
+      if (view.size() < 3) {
+        std::println("Buffer is too small, an error occured");
+        continue;
+      }
+
+      if (FSStrCode(std::string_view((char *)view.data(), 3)) == FSCode::OK) {
+        if (StringOpt msgOpt = readSocketAES(this->_fd); !msgOpt.has_value()) {
+          std::println("Unable to get the server hash, closing connection");
+          return false;
+        } else {
+          if (!file)
+            return false;
+          const SSLString msg = std::move(msgOpt.value());
+          file = decompressData(file.toSpan());
+          if (!file) {
+            std::println("Unable to decompress file");
+            return false;
+          }
+          const std::string hash = Node::hash(file.toSpan());
+          if (msg._length != hash.size()) {
+            std::println("Message has different length than our hash");
+            return false;
+          }
+          std::span<const unsigned char> dataView =
+              std::span<const unsigned char>(msg._data, msg._length);
+          if (std::string(dataView.begin(), dataView.end()) != hash) {
+            std::println("Hash is not the same");
+            return false;
+          }
+
+          DiskFile out(outPath, true);
+          if (!out)
+            std::println("Unable to create file: {} {}", std::strerror(errno),
+                         out.getFilePath());
+          return out.write(file.toSpan());
+        }
+        std::println("Finished receiving file");
+        return true;
+      } else if (FSStrCode(std::string_view((char *)view.data(), 3)) ==
+                 FSCode::ERR) {
+        const std::string err = std::string(view.begin() + 3, view.end());
+        std::println("Error from server:{}", err);
+        return false;
+      } else if (FSStrCode(std::string_view((char *)view.data(), 3)) ==
+                     FSCode::DATA &&
+                 file && !file.write(view.subspan(3))) {
+        std::println("Unable to write to temporary file");
+        return false;
+      }
+    }
+  }
+}
+
+bool FSClient::issueCommand(const SSLString &command) noexcept {
+  return this->writeToSocketAES(this->_fd, command);
+}
+
 std::optional<SSLString>
-FSClient::issueCommand(const SSLString &command) noexcept {
-  if (!this->writeToSocketAES(this->_fd, command)) [[unlikely]]
+FSClient::issueCommandRead(const SSLString &command) noexcept {
+  if (!issueCommand(command)) [[unlikely]]
     return std::nullopt;
+
   return readSocketAES(this->_fd);
 }
+
 void FSClient::FSManagerSocket::run() noexcept {
   if (!validationStep() || !switchAES()) {
     std::println("Unable to validate server");

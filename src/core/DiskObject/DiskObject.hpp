@@ -1,10 +1,33 @@
 #pragma once
-#define TEMP_FOLDER "./.tmp/"
 #include <cstdint>
 #include <fcntl.h>
 #include <span>
 #include <string>
 #include <sys/mman.h>
+static inline char const *getHome() noexcept {
+  static bool initialized = false;
+  static char const *home;
+  if (!initialized) {
+    home = getenv("HOME");
+    if (home == NULL) [[unlikely]] {
+      std::printf("Unable to get home env");
+      abort();
+    }
+    initialized = true;
+  }
+  return home;
+}
+
+static inline std::string getCanonicalPath(std::string_view path) noexcept {
+  static char const *home = getHome();
+  std::string str(home);
+  str.append(path);
+  return str;
+}
+
+static const std::string TEMP_FOLDER =
+    getCanonicalPath("/.local/share/freesync/.tmp/");
+
 class DiskObject {
 public:
   DiskObject() noexcept = default;

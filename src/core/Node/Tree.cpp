@@ -131,7 +131,7 @@ bool Tree::writeBlob() noexcept {
 
 bool Tree::writeHeadFile() noexcept {
   assert(this->_hash.length() == 64);
-  DiskFile newHead(TEMP_FOLDER "FS_TMP_HEAD", true);
+  DiskFile newHead(TEMP_FOLDER + "FS_TMP_HEAD", true);
   if (!newHead) [[unlikely]] {
     std::println("Unable to create temporary head file");
     return false;

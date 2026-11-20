@@ -55,7 +55,7 @@ public:
     std::error_code ec;
     std::filesystem::create_directory(TEMP_FOLDER, ec);
     ASSERT_FALSE(ec) << ec.message();
-    testWorkspace = mkdtemp(std::string(TEMP_FOLDER "FSTests_XXXXXX").data());
+    testWorkspace = mkdtemp(std::string(TEMP_FOLDER + "FSTests_XXXXXX").data());
 
     ASSERT_NO_FATAL_FAILURE(generateRandomDirectory(testWorkspace.string()));
 

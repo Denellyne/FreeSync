@@ -1,9 +1,12 @@
 #include <cerrno>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <print>
+#include <system_error>
 #define FUSE_USE_VERSION 30
+#include "../../DiskObject/DiskView.hpp"
 #include "../../Networking/FSClient/FSClient.h"
 #include "../FuseFS.h"
 #include "fuse3/fuse.h"
@@ -17,12 +20,17 @@ struct dirEntries {
 void freeDir(dirEntries *map) {
   for (size_t i = 0; i < map->count; i++)
     free(map->entries[i]);
-  free(map->entries);
+
+  if (map->entries)
+    free(map->entries);
+
   free(map);
 }
 
-static int releasedir(const char *path, struct fuse_file_info *fi) {
+static int releaseDir(const char *path, struct fuse_file_info *fi) {
 
+  std::lock_guard lock(m);
+  (void)path;
   dirEntries *map = (dirEntries *)fi->fh;
   if (!map)
     return -EIO;
@@ -30,51 +38,93 @@ static int releasedir(const char *path, struct fuse_file_info *fi) {
   fi->fh = 0;
   return 0;
 }
-static int opendir(const char *path, struct fuse_file_info *fi) {
+
+static int releaseFile(const char *path, struct fuse_file_info *fi) {
   std::lock_guard lock(m);
-  dirEntries *map = (dirEntries *)malloc(sizeof(dirEntries));
-  if (!map) [[unlikely]]
+  (void)path;
+  DiskView *file = (DiskView *)fi->fh;
+  if (!file)
+    return -EIO;
+  delete file;
+  fi->fh = 0;
+  return 0;
+}
+static int openFile(const char *path, struct fuse_file_info *fi) {
+  int res = 0;
+  fuse_context *ctx = fuse_get_context();
+  if (!ctx)
+    return -EIO;
+  const std::string outPath = TEMP_FOLDER + path;
+  std::println("{}", outPath);
+  std::error_code ec;
+  if (std::filesystem::exists(outPath, ec)) {
+
+    DiskView *file = new DiskView(outPath);
+    if (!file || !(*file)) [[unlikely]]
+      return -ENOMEM;
+    fi->fh = (uintptr_t)(file);
+    return res;
+  }
+
+  std::lock_guard lock(m);
+  FSClient *client = reinterpret_cast<FSClient *>(ctx->private_data);
+  if (!client->connect())
+    return -ENETUNREACH;
+  const SSLString command(FSCodeStr(RETR) + " /FreeSync" + path);
+  if (!client->issueCommand(command)) [[unlikely]]
+    return -EIO;
+  else if (!client->downloadFile(outPath)) [[unlikely]]
+    return -EIO;
+
+  DiskView *file = new DiskView(outPath);
+  if (!file || !(*file)) [[unlikely]]
     return -ENOMEM;
+  fi->fh = (uintptr_t)(file);
+
+  return res;
+}
+
+static int openDir(const char *path, struct fuse_file_info *fi) {
 
   fuse_context *ctx = fuse_get_context();
-  if (!ctx) [[unlikely]] {
-    freeDir(map);
-    fi->fh = 0;
+  if (!ctx) [[unlikely]]
     return -EIO;
-  }
 
+  std::lock_guard lock(m);
   FSClient *client = reinterpret_cast<FSClient *>(ctx->private_data);
-  if (!client->connect()) [[unlikely]] {
-    freeDir(map);
-    fi->fh = 0;
+  if (!client->connect()) [[unlikely]]
     return -ENETUNREACH;
-  }
+
   const SSLString command(FSCodeStr(ITER) + " /FreeSync" + path);
-  if (!client->validateCommand(command).has_value()) [[unlikely]] {
-    freeDir(map);
-    fi->fh = 0;
+  if (!client->validateCommand(command).has_value()) [[unlikely]]
     return -EIO;
-  }
-  if (const auto sslOpt = client->issueCommand(command); !sslOpt.has_value())
-      [[unlikely]] {
-    freeDir(map);
-    fi->fh = 0;
+
+  if (const auto sslOpt = client->issueCommandRead(command);
+      !sslOpt.has_value()) [[unlikely]]
     return -EIO;
-  } else {
+  else {
+
     std::string msg = sslOpt->toString();
-    if (msg.size() <= 4 || FSStrCode(msg) == ERR) {
-      freeDir(map);
-      fi->fh = 0;
+    if (msg.size() <= 4 || FSStrCode(msg) == ERR)
       return -ENOENT;
-    }
+
     msg = msg.substr(4);
     const std::vector<std::string> strings =
         std::string{msg.cbegin(), msg.cend()} | std::views::split('\n') |
         std::views::transform([](auto &&rg) { return std::string_view{rg}; }) |
         std::ranges::to<std::vector<std::string>>();
 
+    dirEntries *map = (dirEntries *)malloc(sizeof(dirEntries));
+    if (!map) [[unlikely]]
+      return -ENOMEM;
+
     map->count = 2 + strings.size();
     map->entries = (char **)(malloc(map->count * sizeof(char *)));
+    if (!map->entries) [[unlikely]] {
+      free(map);
+      return -ENOMEM;
+    }
+
     asprintf(&map->entries[0], ".");
     asprintf(&map->entries[1], "..");
     for (size_t i = 0; i < strings.size(); i++)
@@ -83,9 +133,9 @@ static int opendir(const char *path, struct fuse_file_info *fi) {
   }
   return 0;
 }
-static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                         off_t offset, struct fuse_file_info *fi,
-                         enum fuse_readdir_flags flags) {
+static int readDir(const char *path, void *buf, fuse_fill_dir_t filler,
+                   off_t offset, struct fuse_file_info *fi,
+                   enum fuse_readdir_flags flags) {
   (void)flags;
   (void)path;
   dirEntries *map = (dirEntries *)fi->fh;
@@ -105,9 +155,8 @@ static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   return 0;
 }
 
-static int hello_getattr(const char *path, struct stat *stbuf,
-                         struct fuse_file_info *fi) {
-  std::lock_guard lock(m);
+static int getAttr(const char *path, struct stat *stbuf,
+                   struct fuse_file_info *fi) {
   (void)fi;
   memset(stbuf, 0, sizeof(struct stat));
   int res = 0;
@@ -121,14 +170,15 @@ static int hello_getattr(const char *path, struct stat *stbuf,
   if (!ctx)
     return -EIO;
 
+  std::lock_guard lock(m);
   FSClient *client = reinterpret_cast<FSClient *>(ctx->private_data);
   if (!client->connect())
     return -ENETUNREACH;
   const SSLString command(FSCodeStr(ATTR) + " /FreeSync" + path);
   if (!client->validateCommand(command).has_value()) [[unlikely]]
     return -EIO;
-  if (const auto sslOpt = client->issueCommand(command); !sslOpt.has_value())
-      [[unlikely]]
+  if (const auto sslOpt = client->issueCommandRead(command);
+      !sslOpt.has_value()) [[unlikely]]
     return -EIO;
   else {
     const std::string msg = sslOpt->toString();
@@ -155,19 +205,39 @@ static int hello_getattr(const char *path, struct stat *stbuf,
     stbuf->st_nlink = nlink;
     stbuf->st_size = size;
   }
-  // } else if (strcmp(path + 1, filename) == 0) {
-  //   stbuf->st_mode = S_IFREG | 0444;
-  //   stbuf->st_nlink = 1;
-  //   stbuf->st_size = 5;
-  // } else
-  //   res = -ENOENT;
 
   return res;
 }
-static const fuse_operations fOps = {.getattr = hello_getattr,
-                                     .opendir = opendir,
-                                     .readdir = hello_readdir,
-                                     .releasedir = releasedir};
+static int readFile(const char *path, char *buf, size_t size, off_t offset,
+                    struct fuse_file_info *fi) {
+
+  std::lock_guard lock(m);
+  (void)path;
+  DiskView *file = (DiskView *)fi->fh;
+  if (!file)
+    return -EIO;
+
+  // if (strcmp(path + 1, file->getFilePath().substr(getHome()).data()) != 0)
+  //   return -ENOENT;
+
+  const std::span<const unsigned char> view = file->toSpan();
+  const size_t len = view.size();
+  if (offset >= 0 && (size_t)offset < len) {
+    if (offset + size > len)
+      size = len - offset;
+    memcpy(buf, view.data() + offset, size);
+  } else
+    size = 0;
+
+  return size;
+}
+static const fuse_operations fOps = {.getattr = getAttr,
+                                     .open = openFile,
+                                     .read = readFile,
+                                     .release = releaseFile,
+                                     .opendir = openDir,
+                                     .readdir = readDir,
+                                     .releasedir = releaseDir};
 class FuseFS::Impl {
 public:
   Impl(int argc, char *argv[]) {

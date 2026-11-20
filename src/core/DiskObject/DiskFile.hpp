@@ -11,8 +11,8 @@ public:
     if (this->_error)
       return;
 
-    char TMP_TEMPLATE[] = TEMP_FOLDER "FS_XXXXXX";
-    this->_fd = mkstemp(TMP_TEMPLATE);
+    std::string TMP_TEMPLATE = TEMP_FOLDER + "FS_XXXXXX";
+    this->_fd = mkstemp(TMP_TEMPLATE.data());
     this->_path = TMP_TEMPLATE;
     this->_length = 0;
     if (this->_fd < 0) {
@@ -49,8 +49,8 @@ public:
       return;
     }
     if (!this->_newFile) {
-      char TMP_TEMPLATE[] = TEMP_FOLDER "FS_XXXXXX";
-      this->_fd = mkstemp(TMP_TEMPLATE);
+      std::string TMP_TEMPLATE = TEMP_FOLDER + "FS_XXXXXX";
+      this->_fd = mkstemp(TMP_TEMPLATE.data());
       this->_path = TMP_TEMPLATE;
       std::error_code ec;
       std::filesystem::copy_file(

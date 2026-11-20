@@ -18,17 +18,6 @@ using StringOpt = std::optional<SSLString>;
 #define CLIENTS_CERTS_PATH "/.local/share/freesync/clients/"
 #define FSMANAGER_PACKET 64 * 1024
 
-static std::string getCanonicalPath(std::string_view path) noexcept {
-  static char const *home = getenv("HOME");
-  if (home == NULL) {
-    std::println("Unable to get home env");
-    abort();
-  }
-  std::string str(home);
-  str.append(path);
-  return str;
-}
-
 enum FSCode {
   ERR = 100,  // Generic Error command followed by reason
   QUIT = 101, // Generic close connection command
