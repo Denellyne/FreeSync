@@ -1,16 +1,189 @@
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <expected>
+#include <future>
+#include <inplace_vector>
 #include <memory>
+#include <optional>
 #include <print>
+#include <queue>
+#include <ranges>
 #include <system_error>
+#include <unordered_map>
 #define FUSE_USE_VERSION 30
 #include "../../DiskObject/DiskView.hpp"
-#include "../../Networking/FSClient/FSClient.h"
+#include "../../Networking/FSClient/Fuse/FSClientFuse.h"
 #include "../FuseFS.h"
 #include "fuse3/fuse.h"
-std::mutex m;
+using SSLOpt = std::optional<SSLView>;
+using SSLExp = std::expected<SSLOpt, int>;
+
+class ConnectionPool {
+#define MAX_CONNECTIONS 2
+public:
+  ConnectionPool() = delete;
+  ConnectionPool(const std::string_view ip) noexcept {
+    for (size_t i = 0; i < MAX_CONNECTIONS; i++) {
+      this->_pool.unchecked_emplace_back(ip);
+      this->_available.emplace(i);
+    }
+  }
+  std::optional<size_t> getConncetion() noexcept {
+    std::lock_guard lock(this->_mutex);
+    if (this->_available.empty())
+      return std::nullopt;
+
+    const size_t idx = this->_available.front();
+    this->_available.pop();
+    return idx;
+  }
+
+  std::optional<int> downloadFile(const SSLString &command,
+                                  const std::string_view outPath) noexcept {
+
+    bool issueConnection = false;
+    const std::string commandStr = command.toString();
+    std::shared_future<SSLOpt> future;
+    std::promise<SSLOpt> promise{};
+    {
+      std::lock_guard lock(this->_mutex);
+      auto it = this->_pending.find(commandStr);
+      if (it == this->_pending.end()) {
+        issueConnection = true;
+        const std::shared_future<SSLOpt> fut = promise.get_future().share();
+        auto [newIt, inserted] = this->_pending.emplace(commandStr, fut);
+        future = newIt->second;
+      } else
+        future = it->second;
+    }
+    if (!issueConnection) {
+      switch (std::future_status status =
+                  future.wait_for(std::chrono::minutes(15));
+              status) {
+      case std::future_status::deferred:
+        [[fallthrough]];
+      case std::future_status::timeout:
+        return -EIO;
+      case std::future_status::ready:
+        if (const auto &opt = future.get(); !opt.has_value())
+          return -EIO;
+        else
+          return std::nullopt;
+      }
+    }
+    const auto finish = [&commandStr, &promise, this](const bool sucess) {
+      std::lock_guard lock(this->_mutex);
+      const auto it = this->_pending.find(commandStr);
+      if (it != this->_pending.end()) {
+        this->_pending.erase(it);
+        if (sucess)
+          promise.set_value(SSLView(""));
+        else
+          promise.set_value(std::nullopt);
+      }
+    };
+    if (const auto idxOpt = this->getConncetion(); !idxOpt.has_value()) {
+      finish(false);
+      return -EAGAIN;
+    } else {
+      FSClientFuse &client = this->_pool[idxOpt.value()];
+      if (!client.connect()) {
+        finish(false);
+        this->pushConnection(idxOpt.value());
+        return -ENETUNREACH;
+      }
+      finish(client.issueCommand(command) && client.downloadFile(outPath));
+      this->pushConnection(idxOpt.value());
+
+      if (const auto &opt = future.get(); !opt.has_value())
+        return -EIO;
+      else
+        return std::nullopt;
+    }
+
+    return -EIO;
+  }
+  SSLExp issueCommand(const SSLString &command) noexcept {
+
+    bool issueConnection = false;
+    const std::string commandStr = command.toString();
+    std::shared_future<SSLOpt> future;
+    std::promise<SSLOpt> promise{};
+    {
+      std::lock_guard lock(this->_mutex);
+      auto it = this->_pending.find(commandStr);
+      if (it == this->_pending.end()) {
+        issueConnection = true;
+        const std::shared_future<SSLOpt> fut = promise.get_future().share();
+        auto [newIt, inserted] = this->_pending.emplace(commandStr, fut);
+        future = newIt->second;
+      } else
+        future = it->second;
+    }
+    if (!issueConnection) {
+      switch (std::future_status status =
+                  future.wait_for(std::chrono::seconds(15));
+              status) {
+      case std::future_status::deferred:
+        [[fallthrough]];
+      case std::future_status::timeout:
+        return std::unexpected(-EIO);
+      case std::future_status::ready:
+        if (const auto &opt = future.get(); !opt.has_value())
+          return std::unexpected(-EIO);
+        else
+          return opt;
+      }
+    }
+    const auto finish = [&commandStr, &promise, this](SSLOpt &&result) {
+      std::lock_guard lock(this->_mutex);
+      const auto it = this->_pending.find(commandStr);
+      if (it != this->_pending.end()) {
+        this->_pending.erase(it);
+        promise.set_value(result);
+      }
+    };
+    if (const auto idxOpt = this->getConncetion(); !idxOpt.has_value()) {
+      finish(std::nullopt);
+      return std::unexpected(-EAGAIN);
+    } else {
+      FSClientFuse &client = this->_pool[idxOpt.value()];
+      if (!client.connect()) {
+        finish(std::nullopt);
+        this->pushConnection(idxOpt.value());
+        return std::unexpected(-ENETUNREACH);
+      }
+
+      finish(client.issueCommandRead(command));
+      this->pushConnection(idxOpt.value());
+
+      if (const auto &opt = future.get(); !opt.has_value())
+        return std::unexpected(-EIO);
+      else
+        return opt;
+    }
+
+    return std::unexpected(-EIO);
+  }
+
+private:
+  void pushConnectionLocked(const size_t idx) noexcept {
+    this->_available.emplace(idx);
+  }
+  void pushConnection(const size_t idx) noexcept {
+    std::lock_guard lock(this->_mutex);
+    // this->_pool[idx].disconnect();
+    this->_available.emplace(idx);
+  }
+
+  std::inplace_vector<FSClientFuse, MAX_CONNECTIONS> _pool;
+  std::queue<size_t> _available;
+  std::mutex _mutex;
+  std::unordered_map<std::string, std::shared_future<SSLOpt>> _pending;
+};
 
 #define OPTION(t, p) {t, offsetof(struct options, p), 1}
 struct dirEntries {
@@ -29,7 +202,6 @@ void freeDir(dirEntries *map) {
 
 static int releaseDir(const char *path, struct fuse_file_info *fi) {
 
-  std::lock_guard lock(m);
   (void)path;
   dirEntries *map = (dirEntries *)fi->fh;
   if (!map)
@@ -40,7 +212,6 @@ static int releaseDir(const char *path, struct fuse_file_info *fi) {
 }
 
 static int releaseFile(const char *path, struct fuse_file_info *fi) {
-  std::lock_guard lock(m);
   (void)path;
   DiskView *file = (DiskView *)fi->fh;
   if (!file)
@@ -66,15 +237,13 @@ static int openFile(const char *path, struct fuse_file_info *fi) {
     return res;
   }
 
-  std::lock_guard lock(m);
-  FSClient *client = reinterpret_cast<FSClient *>(ctx->private_data);
-  if (!client->connect())
-    return -ENETUNREACH;
+  ConnectionPool &client =
+      *reinterpret_cast<ConnectionPool *>(ctx->private_data);
+
   const SSLString command(FSCodeStr(RETR) + " /FreeSync" + path);
-  if (!client->issueCommand(command)) [[unlikely]]
-    return -EIO;
-  else if (!client->downloadFile(outPath)) [[unlikely]]
-    return -EIO;
+  if (const auto sslOpt = client.downloadFile(command, outPath);
+      sslOpt.has_value()) [[unlikely]]
+    return sslOpt.value();
 
   DiskView *file = new DiskView(outPath);
   if (!file || !(*file)) [[unlikely]]
@@ -90,21 +259,16 @@ static int openDir(const char *path, struct fuse_file_info *fi) {
   if (!ctx) [[unlikely]]
     return -EIO;
 
-  std::lock_guard lock(m);
-  FSClient *client = reinterpret_cast<FSClient *>(ctx->private_data);
-  if (!client->connect()) [[unlikely]]
-    return -ENETUNREACH;
+  ConnectionPool &client =
+      *reinterpret_cast<ConnectionPool *>(ctx->private_data);
 
   const SSLString command(FSCodeStr(ITER) + " /FreeSync" + path);
-  if (!client->validateCommand(command).has_value()) [[unlikely]]
-    return -EIO;
 
-  if (const auto sslOpt = client->issueCommandRead(command);
-      !sslOpt.has_value()) [[unlikely]]
-    return -EIO;
+  if (const auto sslOpt = client.issueCommand(command); !sslOpt.has_value())
+      [[unlikely]]
+    return sslOpt.error();
   else {
-
-    std::string msg = sslOpt->toString();
+    std::string msg = sslOpt.value()->get().toString();
     if (msg.size() <= 4 || FSStrCode(msg) == ERR)
       return -ENOENT;
 
@@ -170,18 +334,15 @@ static int getAttr(const char *path, struct stat *stbuf,
   if (!ctx)
     return -EIO;
 
-  std::lock_guard lock(m);
-  FSClient *client = reinterpret_cast<FSClient *>(ctx->private_data);
-  if (!client->connect())
-    return -ENETUNREACH;
+  ConnectionPool &client =
+      *reinterpret_cast<ConnectionPool *>(ctx->private_data);
+
   const SSLString command(FSCodeStr(ATTR) + " /FreeSync" + path);
-  if (!client->validateCommand(command).has_value()) [[unlikely]]
-    return -EIO;
-  if (const auto sslOpt = client->issueCommandRead(command);
-      !sslOpt.has_value()) [[unlikely]]
-    return -EIO;
+  if (const auto sslOpt = client.issueCommand(command); !sslOpt.has_value())
+      [[unlikely]]
+    return sslOpt.error();
   else {
-    const std::string msg = sslOpt->toString();
+    const std::string msg = sslOpt.value()->get().toString();
     const std::vector<std::string> split =
         std::string{msg.cbegin(), msg.cend()} | std::views::split(' ') |
         std::views::transform([](auto &&rg) { return std::string_view{rg}; }) |
@@ -221,7 +382,6 @@ static int readFile(const char *path, char *buf, size_t size, off_t offset,
 
   const std::span<const unsigned char> view = file->toSpan();
   const size_t len = view.size();
-  std::lock_guard lock(m);
   if (offset >= 0 && (size_t)offset < len) {
     if (offset + size > len)
       size = len - offset;
@@ -231,13 +391,24 @@ static int readFile(const char *path, char *buf, size_t size, off_t offset,
 
   return size;
 }
-static const fuse_operations fOps = {.getattr = getAttr,
-                                     .open = openFile,
-                                     .read = readFile,
-                                     .release = releaseFile,
-                                     .opendir = openDir,
-                                     .readdir = readDir,
-                                     .releasedir = releaseDir};
+static void *init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
+  (void)conn;
+  cfg->attr_timeout = 15.0;
+  cfg->entry_timeout = 15.0;
+  cfg->negative_timeout = 20.0;
+  return fuse_get_context()->private_data;
+}
+static const fuse_operations fOps = {
+    .getattr = getAttr,
+    .open = openFile,
+    .read = readFile,
+    .release = releaseFile,
+    .opendir = openDir,
+    .readdir = readDir,
+    .releasedir = releaseDir,
+    .init = init,
+};
+
 class FuseFS::Impl {
 public:
   Impl(int argc, char *argv[]) {
@@ -252,7 +423,7 @@ public:
           OPTION("--help", show_help), FUSE_OPT_END};
       if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1) {
         std::println("Crash");
-        abort(); // TEMP
+        return;
       }
 
       if (options.show_help) {
@@ -262,22 +433,23 @@ public:
         abort();
       } else if (options.ip == NULL) {
         std::println("Ip not set");
-        abort();
+        return;
       }
 
-      this->_client = std::make_shared<FSClient>(options.ip);
-      if (!this->_client.get()) {
-        std::println("Unable to initiate client");
-        abort();
+      this->_pool = std::make_shared<ConnectionPool>(options.ip);
+      if (!this->_pool) {
+        std::println("Unable to allocate connections");
+        return;
       }
     }
 
-    fuse_main_fn(args.argc, args.argv, &fOps, this->_client.get());
+    fuse_opt_add_arg(&args, "-oauto_unmount");
+    fuse_main_fn(args.argc, args.argv, &fOps, this->_pool.get());
     fuse_opt_free_args(&args);
   }
 
 private:
-  std::shared_ptr<FSClient> _client;
+  std::shared_ptr<ConnectionPool> _pool;
 };
 
 FuseFS::FuseFS(int argc, char *argv[]) noexcept {

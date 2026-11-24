@@ -1,4 +1,5 @@
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cstring>
 #include <iostream>
@@ -158,16 +159,73 @@ struct SSLString {
     other._data = nullptr;
     return *this;
   }
+  // constexpr SSLString clone() const noexcept {
+  //   return SSLString(this->toString());
+  // }
   operator unsigned char const *() const noexcept { return this->_data; }
   operator bool() const noexcept { return this->_data != nullptr; }
   const unsigned char *_data = nullptr;
   const size_t _length = 0;
 };
+class SSLView {
+  class ControlBlock {
+  public:
+    ControlBlock(const size_t counter) noexcept { this->_counter = counter; }
+    size_t load() const noexcept { return this->_counter.load(); }
+    void incr() noexcept { this->_counter.fetch_add(1); }
+    void sub() noexcept { this->_counter.fetch_sub(1); }
+
+  private:
+    std::atomic_size_t _counter = 0;
+  };
+
+public:
+  SSLView() = delete;
+  SSLView(const std::string_view &&string) noexcept
+      : _controlBlock(new ControlBlock(1)) {
+    this->_data = new SSLString(std::move(string));
+  }
+  SSLView(SSLString &&string) noexcept : _controlBlock(new ControlBlock(1)) {
+    this->_data = new SSLString(std::move(string));
+  }
+  SSLView(const SSLView &other) noexcept
+      : _data(other._data), _controlBlock(other._controlBlock) {
+    this->_controlBlock->incr();
+  }
+  SSLView(SSLView &&other) noexcept
+      : _data(std::move(other._data)),
+        _controlBlock(std::move(other._controlBlock)) {}
+
+  SSLView &operator=(const SSLView &other) noexcept {
+    this->_data = other._data;
+    this->_controlBlock = other._controlBlock;
+    this->_controlBlock->incr();
+    return *this;
+  }
+  SSLView &operator=(SSLView &&other) noexcept {
+    this->_data = std::move(other._data);
+    this->_controlBlock = std::move(other._controlBlock);
+    return *this;
+  }
+  ~SSLView() noexcept {
+    this->_controlBlock->sub();
+    if (this->_controlBlock->load() == 0) {
+      delete this->_controlBlock;
+      delete this->_data;
+    }
+  }
+  const SSLString &get() const noexcept { return *(this->_data); }
+
+private:
+  const SSLString *_data = nullptr;
+  ControlBlock *_controlBlock = nullptr;
+};
 
 class CypherKey {
 public:
   virtual ~CypherKey() noexcept = default;
-  // virtual std::optional<SSLString> encryptBlob(const std::string &data) = 0;
+  // virtual std::optional<SSLString> encryptBlob(const std::string &data) =
+  // 0;
   virtual std::optional<SSLString>
   encryptBlob(const SSLString &data) noexcept = 0;
   // virtual std::optional<SSLString> decryptBlob(std::string &data) = 0;

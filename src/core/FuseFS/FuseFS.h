@@ -1,6 +1,6 @@
 #pragma once
 #include <cstddef>
-#define STORAGE_SIZE 280
+#define STORAGE_SIZE 16
 #define STORAGE_ALIGNMENT 16
 
 class FuseFS {

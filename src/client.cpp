@@ -1,4 +1,4 @@
-#include "core/Networking/FSClient/FSClient.h"
+#include "core/Networking/FSClient/CLI/FSClient.h"
 int main(int argc, char *argv[]) {
 
   if (argc < 2) {
