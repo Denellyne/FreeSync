@@ -1,7 +1,6 @@
 # This file is mostly AI Generated, it is a build file so who cares 
 
 cmake_minimum_required(VERSION 3.25)
-include(CMakeDependentOption)
 project(FreeSync LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 26)
