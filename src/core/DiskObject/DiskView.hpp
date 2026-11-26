@@ -6,8 +6,8 @@
 class DiskView : public DiskObject {
 public:
   explicit DiskView() noexcept { this->_error = true; }
-  virtual ~DiskView() noexcept override {
-    if (this->_buf)
+  ~DiskView() noexcept override {
+    if (this->_buf != nullptr)
       ::munmap(this->_buf, this->_length);
     if (this->_fd >= 0)
       ::close(this->_fd);
@@ -27,9 +27,10 @@ public:
 
     this->_length = std::filesystem::file_size(this->_path);
 
-    this->_buf = (unsigned char *)::mmap(
-        0, this->_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, this->_fd, 0);
-    if (!this->_buf || this->_buf == MAP_FAILED) {
+    this->_buf = static_cast<unsigned char *>(
+        ::mmap(nullptr, this->_length, PROT_READ | PROT_WRITE, MAP_PRIVATE,
+               this->_fd, 0));
+    if ((this->_buf == nullptr) || this->_buf == MAP_FAILED) {
       close(this->_fd);
       this->_fd = -1;
       this->_error = true;

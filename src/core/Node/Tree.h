@@ -8,16 +8,17 @@ public:
   explicit Tree(const std::array<char, 64> &hash, bool root = false);
   [[nodiscard]] bool writeMerkleTree();
 
-  constexpr const std::string_view getHash() const noexcept override {
+  [[nodiscard]] constexpr std::string_view getHash() const noexcept override {
     return this->_hash;
   }
-  constexpr const fs::path &getFilePath() const noexcept override {
+  [[nodiscard]] constexpr const fs::path &
+  getFilePath() const noexcept override {
     return this->_filePath;
   }
-  constexpr const fs::path &getObjPath() const noexcept override {
+  [[nodiscard]] constexpr const fs::path &getObjPath() const noexcept override {
     return this->_objPath;
   }
-  constexpr const std::string getFileName() const noexcept override {
+  [[nodiscard]] constexpr std::string getFileName() const noexcept override {
     return this->_filePath.filename().string();
   }
   // [[nodiscard]] bool writeTree();

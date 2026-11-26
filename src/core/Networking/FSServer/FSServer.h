@@ -4,7 +4,7 @@
 #include "../ThreadPool/ThreadPool.hpp"
 #include "FSConnection.hpp"
 #include <atomic>
-#include <math.h>
+#include <cmath>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <print>
@@ -30,21 +30,23 @@ private:
   class Connection final : public FSConnection {
   public:
     Connection() = delete;
-    Connection(const int fd, const std::atomic_bool &running,
-               FSManager &manager) noexcept;
+    Connection(const int fd, FSManager &manager) noexcept;
     ~Connection() noexcept {
       if (this->_requestId > 0)
         const bool _ = this->_manager.removeDeadConnection(this->_requestId);
       std::println("Closing connection of sock:{}", this->_fd);
-      close(const_cast<int &>(this->_fd));
+      close(this->_fd);
     }
-    virtual void run() noexcept override;
-    operator bool() const noexcept { return !this->_error; }
+    void setBusy() noexcept { this->_busy.store(true); }
+    [[nodiscard]] bool isBusy() const noexcept { return this->_busy.load(); }
+    void run() noexcept override;
+    [[nodiscard]] int getFd() const noexcept { return this->_fd; }
 
   private:
-    std::string prettyFileSize(const size_t size) const noexcept {
+    [[nodiscard]] static std::string
+    prettyFileSize(const size_t size) noexcept {
       int o{};
-      double mantissa = size;
+      double mantissa = static_cast<double>(size);
       for (; mantissa >= 1024.; mantissa /= 1024., ++o)
         ;
       return std::to_string(std::ceil(mantissa * 10.) / 10.) + "BKMGTPE"[o];
@@ -57,12 +59,12 @@ private:
       timeout.tv_sec = 60 * 3;
       timeout.tv_usec = 0;
       if (setsockopt(this->_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
-                     sizeof(timeout))) [[unlikely]] {
+                     sizeof(timeout)) != 0) [[unlikely]] {
         std::println("Unable to update timeout value");
         return false;
       }
       if (setsockopt(this->_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout,
-                     sizeof(timeout))) [[unlikely]] {
+                     sizeof(timeout)) != 0) [[unlikely]] {
         std::println("Unable to update timeout value");
         return false;
       }
@@ -71,20 +73,20 @@ private:
       int intvl = 30;
       int cnt = 5;
 
-      if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle)))
-          [[unlikely]] {
+      if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle,
+                     sizeof(idle)) != 0) [[unlikely]] {
         this->_error = true;
         std::println("Unable to update timeout value");
         return false;
       }
       if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl,
-                     sizeof(intvl))) [[unlikely]] {
+                     sizeof(intvl)) != 0) [[unlikely]] {
         this->_error = true;
         std::println("Unable to update timeout value");
         return false;
       }
-      if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt)))
-          [[unlikely]] {
+      if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt)) !=
+          0) [[unlikely]] {
         this->_error = true;
         std::println("Unable to update timeout value");
         return false;
@@ -92,8 +94,8 @@ private:
       return true;
     }
 
+    std::atomic_bool _busy = false;
     uint64_t _requestId = 0;
-    const std::atomic_bool &_running;
     FSManager &_manager;
   };
   ThreadPool _pool{maxThreads()};

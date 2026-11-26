@@ -11,16 +11,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ==============================================================================
 # Build Options
 # ==============================================================================
-option(BUILD_CLIENT "Build the FreeSync Client target" ON)
+option(BUILD_CLIENT "Build the FreeSync Client CLI target" ON)
+option(BUILD_FUSE_FS "Build the FreeSync FUSE3 target" ON)
 option(BUILD_SERVER "Build the FreeSync Server target" ON)
 option(BUILD_TESTS  "Build the test suite" OFF)
 
-cmake_dependent_option(
-  BUILD_FUSE_FS                   
-  "Build the FUSE3 Virtual Filesystem driver for Client" ON
-  "BUILD_CLIENT"                  
-  OFF                             
-)
 
 # ==============================================================================
 # Dependencies
@@ -47,6 +42,9 @@ add_compile_options(
   -Wall
   -Wextra
   -Wpedantic
+  -Wshadow
+  -Wconversion
+  -Wnon-virtual-dtor
   -fno-exceptions
   -fno-plt
   -fno-math-errno
@@ -65,9 +63,11 @@ if(ipo_supported)
   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
+add_compile_options(-fsanitize=address,undefined)
+add_link_options(-fsanitize=address,undefined)
 # Native CPU tuning for release builds
 if(CMAKE_BUILD_TYPE STREQUAL "Release" OR NOT CMAKE_BUILD_TYPE)
-  add_compile_options(-O2 -march=native -ftree-vectorize -fvect-cost-model=dynamic)
+  add_compile_options(-O2 -march=native -ftree-vectorize)
 endif()
 
 # Enable Linker GC

@@ -21,7 +21,7 @@ FSManager::FSManager(const std::string_view ip, const int port,
   }
   if (int opt = 1;
       setsockopt(this->_serverFD, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
-                 (char *)&opt, sizeof opt) < 0) {
+                 reinterpret_cast<char *>(&opt), sizeof opt) < 0) {
     this->_error = true;
     std::cerr << "setSocketopt error\n";
     return;
@@ -32,7 +32,7 @@ FSManager::FSManager(const std::string_view ip, const int port,
   serverAddr.sin_port = htons(port);
   inet_pton(AF_INET, ip.data(), &serverAddr.sin_addr);
 
-  if (bind(this->_serverFD, (struct sockaddr *)&serverAddr,
+  if (bind(this->_serverFD, reinterpret_cast<struct sockaddr *>(&serverAddr),
            sizeof(serverAddr)) < 0) {
     this->_error = true;
     std::cerr << "bind error\n";
@@ -50,8 +50,8 @@ FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
     if (!this->handleValidation()) {
       std::println("Unable to validate user");
       const std::string command = FSCodeStr(QUIT);
-      if (!this->writePrimitive(this->_fd, (void *)command.c_str(),
-                                command.length())) {
+      if (!FSManager::Connection::writePrimitive(
+              this->_fd, (void *)command.c_str(), command.length())) {
         std::println("Unable to tell the client to close connection");
         return ERR;
       }
@@ -59,8 +59,8 @@ FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
       return ERR;
     } else {
       const std::string command = FSCodeStr(FSCode::OK);
-      if (!this->writePrimitive(this->_fd, (void *)command.c_str(),
-                                command.length())) {
+      if (!FSManager::Connection::writePrimitive(
+              this->_fd, (void *)command.c_str(), command.length())) {
         std::println("Unable to confirm validation to client");
         return ERR;
       }
@@ -79,8 +79,8 @@ FSManager::Connection::processStatus FSManager::Connection::process() noexcept {
       return ERR;
     }
     const std::string_view codeView(
-        (const char *)(command._data),
-        (const char *)(command._data + COMMAND_LENGTH));
+        reinterpret_cast<const char *>(command._data),
+        reinterpret_cast<const char *>(command._data + COMMAND_LENGTH));
     const uint32_t dataViewLength = command._length - COMMAND_LENGTH > 0
                                         ? command._length - COMMAND_LENGTH
                                         : 0;

@@ -1,8 +1,8 @@
 #include "FSProtocol.h"
+#include "../defines.hpp"
 #include <cassert>
 #include <optional>
 #include <print>
-#include <sys/poll.h>
 #include <unistd.h>
 #include <vector>
 
@@ -10,7 +10,8 @@ bool FSProtocol::writePrimitive(const int fd, void *data,
                                 const uint32_t size) noexcept {
   uint32_t idx = 0;
   do {
-    const ssize_t res = send(fd, (unsigned char *)data + idx, size - idx, 0);
+    const ssize_t res =
+        send(fd, static_cast<unsigned char *>(data) + idx, size - idx, 0);
     if (res > 0) [[likely]]
       idx += res;
     else if (res <= 0) {
@@ -32,7 +33,7 @@ bool FSProtocol::writeToSocket(const int fd, const SSLString &data) noexcept {
       [[likely]] {
     const SSLString str = std::move(blob.value());
 
-    alignas(32) std::array<unsigned char, LENGTH_SIZE> sizeArray =
+    alignas(ALIGNMENT) std::array<unsigned char, LENGTH_SIZE> sizeArray =
         toArray(str._length);
     std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
     packet.resize(packet.size() + str._length, 0);
@@ -65,7 +66,7 @@ bool FSProtocol::writeToSocketAES(const int fd,
   if (auto blob = this->_aes->encryptBlob(data); blob.has_value()) [[likely]] {
     const SSLString str = std::move(blob.value());
 
-    alignas(32) std::array<unsigned char, LENGTH_SIZE> sizeArray =
+    alignas(ALIGNMENT) std::array<unsigned char, LENGTH_SIZE> sizeArray =
         toArray(str._length);
     std::vector<unsigned char> packet(sizeArray.begin(), sizeArray.end());
     packet.resize(packet.size() + str._length, 0);
@@ -92,7 +93,7 @@ StringOpt FSProtocol::readSocketAES(const int fd) noexcept {
   StringOpt strOpt = readSocket(fd);
   if (!strOpt.has_value()) [[unlikely]]
     return std::nullopt;
-  alignas(32) std::vector<unsigned char> sig(RSA_SIGNING_LENGTH);
+  alignas(ALIGNMENT) std::vector<unsigned char> sig(RSA_SIGNING_LENGTH);
   if (!readPacket(fd, sig.data(), RSA_SIGNING_LENGTH)) [[unlikely]]
     return std::nullopt;
 
@@ -113,7 +114,7 @@ StringOpt FSProtocol::readSocketRSA(const int fd) noexcept {
   StringOpt strOpt = readSocket(fd);
   if (!strOpt.has_value()) [[unlikely]]
     return std::nullopt;
-  alignas(32) std::vector<unsigned char> sig(RSA_SIGNING_LENGTH);
+  alignas(ALIGNMENT) std::vector<unsigned char> sig(RSA_SIGNING_LENGTH);
   if (!readPacket(fd, sig.data(), RSA_SIGNING_LENGTH)) [[unlikely]]
     return std::nullopt;
 
@@ -137,7 +138,8 @@ bool FSProtocol::readPacket(const int fd, void *data,
   memset(data, 0, numBytes);
   do {
     const size_t valRead =
-        read(fd, (unsigned char *)data + bytesRead, numBytes - bytesRead);
+        read(fd, static_cast<unsigned char *>(data) + bytesRead,
+             numBytes - bytesRead);
     if (valRead > 0) [[likely]]
       bytesRead += valRead;
     else if (valRead == 0)
@@ -153,7 +155,7 @@ bool FSProtocol::readPacket(const int fd, void *data,
 }
 StringOpt FSProtocol::readSocket(const int fd) noexcept {
   assert(fd >= 0);
-  alignas(32) std::array<unsigned char, LENGTH_SIZE> packetSize{'0'};
+  alignas(ALIGNMENT) std::array<unsigned char, LENGTH_SIZE> packetSize{'0'};
 
   if (!readPacket(fd, packetSize.data(), LENGTH_SIZE)) [[unlikely]]
     return std::nullopt;

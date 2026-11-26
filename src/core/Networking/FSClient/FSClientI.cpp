@@ -1,6 +1,7 @@
 #include "FSClientI.h"
 #include "../../Compressor/Compressor.h"
 #include "../../Node/Node.h"
+#include "../../defines.hpp"
 
 bool FSClientI::connect() noexcept {
   if (this->checkConnection())
@@ -15,9 +16,9 @@ bool FSClientI::connect() noexcept {
     return false;
   }
 
-  const int connStatus =
-      ::connect(this->_fd, (struct sockaddr *)&this->_serverAddr,
-                sizeof(this->_serverAddr));
+  const int connStatus = ::connect(
+      this->_fd, reinterpret_cast<struct sockaddr *>(&this->_serverAddr),
+      sizeof(this->_serverAddr));
   if (connStatus < 0) [[unlikely]] {
     std::println("There was an error making a connection to the server {}",
                  connStatus);
@@ -36,7 +37,7 @@ bool FSClientI::connect() noexcept {
 }
 
 constexpr bool FSClientI::checkConnection() noexcept {
-  if (this->_fd < 0 || !this->_aes->isOk()) [[unlikely]]
+  if (this->_fd < 0 || !this->_aes.get() || !this->_aes->isOk()) [[unlikely]]
     return false;
   const SSLString packet = SSLString(FSCodeStr(PING));
   return this->writeToSocketAES(this->_fd, packet);
@@ -48,7 +49,8 @@ bool FSClientI::switchAES() noexcept {
     return false;
   }
   this->_aesLifetime = 1;
-  const SSLString packet = this->generatePacket(AESK, this->_aes->getKey());
+  const SSLString packet =
+      FSClientI::generatePacket(AESK, this->_aes->getKey());
   std::println("Packet generated");
   if (!this->writeToSocket(this->_fd, packet)) {
     std::println("Unable to write AESKey to server");
@@ -69,8 +71,45 @@ FSClientI::issueCommandRead(const SSLString &command) noexcept {
 
   return readSocketAES(this->_fd);
 }
+bool FSClientI::finishDownload(DiskFile &&file,
+                               const std::string_view outPath) noexcept {
 
-bool FSClientI::downloadFile(const std::string_view outPath) {
+  if (StringOpt msgOpt = readSocketAES(this->_fd); !msgOpt.has_value()) {
+    std::println("Unable to get the server hash, closing connection");
+    return false;
+  } else {
+    if (!file)
+      return false;
+    const SSLString msg = std::move(msgOpt.value());
+    file = decompressData(file.toSpan());
+    if (!file) {
+      std::println("Unable to decompress file");
+      return false;
+    }
+    const std::string hash = Node::hash(file.toSpan());
+    if (msg._length != hash.size()) {
+      std::println("Message has different length than our hash");
+      return false;
+    }
+    std::span<const unsigned char> dataView =
+        std::span<const unsigned char>(msg._data, msg._length);
+    if (std::string(dataView.begin(), dataView.end()) != hash) {
+      std::println("Hash is not the same");
+      return false;
+    }
+
+    DiskFile out(outPath, true);
+    if (!out)
+      std::println("Unable to create file: {} {}", std::strerror(errno),
+                   out.getFilePath());
+
+    return out.write(file.toSpan());
+  }
+  std::println("Finished receiving file");
+  return true;
+}
+
+bool FSClientI::downloadFile(const std::string_view outPath) noexcept {
   DiskFile file;
   if (!file)
     std::println("Unable to create file: {} {}", std::strerror(errno),
@@ -88,41 +127,10 @@ bool FSClientI::downloadFile(const std::string_view outPath) {
         continue;
       }
 
-      if (FSStrCode(std::string_view((char *)view.data(), 3)) == FSCode::OK) {
-        if (StringOpt msgOpt = readSocketAES(this->_fd); !msgOpt.has_value()) {
-          std::println("Unable to get the server hash, closing connection");
-          return false;
-        } else {
-          if (!file)
-            return false;
-          const SSLString msg = std::move(msgOpt.value());
-          file = decompressData(file.toSpan());
-          if (!file) {
-            std::println("Unable to decompress file");
-            return false;
-          }
-          const std::string hash = Node::hash(file.toSpan());
-          if (msg._length != hash.size()) {
-            std::println("Message has different length than our hash");
-            return false;
-          }
-          std::span<const unsigned char> dataView =
-              std::span<const unsigned char>(msg._data, msg._length);
-          if (std::string(dataView.begin(), dataView.end()) != hash) {
-            std::println("Hash is not the same");
-            return false;
-          }
-
-          DiskFile out(outPath, true);
-          if (!out)
-            std::println("Unable to create file: {} {}", std::strerror(errno),
-                         out.getFilePath());
-          return out.write(file.toSpan());
-        }
-        std::println("Finished receiving file");
-        return true;
-      } else if (FSStrCode(std::string_view((char *)view.data(), 3)) ==
-                 FSCode::ERR) {
+      if (FSStrCode(std::string_view((char *)view.data(), 3)) == FSCode::OK)
+        return this->finishDownload(std::move(file), outPath);
+      else if (FSStrCode(std::string_view((char *)view.data(), 3)) ==
+               FSCode::ERR) {
         const std::string err = std::string(view.begin() + 3, view.end());
         std::println("Error from server:{}", err);
         return false;
@@ -138,7 +146,7 @@ bool FSClientI::downloadFile(const std::string_view outPath) {
 
 bool FSClientI::validationStep() noexcept {
 
-  alignas(32) std::array<unsigned char, LENGTH_SIZE> serverKeyLength;
+  alignas(ALIGNMENT) std::array<unsigned char, LENGTH_SIZE> serverKeyLength;
   if (!readPacket(this->_fd, serverKeyLength.data(), LENGTH_SIZE)) {
     std::println("Unable to read serverKeyLength");
     return false;
@@ -164,7 +172,8 @@ bool FSClientI::validationStep() noexcept {
     std::println("Unable to load public key");
     return false;
   }
-  if (FILE *fp = fopen(getCanonicalPath(PUBKEY_PATH).data(), "r"); !fp) {
+  if (FILE *fp = fopen(getCanonicalPath(PUBKEY_PATH).data(), "r");
+      fp == nullptr) {
     std::println("Unable to open own public key file");
     return false;
   } else {
@@ -172,13 +181,13 @@ bool FSClientI::validationStep() noexcept {
     const size_t length = ftell(fp);
     key.resize(length);
     rewind(fp);
-    if (fread(key.data(), sizeof(unsigned char), length, fp) < (size_t)length) {
+    if (fread(key.data(), sizeof(unsigned char), length, fp) < length) {
       std::println("Unable to read own public key");
       fclose(fp);
       return false;
     }
     fclose(fp);
-    alignas(32) std::array<unsigned char, LENGTH_SIZE> lengthArr =
+    alignas(ALIGNMENT) std::array<unsigned char, LENGTH_SIZE> lengthArr =
         toArray(length);
     key.insert(key.begin(), lengthArr.begin(), lengthArr.end());
     if (!writePrimitive(this->_fd, key.data(), LENGTH_SIZE + length)) {
@@ -201,7 +210,7 @@ bool FSClientI::validationStep() noexcept {
 
 bool FSClientI::invalidateAES() noexcept {
   assert(this->_aes);
-  const SSLString packet = this->generatePacket(INV, this->_aes->getKey());
+  const SSLString packet = FSClientI::generatePacket(INV, this->_aes->getKey());
   std::println("Packet generated");
   if (!this->writeToSocketAES(this->_fd, packet)) {
     std::println("Unable to write AESKey to server");

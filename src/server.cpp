@@ -11,9 +11,11 @@ void sigHandler(const int sig) noexcept {
   case SIGINT:
     running.store(false);
     break;
+  default:
+    break;
   }
 }
-int main(void) {
+int main() {
   signal(SIGPIPE, SIG_IGN);
   signal(SIGINT, sigHandler);
 

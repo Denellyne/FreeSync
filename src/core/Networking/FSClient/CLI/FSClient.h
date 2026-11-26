@@ -21,10 +21,10 @@ public:
       close(this->_fd);
     this->_fd = -1;
   }
-  virtual void run() noexcept override;
+  void run() noexcept override;
 
-  std::expected<bool, std::string_view>
-  validateCommand(const SSLString &command) noexcept;
+  std::expected<bool, std::string_view> static validateCommand(
+      const SSLString &command) noexcept;
 
   static const std::string &getIp(const std::string_view ip = "") noexcept {
     static bool initialized = false;
@@ -38,23 +38,24 @@ public:
   }
 
 private:
+  bool handleSendFile(const std::span<const unsigned char> dataView) noexcept;
   class FSManagerSocket final : public FSClientI {
   public:
-    FSManagerSocket(const std::string &file, const ::std::string &fsPath,
+    FSManagerSocket(std::string &&file, std::string &&fsPath,
                     const uint64_t nodeId);
     ~FSManagerSocket() noexcept {
       if (this->_fd != -1)
         close(this->_fd);
       this->_fd = -1;
     }
-    virtual void run() noexcept override;
+    void run() noexcept override;
 
   private:
-    const std::string _file = "", _fsPath = "";
+    const std::string _file, _fsPath;
     const uint64_t _nodeId = 0;
   };
   ThreadPool _pool{maxThreads()};
   bool processCommand(const SSLString &command) noexcept;
-  void sendFile(const std::string &file, const std::string &fsPath,
-                const uint64_t nodeId) const noexcept;
+  static void sendFile(std::string file, std::string fsPath,
+                       const uint64_t nodeId) noexcept;
 };

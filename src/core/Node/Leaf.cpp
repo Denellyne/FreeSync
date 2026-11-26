@@ -2,6 +2,7 @@
 #include "../Compressor/Compressor.h"
 #include "../DiskObject/DiskView.hpp"
 #include "../Encrypt/Encrypt.h"
+#include "../defines.hpp"
 #include "Node.h"
 #include <cassert>
 #include <cstring>
@@ -19,8 +20,8 @@ Leaf::Leaf(const std::string_view filePath) noexcept {
 
     this->_error = true;
     return;
-
-  } else if (!fs::is_regular_file(filePath)) [[unlikely]] {
+  }
+  if (!fs::is_regular_file(filePath)) [[unlikely]] {
     std::string err = "Passed path isn't a file ";
     err += filePath;
     std::println("{}", err);
@@ -37,7 +38,7 @@ Leaf::Leaf(const std::string_view filePath) noexcept {
 
   DiskFile file = DiskFile(this->_filePath.string());
 
-  this->_hash = this->hash(file.toSpan());
+  this->_hash = Leaf::hash(file.toSpan());
   std::string path = OBJFOLDER;
   path.append(this->_hash, 0, 2);
   path += '/';
@@ -77,7 +78,7 @@ Leaf::Leaf(const std::string_view filePath, const std::span<unsigned char> data,
   this->_filePath = filePath;
   this->_isExecutable = isExecutable;
 
-  this->_hash = this->hash(data);
+  this->_hash = Leaf::hash(data);
   std::string path = OBJFOLDER;
   path.append(this->_hash, 0, 2);
   path += '/';
@@ -101,7 +102,7 @@ Leaf::Leaf(const std::string_view filePath, const std::span<unsigned char> data,
   this->_filePath = filePath;
   this->_isExecutable = isExecutable;
 
-  this->_hash = this->hash(data);
+  this->_hash = Leaf::hash(data);
   std::string path = OBJFOLDER;
   path.append(this->_hash, 0, 2);
   path += '/';
@@ -217,7 +218,7 @@ Leaf::getBlob() noexcept {
   if (length < 6)
     return std::unexpected("Invalid file contents");
   contents = contents.subspan(5);
-  std::string size = "";
+  std::string size;
   char c = contents.front();
   if (contents.size() > 1) [[likely]]
     contents = contents.subspan(1);
@@ -249,9 +250,9 @@ Leaf::getFinalDecompressFile() noexcept {
   size_t length = data.size();
   if (length < 6)
     return std::unexpected("Invalid file contents");
-  char type[5]{'\0'};
-  memcpy(type, data.data(), 4);
-  if (!strcmp(type, "blob")) {
+  std::array<char, 5> type{'\0'};
+  memcpy(type.data(), data.data(), 4);
+  if (strcmp(type.data(), "blob") == 0) {
     std::span<unsigned char> res = Leaf::readBlobData(data.subspan(5));
     DiskFile decompressedRes = decompressData(res);
     if (!decompressedRes)
@@ -289,9 +290,9 @@ Leaf::getFinalDecompressBlob() noexcept {
   size_t length = data.size();
   if (length < 6)
     return std::unexpected("Invalid file contents");
-  char type[5]{'\0'};
-  memcpy(type, data.data(), 4);
-  if (!strcmp(type, "blob")) {
+  std::array<char, 5> type{'\0'};
+  memcpy(type.data(), data.data(), 4);
+  if (strcmp(type.data(), "blob") == 0) {
     std::span<unsigned char> res = Leaf::readBlobData(data.subspan(5));
     DiskFile decompressedRes = decompressData(res);
     if (!decompressedRes)
@@ -329,10 +330,13 @@ bool applyDiffsUncompressed(std::vector<unsigned char> &old,
   for (size_t idx = 0; idx < diffs.size();) {
     if (diffs[idx] == 'C') {
       idx++;
-      alignas(32) std::array<unsigned char, 32> beg, end;
-      strncpy((char *)beg.data(), (char *)&diffs[idx], 32);
+      alignas(ALIGNMENT) std::array<unsigned char, 32> beg;
+      alignas(ALIGNMENT) std::array<unsigned char, 32> end;
+      strncpy(reinterpret_cast<char *>(beg.data()),
+              reinterpret_cast<char *>(&diffs[idx]), 32);
       idx += 32;
-      strncpy((char *)end.data(), (char *)&diffs[idx], 32);
+      strncpy(reinterpret_cast<char *>(end.data()),
+              reinterpret_cast<char *>(&diffs[idx]), 32);
       idx += 32;
       if (const auto begIdxOpt = toNumber(beg); !begIdxOpt.has_value())
         return false;
@@ -346,15 +350,16 @@ bool applyDiffsUncompressed(std::vector<unsigned char> &old,
       }
     } else if (diffs[idx] == 'I') {
       idx++;
-      alignas(32) std::array<unsigned char, 32> size;
-      strncpy((char *)size.data(), (char *)&diffs[idx], 32);
+      alignas(ALIGNMENT) std::array<unsigned char, 32> size;
+      strncpy(reinterpret_cast<char *>(size.data()),
+              reinterpret_cast<char *>(&diffs[idx]), 32);
       idx += 32;
       if (const auto lengthOpt = toNumber(size); !lengthOpt.has_value())
         return false;
       else {
         const uint32_t length = lengthOpt.value();
-        old.insert(old.end(), diffs.begin() + idx,
-                   diffs.begin() + idx + length);
+        old.insert(old.end(), diffs.begin() + static_cast<int>(idx),
+                   diffs.begin() + static_cast<int>(idx) + length);
         idx += length;
       }
     } else
@@ -425,7 +430,7 @@ Leaf::diffFile(const std::span<unsigned char> newer,
 std::span<unsigned char>
 Leaf::readBlobData(std::span<unsigned char> data) noexcept {
 
-  std::string size = "";
+  std::string size;
   size_t pos = 0;
   for (const char c : data) {
     if (c == '\0')
@@ -439,8 +444,9 @@ Leaf::readBlobData(std::span<unsigned char> data) noexcept {
   return data.subspan(pos + 1, length);
 }
 
-Leaf Leaf::getParentLeaf(const std::span<unsigned char> data) noexcept {
-  const std::string_view parentHash = std::string_view((char *)data.data(), 64);
+Leaf Leaf::getParentLeaf(const std::span<unsigned char> data) const noexcept {
+  const std::string_view parentHash =
+      std::string_view(reinterpret_cast<char *>(data.data()), 64);
   return Leaf(this->getFilePath().string(), parentHash, this->_isExecutable);
 }
 
@@ -458,10 +464,12 @@ DiskFile applyDiffsUncompressedFile(DiskFile &&old, DiskFile &&diffs) {
   for (size_t idx = 0; idx < diffsSpan.size();) {
     if (diffsSpan[idx] == 'C') {
       idx++;
-      alignas(32) std::array<unsigned char, 32> beg, end;
-      strncpy((char *)beg.data(), (char *)&diffsSpan[idx], 32);
+      alignas(ALIGNMENT) std::array<unsigned char, 32> beg, end;
+      strncpy(reinterpret_cast<char *>(beg.data()), (char *)&diffsSpan[idx],
+              32);
       idx += 32;
-      strncpy((char *)end.data(), (char *)&diffsSpan[idx], 32);
+      strncpy(reinterpret_cast<char *>(end.data()), (char *)&diffsSpan[idx],
+              32);
       idx += 32;
       if (const auto begIdxOpt = toNumber(beg); !begIdxOpt.has_value())
         return DiskFile(true);
@@ -475,8 +483,9 @@ DiskFile applyDiffsUncompressedFile(DiskFile &&old, DiskFile &&diffs) {
       }
     } else if (diffsSpan[idx] == 'I') {
       idx++;
-      alignas(32) std::array<unsigned char, 32> size;
-      strncpy((char *)size.data(), (char *)&diffsSpan[idx], 32);
+      alignas(ALIGNMENT) std::array<unsigned char, 32> size;
+      strncpy(reinterpret_cast<char *>(size.data()), (char *)&diffsSpan[idx],
+              32);
       idx += 32;
       if (const auto lengthOpt = toNumber(size); !lengthOpt.has_value())
         return DiskFile(true);

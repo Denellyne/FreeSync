@@ -1,4 +1,5 @@
 #include "Encrypt.h"
+#include "../defines.hpp"
 #include <openssl/aes.h>
 #include <optional>
 
@@ -18,15 +19,16 @@ std::optional<SSLString> AESKey::encryptBlob(const SSLString &data) noexcept {
   if (!ctx)
     return std::nullopt;
 
-  int len = data._length;
-  if (unsigned char *cipherText = (unsigned char *)OPENSSL_malloc(len);
-      !cipherText) {
+  int len = static_cast<int>(data._length);
+  if (unsigned char *cipherText =
+          static_cast<unsigned char *>(OPENSSL_malloc(len));
+      cipherText == nullptr) {
     std::cerr << "Unable to allocate memory for cipherText blob\n";
     ERR_print_errors_fp(stderr);
     return std::nullopt;
   } else {
     if (EVP_EncryptUpdate(ctx.get(), cipherText, &len, data._data,
-                          data._length) <= 0) {
+                          static_cast<int>(data._length)) <= 0) {
       OPENSSL_free(cipherText);
       std::cerr << "Unable to update encrypted blob\n";
       ERR_print_errors_fp(stderr);
@@ -50,8 +52,8 @@ std::optional<SSLString> AESKey::encryptBlob(const SSLString &data) noexcept {
     }
 
     unsigned char *packet =
-        (unsigned char *)OPENSSL_malloc(IV_SIZE + cLen + TAG_SIZE);
-    if (!packet) {
+        static_cast<unsigned char *>(OPENSSL_malloc(IV_SIZE + cLen + TAG_SIZE));
+    if (packet == nullptr) {
       OPENSSL_free(cipherText);
       std::cerr << "Unable to malloc memory for final packet";
       ERR_print_errors_fp(stderr);
@@ -80,14 +82,15 @@ std::optional<SSLString> AESKey::decryptBlob(SSLString &data) noexcept {
 
   int len = 0;
 
-  if (unsigned char *plainText = (unsigned char *)OPENSSL_malloc(size);
-      !plainText) {
+  if (unsigned char *plainText =
+          static_cast<unsigned char *>(OPENSSL_malloc(size));
+      plainText == nullptr) {
     std::cerr << "Unable to allocate memory for plainText blob\n";
     ERR_print_errors_fp(stderr);
     return std::nullopt;
   } else {
     if (EVP_DecryptUpdate(ctx.get(), plainText, &len, data._data + IV_SIZE,
-                          size) <= 0) {
+                          static_cast<int>(size)) <= 0) {
       OPENSSL_free(plainText);
       std::cerr << "Unable to update decrypted blob\n";
       ERR_print_errors_fp(stderr);
@@ -95,8 +98,8 @@ std::optional<SSLString> AESKey::decryptBlob(SSLString &data) noexcept {
     }
 
     int cLen = len;
-    if (!EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_SIZE,
-                             tag.data())) {
+    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_SIZE,
+                            tag.data()) == 0) {
       OPENSSL_free(plainText);
       std::cerr << "Unable to set tag\n";
       ERR_print_errors_fp(stderr);
@@ -121,21 +124,21 @@ AESCtxPtr AESKey::loadDecryptCtx(AESIV &iv) noexcept {
     return nullptr;
   }
 
-  if (!EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr,
-                          nullptr)) {
+  if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr,
+                         nullptr) == 0) {
     std::cerr << "Unable to initialize context\n";
     ERR_print_errors_fp(stderr);
     return nullptr;
   }
-  if (!EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, IV_SIZE,
-                           nullptr)) {
+  if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, IV_SIZE,
+                          nullptr) == 0) {
     std::cerr << "Unable to initialize context\n";
     ERR_print_errors_fp(stderr);
     return nullptr;
   }
 
-  if (!EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, this->_key.data(),
-                          iv.data())) {
+  if (EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, this->_key.data(),
+                         iv.data()) == 0) {
     std::cerr << "Unable to initialize context\n";
     ERR_print_errors_fp(stderr);
     return nullptr;
@@ -150,21 +153,21 @@ AESCtxPtr AESKey::loadEncryptCtx(AESIV &iv) noexcept {
     return nullptr;
   }
 
-  if (!EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr,
-                          nullptr)) {
+  if (EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr,
+                         nullptr) == 0) {
     std::cerr << "Unable to initialize context\n";
     ERR_print_errors_fp(stderr);
     return nullptr;
   }
-  if (!EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, IV_SIZE,
-                           nullptr)) {
+  if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, IV_SIZE,
+                          nullptr) == 0) {
     std::cerr << "Unable to initialize context\n";
     ERR_print_errors_fp(stderr);
     return nullptr;
   }
 
-  if (!EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, this->_key.data(),
-                          iv.data())) {
+  if (EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, this->_key.data(),
+                         iv.data()) == 0) {
     std::cerr << "Unable to initialize context\n";
     ERR_print_errors_fp(stderr);
     return nullptr;
@@ -204,8 +207,9 @@ KeyPtr RSAKey::loadPrivateKey(const std::string_view path) noexcept {
   return nullptr;
 }
 KeyPtr RSAKey::loadPublicKey(const std::span<unsigned char> key) noexcept {
-  BIO *bp(BIO_new_mem_buf((void *)key.data(), key.size()));
-  if (!bp) {
+  BIO *bp(BIO_new_mem_buf(reinterpret_cast<void *>(key.data()),
+                          static_cast<int>(key.size())));
+  if (bp == nullptr) {
     std::cerr << "Unable to load public key from buffer\n";
     ERR_print_errors_fp(stderr);
     return nullptr;
@@ -216,8 +220,9 @@ KeyPtr RSAKey::loadPublicKey(const std::span<unsigned char> key) noexcept {
   return keyPtr;
 }
 KeyPtr RSAKey::loadPrivateKey(const std::span<unsigned char> key) noexcept {
-  BIO *bp(BIO_new_mem_buf((void *)key.data(), key.size()));
-  if (!bp) {
+  BIO *bp(BIO_new_mem_buf(reinterpret_cast<void *>(key.data()),
+                          static_cast<int>(key.size())));
+  if (bp == nullptr) {
     std::cerr << "Unable to load private key from buffer\n";
     ERR_print_errors_fp(stderr);
     return nullptr;
@@ -231,7 +236,7 @@ KeyPtr RSAKey::loadPrivateKey(const std::span<unsigned char> key) noexcept {
 RSACtxPtr RSAKey::loadEncryptCtx() noexcept {
   assert(this->_key != nullptr);
   if (EVP_PKEY_CTX *ctxRaw = EVP_PKEY_CTX_new(this->_key.get(), nullptr);
-      !ctxRaw) {
+      ctxRaw == nullptr) {
     std::cerr << "Unable to initialize context from key\n";
     ERR_print_errors_fp(stderr);
     return nullptr;
@@ -256,15 +261,13 @@ RSACtxPtr RSAKey::loadEncryptCtx() noexcept {
     ERR_print_errors_fp(stderr);
     EVP_PKEY_CTX_free(ctxRaw);
     return nullptr;
-  }
-
-  else
+  } else
     return RSACtxPtr(ctxRaw);
 }
 RSACtxPtr RSAKey::loadDecryptCtx() noexcept {
   assert(this->_key != nullptr);
   if (EVP_PKEY_CTX *ctxRaw = EVP_PKEY_CTX_new(this->_key.get(), nullptr);
-      !ctxRaw) {
+      ctxRaw == nullptr) {
     std::cerr << "Unable to initialize context from key\n";
     ERR_print_errors_fp(stderr);
     return nullptr;
@@ -312,7 +315,8 @@ std::optional<SSLString> RSAKey::encryptBlob(const SSLString &data) noexcept {
   }
 
   // std::cerr << "Info " << outlen << " " << inlen << '\n';
-  if (unsigned char *out = (unsigned char *)OPENSSL_malloc(outlen); !out) {
+  if (unsigned char *out = static_cast<unsigned char *>(OPENSSL_malloc(outlen));
+      out == nullptr) {
     std::cerr << "Unable to allocate string of size " << outlen << '\n';
     ERR_print_errors_fp(stderr);
     return std::nullopt;
@@ -377,7 +381,8 @@ std::optional<SSLString> RSAKey::decryptBlob(SSLString &data) noexcept {
     return std::nullopt;
   }
 
-  if (unsigned char *out = (unsigned char *)OPENSSL_malloc(outlen); !out) {
+  if (unsigned char *out = static_cast<unsigned char *>(OPENSSL_malloc(outlen));
+      out == nullptr) {
     std::cerr << "Unable to allocate string of size " << outlen << '\n';
     ERR_print_errors_fp(stderr);
     return std::nullopt;
@@ -426,7 +431,7 @@ std::optional<SSLString> RSAKey::decryptBlob(SSLString &data) noexcept {
 // }
 
 std::array<unsigned char, PTR_SIZE> ptrToArray(uint64_t n) noexcept {
-  alignas(32) std::array<unsigned char, PTR_SIZE> res{'0'};
+  alignas(ALIGNMENT) std::array<unsigned char, PTR_SIZE> res{'0'};
   for (size_t i = PTR_SIZE; i > 0; i--) {
     res[i - 1] = (n % 10) + '0';
     n /= 10;
@@ -434,7 +439,7 @@ std::array<unsigned char, PTR_SIZE> ptrToArray(uint64_t n) noexcept {
   return res;
 }
 std::array<unsigned char, LENGTH_SIZE> toArray(uint32_t n) noexcept {
-  alignas(32) std::array<unsigned char, LENGTH_SIZE> res{'0'};
+  alignas(ALIGNMENT) std::array<unsigned char, LENGTH_SIZE> res{'0'};
   for (size_t i = LENGTH_SIZE; i > 0; i--) {
     res[i - 1] = (n % 10) + '0';
     n /= 10;
@@ -502,13 +507,13 @@ std::optional<uint32_t> toNumber(const SSLString &str) noexcept {
 bool RSAKey::validateBlob(const SSLString &raw, const SSLString &sig) noexcept {
   assert(!this->_isPrivateKey && this->_key);
   EVP_MD_CTX *m_RSAVerifyCtx = EVP_MD_CTX_create();
-  if (!m_RSAVerifyCtx) {
+  if (m_RSAVerifyCtx == nullptr) {
     ERR_print_errors_fp(stderr);
     std::cerr << "Unable to initialize allocate context\n";
     return false;
   }
 
-  if (EVP_DigestVerifyInit(m_RSAVerifyCtx, NULL, EVP_sha256(), NULL,
+  if (EVP_DigestVerifyInit(m_RSAVerifyCtx, nullptr, EVP_sha256(), nullptr,
                            this->_key.get()) <= 0) {
     EVP_MD_CTX_free(m_RSAVerifyCtx);
     ERR_print_errors_fp(stderr);
@@ -534,20 +539,21 @@ bool RSAKey::validateBlob(const SSLString &raw, const SSLString &sig) noexcept {
 }
 std::optional<SSLString> RSAKey::signBlob(const SSLString &data) noexcept {
   assert(this->_isPrivateKey && this->_key);
-  if (unsigned char *out = (unsigned char *)OPENSSL_malloc(RSA_SIGNING_LENGTH);
-      !out) {
+  if (unsigned char *out =
+          static_cast<unsigned char *>(OPENSSL_malloc(RSA_SIGNING_LENGTH));
+      out == nullptr) {
     std::cerr << "Unable to allocate string of size 512\n";
     ERR_print_errors_fp(stderr);
     return std::nullopt;
   } else {
     EVP_MD_CTX *m_RSASignCtx = EVP_MD_CTX_create();
-    if (!m_RSASignCtx) {
+    if (m_RSASignCtx == nullptr) {
       OPENSSL_free(out);
       ERR_print_errors_fp(stderr);
       std::cerr << "Unable to initialize signing context\n";
       return std::nullopt;
     }
-    if (EVP_DigestSignInit(m_RSASignCtx, NULL, EVP_sha256(), NULL,
+    if (EVP_DigestSignInit(m_RSASignCtx, nullptr, EVP_sha256(), nullptr,
                            this->_key.get()) <= 0) {
       EVP_MD_CTX_free(m_RSASignCtx);
       OPENSSL_free(out);
@@ -563,7 +569,7 @@ std::optional<SSLString> RSAKey::signBlob(const SSLString &data) noexcept {
       return std::nullopt;
     }
     if (size_t encLength = 0;
-        EVP_DigestSignFinal(m_RSASignCtx, NULL, &encLength) <= 0 ||
+        EVP_DigestSignFinal(m_RSASignCtx, nullptr, &encLength) <= 0 ||
         encLength != RSA_SIGNING_LENGTH) {
       EVP_MD_CTX_free(m_RSASignCtx);
       OPENSSL_free(out);

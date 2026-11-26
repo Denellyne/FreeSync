@@ -1,13 +1,14 @@
 #include "FSServer.h"
 #include "../../Compressor/Compressor.h"
 #include "../../Node/LTree.h"
+#include <algorithm>
 #include <cstring>
 #include <fcntl.h>
 #include <span>
 #include <string>
 #include <sys/mman.h>
 #include <sys/random.h>
-#include <thread>
+#include <sys/select.h>
 
 FSServer::FSServer(std::atomic_bool &running) noexcept
     : _manager(FSManager("localhost", FSMANAGER_PORT, 128)), _running(running) {
@@ -37,17 +38,17 @@ FSServer::FSServer(std::atomic_bool &running) noexcept
   }
 
   if (setsockopt(this->_serverFD, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt,
-                 sizeof(opt))) [[unlikely]] {
+                 sizeof(opt)) != 0) [[unlikely]] {
     this->_error = true;
     return;
   }
   if (setsockopt(this->_serverFD, SOL_SOCKET, SO_RCVTIMEO, &timeout,
-                 sizeof(timeout))) [[unlikely]] {
+                 sizeof(timeout)) != 0) [[unlikely]] {
     this->_error = true;
     return;
   }
   if (setsockopt(this->_serverFD, SOL_SOCKET, SO_SNDTIMEO, &timeout,
-                 sizeof(timeout))) [[unlikely]] {
+                 sizeof(timeout)) != 0) [[unlikely]] {
     this->_error = true;
     return;
   }
@@ -60,24 +61,25 @@ FSServer::FSServer(std::atomic_bool &running) noexcept
   int cnt = 5;
 
   if (setsockopt(this->_serverFD, IPPROTO_TCP, TCP_KEEPIDLE, &idle,
-                 sizeof(idle))) [[unlikely]] {
+                 sizeof(idle)) != 0) [[unlikely]] {
     this->_error = true;
     return;
   }
   if (setsockopt(this->_serverFD, IPPROTO_TCP, TCP_KEEPINTVL, &intvl,
-                 sizeof(intvl))) [[unlikely]] {
+                 sizeof(intvl)) != 0) [[unlikely]] {
     this->_error = true;
     return;
   }
-  if (setsockopt(this->_serverFD, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt)))
-      [[unlikely]] {
+  if (setsockopt(this->_serverFD, IPPROTO_TCP, TCP_KEEPCNT, &cnt,
+                 sizeof(cnt)) != 0) [[unlikely]] {
     this->_error = true;
     return;
   }
   this->_sockAddr.sin_family = AF_INET;
   this->_sockAddr.sin_addr.s_addr = INADDR_ANY;
   this->_sockAddr.sin_port = htons(PORT);
-  if (bind(this->_serverFD, (struct sockaddr *)&this->_sockAddr,
+  if (bind(this->_serverFD,
+           reinterpret_cast<struct sockaddr *>(&this->_sockAddr),
            sizeof(this->_sockAddr)) < 0) [[unlikely]] {
     this->_error = true;
     return;
@@ -91,61 +93,100 @@ FSServer::FSServer(std::atomic_bool &running) noexcept
 
 void FSServer::run() noexcept {
 
-  this->_pool.enqueue(
-      std::bind(&FSManager::run, &this->_manager, std::ref(this->_running)));
+  this->_pool.enqueue([this] { this->_manager.run(this->_running); });
   std::cout << "Server listening on port " << PORT << '\n';
   if (listen(this->_serverFD, 64) < 0) [[unlikely]] {
     this->_error = true;
     return;
   }
   // socklen_t addrlen = sizeof(this->_sockAddr);
+
+  std::vector<std::shared_ptr<FSServer::Connection>> clientList;
+
+  int clientFd = -1;
+
   while (this->_running.load()) {
-    if (const int newSocket = accept4(this->_serverFD, nullptr, nullptr, 0);
-        newSocket < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 1000000;
+    fd_set readfds;
+    fd_set writefds;
+    FD_ZERO(&readfds);
+    FD_ZERO(&writefds);
+    int maxfd = -1;
+    if (this->_serverFD >= 0 && this->_serverFD < FD_SETSIZE) {
+      FD_SET(this->_serverFD, &readfds);
+      maxfd = this->_serverFD;
+    }
+
+    for (const auto &client : clientList) {
+      const int fd = client->getFd();
+      if (fd < 0 || fd >= FD_SETSIZE)
+        continue;
+      FD_SET(fd, &readfds);
+      maxfd = std::max(fd, maxfd);
+    }
+
+    if (maxfd < 0)
+      continue;
+
+    if (const int activity =
+            select(maxfd + 1, &readfds, &writefds, nullptr, &tv);
+        activity < 0) {
+      std::println("{}", std::strerror(errno));
+      continue;
+    }
+    if (this->_serverFD >= 0 && FD_ISSET(this->_serverFD, &readfds)) {
+      clientFd = accept4(this->_serverFD, nullptr, nullptr, 0);
+      if (clientFd < 0) {
+        std::println("{}", std::strerror(errno));
         continue;
       }
 
-      perror("Accept");
-    } else
-      this->_pool.enqueue(std::bind(handleConnection, newSocket,
-                                    std::ref(this->_running),
-                                    std::ref(this->_manager)));
-  }
-}
+      clientList.emplace_back(std::make_shared<FSServer::Connection>(
+          clientFd, std::ref(this->_manager)));
+    }
 
-void FSServer::handleConnection(const int fd, const std::atomic_bool &running,
-                                FSManager &manager) noexcept {
-  Connection con(fd, running, manager);
-  if (con)
-    con.run();
+    for (auto it = clientList.begin(); it != clientList.end();) {
+      const std::shared_ptr<FSServer::Connection> con = *it;
+      const int fd = con->getFd();
+      if (con->error() || fd < 0 || fd >= FD_SETSIZE) [[unlikely]] {
+        it = clientList.erase(it);
+        continue;
+      }
+
+      if (!con->isBusy() && FD_ISSET(fd, &readfds)) {
+        con->setBusy();
+        this->_pool.enqueue([con]() { con->run(); });
+      }
+      ++it;
+    }
+  }
 }
 
 // Connection
 
-FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
-                                 FSManager &manager) noexcept
-    : _running(running), _manager(manager) {
+FSServer::Connection::Connection(const int fd, FSManager &manager) noexcept
+    : _manager(manager) {
   this->_fd = fd;
   this->_private = std::make_unique<RSAKey>(getCanonicalPath(PKEY_PATH), true);
   if (!this->_private || !this->_private->isOk()) {
     std::println("Unable to load private key");
-    this->_error = true;
+    this->_error.store(true);
     return;
   }
 
   struct timeval timeout;
   timeout.tv_sec = 15;
   timeout.tv_usec = 0;
-  if (setsockopt(this->_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)))
-      [[unlikely]] {
-    this->_error = true;
+  if (setsockopt(this->_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                 sizeof(timeout)) != 0) [[unlikely]] {
+    this->_error.store(true);
     return;
   }
-  if (setsockopt(this->_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)))
-      [[unlikely]] {
-    this->_error = true;
+  if (setsockopt(this->_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout,
+                 sizeof(timeout)) != 0) [[unlikely]] {
+    this->_error.store(true);
     return;
   }
 
@@ -156,21 +197,40 @@ FSServer::Connection::Connection(const int fd, const std::atomic_bool &running,
   int intvl = 5;
   int cnt = 5;
 
-  if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle)))
-      [[unlikely]] {
-    this->_error = true;
+  if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle)) !=
+      0) [[unlikely]] {
+    this->_error.store(true);
     return;
   }
-  if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl, sizeof(intvl)))
-      [[unlikely]] {
-    this->_error = true;
+  if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl,
+                 sizeof(intvl)) != 0) [[unlikely]] {
+    this->_error.store(true);
     return;
   }
-  if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt)))
+  if (setsockopt(this->_fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt)) != 0)
       [[unlikely]] {
-    this->_error = true;
+    this->_error.store(true);
     return;
   }
+
+  std::println("Initializing validation step");
+  if (!handleValidation()) {
+    this->_error.store(true);
+    const std::string command = FSCodeStr(QUIT);
+    if (!FSServer::Connection::writePrimitive(
+            this->_fd, (void *)command.c_str(), command.length()))
+      return;
+
+    std::println("Validation step failed");
+    return;
+  }
+  const std::string command = FSCodeStr(OK);
+  if (!FSServer::Connection::writePrimitive(this->_fd, (void *)command.c_str(),
+                                            command.length())) {
+    this->_error.store(true);
+    return;
+  }
+  std::println("Validation step success");
 }
 
 bool FSServer::Connection::interpretCommandRSA(
@@ -178,8 +238,8 @@ bool FSServer::Connection::interpretCommandRSA(
   if (command._length < COMMAND_LENGTH)
     return false;
   const std::string_view codeView(
-      (const char *)(command._data),
-      (const char *)(command._data + COMMAND_LENGTH));
+      reinterpret_cast<const char *>(command._data),
+      reinterpret_cast<const char *>(command._data + COMMAND_LENGTH));
 
   const FSCode code = FSStrCode(codeView);
   switch (code) {
@@ -212,8 +272,8 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
   if (command._length < COMMAND_LENGTH)
     return false;
   const std::string_view codeView(
-      (const char *)(command._data),
-      (const char *)(command._data + COMMAND_LENGTH));
+      reinterpret_cast<const char *>(command._data),
+      reinterpret_cast<const char *>(command._data + COMMAND_LENGTH));
   const uint32_t dataViewLength = command._length > COMMAND_LENGTH + 1
                                       ? command._length - COMMAND_LENGTH - 1
                                       : 0;
@@ -240,8 +300,7 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
           !valOpt.has_value())
         return sendErrorMessage("Path must be a valid path: " +
                                 std::string(valOpt.error()));
-      else
-        requests.emplace_back(Request(std::move(file)));
+      requests.emplace_back(file);
     }
 
     this->_manager.addNewNode(std::move(requests));
@@ -255,7 +314,7 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
       std::println("Unable to get current head file");
       break;
     } else {
-      alignas(32) std::array<char, 64> arr;
+      alignas(ALIGNMENT) std::array<char, 64> arr;
       memcpy(arr.data(), current.value().data(), 64);
       LTree tree = LTree(arr, "/FreeSync", true);
       if (auto fileOpt = tree.getChildFile(
@@ -324,8 +383,8 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
         return sendErrorMessage("Path must be a valid path: " +
                                 std::string(valOpt.error()));
       else
-        requests.emplace_back(
-            Request(std::move(file), std::move(fsPath), executable[0] == '1'));
+        requests.emplace_back(std::move(file), std::move(fsPath),
+                              executable[0] == '1');
     }
 
     const uint64_t id = this->_manager.addNewNode(std::move(requests));
@@ -342,12 +401,12 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
       std::println("Unable to get current head file");
       break;
     } else {
-      alignas(32) std::array<char, 64> arr;
+      alignas(ALIGNMENT) std::array<char, 64> arr;
       memcpy(arr.data(), current.value().data(), 64);
       LTree tree = LTree(arr, "/FreeSync", true);
       const std::string path(dataView.cbegin(), dataView.cend());
-      const size_t filePos = path.find_last_of("/");
-      if (filePos == path.npos)
+      const size_t filePos = path.find_last_of('/');
+      if (filePos == std::string::npos)
         return sendErrorMessage("Path must be a valid path");
       const std::string dirPath = path.substr(0, filePos);
       const std::string entry = path.substr(filePos + 1, path.size());
@@ -356,14 +415,17 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
       else {
         for (const auto &child : treeOpt->getChildren())
           if (child._fileName == entry) {
-            std::string msgRaw = "";
+            std::string msgRaw;
             std::string type = "FILE ";
             std::string nlink = "1 ";
-            std::string fileSize = std::to_string(child.getFileSize());
+            const std::string fileSize =
+                std::to_string(child.getFileSize()) + ' ';
+            const std::string modificationDate =
+                std::to_string(child.getModificationDate());
             if (child._entry == DIRECTORY) {
               type = "DIRECTORY ";
 
-              alignas(32) std::array<char, 64> hash;
+              alignas(ALIGNMENT) std::array<char, 64> hash;
               memcpy(hash.data(), child._hash.data(), 64);
               const LTree subTree = LTree(
                   hash, treeOpt->getFileName() + '/' + child._fileName, false);
@@ -376,7 +438,10 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
               if (child._entry != REGULAR_FILE)
                 type = "EXECUTABLE ";
             }
-            msgRaw += type + nlink + fileSize;
+            msgRaw += type;
+            msgRaw += nlink;
+            msgRaw += fileSize;
+            msgRaw += modificationDate;
             return sendReply(msgRaw);
           }
         return sendErrorMessage("Unable to find folder");
@@ -401,14 +466,14 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
       std::println("Unable to get current head file");
       break;
     } else {
-      alignas(32) std::array<char, 64> arr;
+      alignas(ALIGNMENT) std::array<char, 64> arr;
       memcpy(arr.data(), current.value().data(), 64);
       LTree tree = LTree(arr, "/FreeSync", true);
       const std::string path(dataView.cbegin(), dataView.cend());
       if (const auto treeOpt = tree.getChildTree(path); !treeOpt.has_value())
         return sendErrorMessage("Unable to find folder");
       else {
-        std::string msgRaw = "";
+        std::string msgRaw;
         const auto &children = treeOpt.value().getChildren();
         for (const auto &child : children)
           msgRaw += child._fileName + '\n';
@@ -425,14 +490,14 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
       std::println("Unable to get current head file");
       break;
     } else {
-      alignas(32) std::array<char, 64> arr;
+      alignas(ALIGNMENT) std::array<char, 64> arr;
       memcpy(arr.data(), current.value().data(), 64);
       LTree tree = LTree(arr, "/FreeSync", true);
       const std::string path(dataView.cbegin(), dataView.cend());
       if (const auto treeOpt = tree.getChildTree(path); !treeOpt.has_value())
         return sendErrorMessage("Unable to find folder");
       else {
-        std::string msgRaw = "";
+        std::string msgRaw;
         const auto &children = treeOpt.value().getChildren();
         for (const auto &child : children) {
           std::string entry = "File - ";
@@ -472,48 +537,60 @@ bool FSServer::Connection::interpretCommand(const SSLString &command) noexcept {
   case AUTH:
   case AES:
     break;
+  case HASH:
+    if (dataView.empty())
+      return sendErrorMessage("No path was passed");
+
+    if (const auto current = Node::getHeadFile(); !current.has_value()) {
+      std::println("Unable to get current head file");
+      break;
+    } else {
+      alignas(ALIGNMENT) std::array<char, 64> arr;
+      memcpy(arr.data(), current.value().data(), 64);
+      LTree tree = LTree(arr, "/FreeSync", true);
+      const std::string path(dataView.cbegin(), dataView.cend());
+      if (const auto &fileOpt = tree.getChildFile(path); !fileOpt.has_value())
+        return sendErrorMessage("Unable to get final decompressed file");
+      else if (const DiskFile &file = fileOpt.value(); !file)
+        return sendErrorMessage("File found an error");
+      else
+        return sendReply(Node::hash(file.toSpan()));
+    }
+    return sendErrorMessage("Unable to find child");
+    break;
   }
   return true;
 }
 void FSServer::Connection::run() noexcept {
-  std::println("Initializing validation step");
-  if (!handleValidation()) {
-    const std::string command = FSCodeStr(QUIT);
-    if (!this->writePrimitive(this->_fd, (void *)command.c_str(),
-                              command.length()))
+
+  if (!this->_aes) {
+    if (auto commandOpt = readSocketRSA(this->_fd); !commandOpt.has_value()) {
+      this->_error.store(true);
+      this->_busy.store(false);
       return;
-    std::println("Validation step failed");
+    } else {
+      if (!interpretCommandRSA(commandOpt.value())) {
+        this->_error.store(true);
+        this->_busy.store(false);
+        return;
+      }
+    }
+    this->_busy.store(false);
+    // std::cout << command << '\n';
+    return;
+  }
+  if (StringOpt commandOpt = readSocketAES(this->_fd);
+      !commandOpt.has_value()) {
+    this->_error.store(true);
+    this->_busy.store(false);
     return;
   } else {
-    const std::string command = FSCodeStr(OK);
-    if (!this->writePrimitive(this->_fd, (void *)command.c_str(),
-                              command.length()))
+    if (!interpretCommand(commandOpt.value())) {
+      this->_error.store(true);
+      this->_busy.store(false);
       return;
-    std::println("Validation step success");
-  }
-
-  while (this->_running.load()) {
-    if (!this->_aes) {
-      if (auto commandOpt = readSocketRSA(this->_fd); !commandOpt.has_value())
-        return;
-      else {
-        const SSLString command = std::move(commandOpt.value());
-        if (!interpretCommandRSA(command))
-          return;
-      }
-      // std::cout << command << '\n';
-      continue;
     }
-    if (StringOpt commandOpt = readSocketAES(this->_fd);
-        !commandOpt.has_value())
-      return;
-    else {
-      const SSLString command = std::move(commandOpt.value());
-      if (!interpretCommand(command))
-        return;
-    }
-    // std::cout << command << '\n';
-    continue;
-    // std::cout << command << '\n';
+    this->_busy.store(false);
   }
+  this->_busy.store(false);
 }

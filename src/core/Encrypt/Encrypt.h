@@ -9,6 +9,7 @@
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <optional>
+#include <print>
 #include <vector>
 #define AES_KEY_LENGTH 256
 #define AES_KEY_BYTES 32
@@ -19,15 +20,15 @@
 #define PTR_SIZE 64
 struct SSLDeleter {
   constexpr void operator()(EVP_PKEY *key) noexcept {
-    if (key)
+    if (key != nullptr)
       EVP_PKEY_free(key);
   }
   constexpr void operator()(EVP_PKEY_CTX *ctx) noexcept {
-    if (ctx)
+    if (ctx != nullptr)
       EVP_PKEY_CTX_free(ctx);
   }
   constexpr void operator()(EVP_CIPHER_CTX *ctx) noexcept {
-    if (ctx)
+    if (ctx != nullptr)
       EVP_CIPHER_CTX_free(ctx);
   }
 };
@@ -53,15 +54,15 @@ concept ByteSpan =
     requires(T s) { []<typename U, std::size_t Ext>(std::span<U, Ext>) {}(s); };
 class AESKey;
 class RSAKey;
-typedef std::array<unsigned char, 32> AESKeyBuf;
-typedef std::array<unsigned char, IV_SIZE> AESIV;
-typedef std::array<unsigned char, TAG_SIZE> AESTAG;
-typedef std::unique_ptr<EVP_PKEY, SSLDeleter> KeyPtr;
-typedef std::unique_ptr<EVP_PKEY_CTX, SSLDeleter> RSACtxPtr;
-typedef std::unique_ptr<EVP_CIPHER_CTX, SSLDeleter> AESCtxPtr;
-typedef std::unique_ptr<AESKey> AESPtr;
-typedef std::unique_ptr<RSAKey> RSAPtr;
-typedef std::shared_ptr<RSAKey> RSASPtr;
+using AESKeyBuf = std::array<unsigned char, 32>;
+using AESIV = std::array<unsigned char, IV_SIZE>;
+using AESTAG = std::array<unsigned char, TAG_SIZE>;
+using KeyPtr = std::unique_ptr<EVP_PKEY, SSLDeleter>;
+using RSACtxPtr = std::unique_ptr<EVP_PKEY_CTX, SSLDeleter>;
+using AESCtxPtr = std::unique_ptr<EVP_CIPHER_CTX, SSLDeleter>;
+using AESPtr = std::unique_ptr<AESKey>;
+using RSAPtr = std::unique_ptr<RSAKey>;
+using RSASPtr = std::shared_ptr<RSAKey>;
 
 struct SSLString {
   SSLString() = delete;
@@ -71,9 +72,11 @@ struct SSLString {
     if (isSSLAllocated)
       this->_data = data;
     else {
-      if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
-          !this->_data) {
-        std::cerr << "Unable to allocate memory for cipherText blob\n";
+      if (this->_data =
+              static_cast<unsigned char *>(OPENSSL_malloc(this->_length));
+          this->_data == nullptr) {
+        std::println("Unable to allocate memory for cipherText blob: {}",
+                     this->_length);
         ERR_print_errors_fp(stderr);
       }
       memcpy(const_cast<unsigned char *>(this->_data), data, this->_length);
@@ -85,9 +88,11 @@ struct SSLString {
   }
 
   explicit SSLString(const std::string &v) noexcept : _length(v.length()) {
-    if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
-        !this->_data) {
-      std::cerr << "Unable to allocate memory for cipherText blob\n";
+    if (this->_data =
+            static_cast<unsigned char *>(OPENSSL_malloc(this->_length));
+        this->_data == nullptr) {
+      std::println("Unable to allocate memory for cipherText blob: {}",
+                   this->_length);
       ERR_print_errors_fp(stderr);
     }
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
@@ -95,27 +100,33 @@ struct SSLString {
 
   constexpr explicit SSLString(const std::string_view v) noexcept
       : _length(v.length()) {
-    if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
-        !this->_data) {
-      std::cerr << "Unable to allocate memory for cipherText blob\n";
+    if (this->_data =
+            static_cast<unsigned char *>(OPENSSL_malloc(this->_length));
+        this->_data == nullptr) {
+      std::println("Unable to allocate memory for cipherText blob: {}",
+                   this->_length);
       ERR_print_errors_fp(stderr);
     }
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
   constexpr explicit SSLString(const std::vector<unsigned char> &v) noexcept
       : _length(v.size()) {
-    if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
-        !this->_data) {
-      std::cerr << "Unable to allocate memory for cipherText blob\n";
+    if (this->_data =
+            static_cast<unsigned char *>(OPENSSL_malloc(this->_length));
+        this->_data == nullptr) {
+      std::println("Unable to allocate memory for cipherText blob: {}",
+                   this->_length);
       ERR_print_errors_fp(stderr);
     }
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
   }
   constexpr explicit SSLString(const std::span<unsigned char> v) noexcept
       : _length(v.size()) {
-    if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
-        !this->_data) {
-      std::cerr << "Unable to allocate memory for cipherText blob\n";
+    if (this->_data =
+            static_cast<unsigned char *>(OPENSSL_malloc(this->_length));
+        this->_data == nullptr) {
+      std::println("Unable to allocate memory for cipherText blob: {}",
+                   this->_length);
       ERR_print_errors_fp(stderr);
     }
     memcpy(const_cast<unsigned char *>(this->_data), v.data(), this->_length);
@@ -125,14 +136,14 @@ struct SSLString {
   // _length(other._length) {
   //   if (this->_data = (unsigned char *)OPENSSL_malloc(this->_length);
   //       !this->_data) {
-  //     std::cerr << "Unable to allocate memory for cipherText blob\n";
-  //     ERR_print_errors_fp(stderr);
+  //     std::println("Unable to allocate memory for cipherText blob:
+  //     {}",this->_length); ERR_print_errors_fp(stderr);
   //   }
   //   memcpy(const_cast<unsigned char *>(this->_data), other._data,
   //          this->_length);
   // }
   constexpr ~SSLString() noexcept {
-    if (this->_data)
+    if (this->_data != nullptr)
       OPENSSL_free(const_cast<unsigned char *>(this->_data));
   }
   friend std::ostream &operator<<(std::ostream &os,
@@ -141,7 +152,7 @@ struct SSLString {
                reinterpret_cast<char *>(const_cast<unsigned char *>(str._data)),
                str._length);
   }
-  std::string toString() const noexcept {
+  [[nodiscard]] std::string toString() const noexcept {
     std::string str;
     str.resize(this->_length, 0);
     memcpy(str.data(), this->_data, this->_length);
@@ -150,7 +161,7 @@ struct SSLString {
 
   constexpr SSLString &operator=(const SSLString &) = delete;
   constexpr SSLString &operator=(SSLString &&other) noexcept {
-    if (this->_data)
+    if (this->_data != nullptr)
       OPENSSL_free(const_cast<unsigned char *>(this->_data));
 
     this->_data = other._data;
@@ -170,51 +181,66 @@ struct SSLString {
 class SSLView {
   class ControlBlock {
   public:
-    ControlBlock(const size_t counter) noexcept { this->_counter = counter; }
-    size_t load() const noexcept { return this->_counter.load(); }
-    void incr() noexcept { this->_counter.fetch_add(1); }
-    void sub() noexcept { this->_counter.fetch_sub(1); }
+    constexpr explicit ControlBlock(const SSLString *const ptr) noexcept
+        : _ptr(ptr) {}
+    [[nodiscard]] constexpr size_t load() const noexcept {
+      return this->_counter.load(std::memory_order_acquire);
+    }
+    constexpr void incr() noexcept {
+      this->_counter.fetch_add(1, std::memory_order_relaxed);
+    }
+    constexpr void sub() noexcept {
+      if (this->_counter.fetch_sub(1, std::memory_order_acq_rel) - 1 == 0) {
+        delete this->_ptr;
+        delete this;
+      }
+    }
 
   private:
-    std::atomic_size_t _counter = 0;
+    std::atomic<size_t> _counter{1};
+    const SSLString *_ptr = nullptr;
   };
 
 public:
   SSLView() = delete;
-  SSLView(const std::string_view &&string) noexcept
-      : _controlBlock(new ControlBlock(1)) {
-    this->_data = new SSLString(std::move(string));
+  explicit constexpr SSLView(const std::string_view &&string) noexcept {
+    this->_data = new SSLString(string);
+    this->_controlBlock = new ControlBlock(this->_data);
   }
-  SSLView(SSLString &&string) noexcept : _controlBlock(new ControlBlock(1)) {
+
+  constexpr SSLView(SSLString &&string) noexcept {
     this->_data = new SSLString(std::move(string));
+    this->_controlBlock = new ControlBlock(this->_data);
   }
-  SSLView(const SSLView &other) noexcept
+  constexpr SSLView(const SSLView &other) noexcept
       : _data(other._data), _controlBlock(other._controlBlock) {
     this->_controlBlock->incr();
   }
-  SSLView(SSLView &&other) noexcept
-      : _data(std::move(other._data)),
-        _controlBlock(std::move(other._controlBlock)) {}
+  constexpr SSLView(SSLView &&other) noexcept
+      : _data(other._data), _controlBlock(other._controlBlock) {
+    other._controlBlock = nullptr;
+  }
 
-  SSLView &operator=(const SSLView &other) noexcept {
+  constexpr SSLView &operator=(const SSLView &other) noexcept {
+    if (this == &other)
+      return *this;
+
     this->_data = other._data;
     this->_controlBlock = other._controlBlock;
     this->_controlBlock->incr();
     return *this;
   }
-  SSLView &operator=(SSLView &&other) noexcept {
-    this->_data = std::move(other._data);
-    this->_controlBlock = std::move(other._controlBlock);
+  constexpr SSLView &operator=(SSLView &&other) noexcept {
+    this->_data = other._data;
+    this->_controlBlock = other._controlBlock;
+    other._controlBlock = nullptr;
     return *this;
   }
+  [[nodiscard]] const SSLString &get() const noexcept { return *this->_data; }
   ~SSLView() noexcept {
-    this->_controlBlock->sub();
-    if (this->_controlBlock->load() == 0) {
-      delete this->_controlBlock;
-      delete this->_data;
-    }
+    if (this->_controlBlock != nullptr)
+      this->_controlBlock->sub();
   }
-  const SSLString &get() const noexcept { return *(this->_data); }
 
 private:
   const SSLString *_data = nullptr;
@@ -232,7 +258,7 @@ public:
   virtual std::optional<SSLString> decryptBlob(SSLString &data) noexcept = 0;
 
   explicit operator bool() const noexcept { return !this->_error; }
-  bool isOk() const noexcept { return !this->_error; };
+  [[nodiscard]] constexpr bool isOk() const noexcept { return !this->_error; };
 
 protected:
   bool _error = false;
@@ -242,7 +268,7 @@ class AESKey final : public CypherKey {
 public:
   explicit AESKey() noexcept {
     if (RAND_bytes(this->_key.data(), 32) < 1) [[unlikely]] {
-      std::cerr << "Unable to generate random AES Key\n";
+      std::println("Unable to generate random AES Key");
       ERR_print_errors_fp(stderr);
       memset(this->_key.data(), 0, 32);
       this->_error = true;
@@ -305,10 +331,10 @@ public:
   ~RSAKey() noexcept override = default;
 
 private:
-  KeyPtr loadPublicKey(const std::string_view path) noexcept;
-  KeyPtr loadPrivateKey(const std::string_view path) noexcept;
-  KeyPtr loadPublicKey(const std::span<unsigned char> key) noexcept;
-  KeyPtr loadPrivateKey(const std::span<unsigned char> key) noexcept;
+  static KeyPtr loadPublicKey(const std::string_view path) noexcept;
+  static KeyPtr loadPrivateKey(const std::string_view path) noexcept;
+  static KeyPtr loadPublicKey(const std::span<unsigned char> key) noexcept;
+  static KeyPtr loadPrivateKey(const std::span<unsigned char> key) noexcept;
 
   RSACtxPtr loadEncryptCtx() noexcept;
   RSACtxPtr loadDecryptCtx() noexcept;

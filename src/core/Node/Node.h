@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cstring>
 #include <expected>
 #include <filesystem>
@@ -18,10 +19,12 @@ namespace fs = std::filesystem;
 class Node {
 public:
   virtual ~Node() noexcept = default;
-  constexpr virtual const std::string_view getHash() const noexcept = 0;
-  constexpr virtual const fs::path &getFilePath() const noexcept = 0;
-  constexpr virtual const fs::path &getObjPath() const noexcept = 0;
-  constexpr virtual const std::string getFileName() const noexcept = 0;
+  [[nodiscard]] constexpr virtual std::string_view getHash() const noexcept = 0;
+  [[nodiscard]] constexpr virtual const fs::path &
+  getFilePath() const noexcept = 0;
+  [[nodiscard]] constexpr virtual const fs::path &
+  getObjPath() const noexcept = 0;
+  [[nodiscard]] constexpr virtual std::string getFileName() const noexcept = 0;
   static std::optional<std::string> getHeadFile() noexcept;
 
   static std::string hash(const std::vector<unsigned char> &data) noexcept;
@@ -34,8 +37,7 @@ public:
   validatePath(std::string_view path,
                std::vector<std::string> &context) noexcept {
     const std::string_view originalPath = path;
-    if (std::find(context.cbegin(), context.cend(), originalPath) !=
-        context.cend())
+    if (std::ranges::find(context, originalPath) != context.cend())
       return std::unexpected(
           "User is trying to map 2 different files to the same path");
 
@@ -63,6 +65,6 @@ public:
 protected:
   fs::path _filePath = "";
   fs::path _objPath = "";
-  std::string _hash = "";
+  std::string _hash;
   bool _error = false;
 };

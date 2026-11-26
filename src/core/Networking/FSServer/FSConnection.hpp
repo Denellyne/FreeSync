@@ -1,22 +1,25 @@
 #pragma once
+#include "../../defines.hpp"
 #include "../FSProtocol.h"
 #include <print>
 class FSConnection : public FSProtocol {
 public:
   FSConnection() = default;
-  operator bool() const noexcept { return !this->_error; }
+  operator bool() const noexcept { return !this->_error.load(); }
+  [[nodiscard]] bool error() const noexcept { return this->_error.load(); }
 
 protected:
-  inline bool sendErrorMessage(const std::string_view err) noexcept {
+  bool sendErrorMessage(const std::string_view err) noexcept {
     const SSLString msg(FSCodeStr(ERR) + ' ' + err.data());
     return writeToSocketAES(this->_fd, msg);
   }
-  inline bool sendReply(const std::string_view message) noexcept {
+  bool sendReply(const std::string_view message) noexcept {
     const SSLString msg(FSCodeStr(OK) + ' ' + message.data());
     return writeToSocketAES(this->_fd, msg);
   }
   bool handleValidation() noexcept {
-    if (FILE *fp = fopen(getCanonicalPath(PUBKEY_PATH).data(), "r"); !fp) {
+    if (FILE *fp = fopen(getCanonicalPath(PUBKEY_PATH).data(), "r");
+        fp == nullptr) {
       std::println("Unable to open own public key file");
       return false;
     } else {
@@ -24,14 +27,13 @@ protected:
       const size_t length = ftell(fp);
       std::vector<unsigned char> key(length);
       rewind(fp);
-      if (fread(key.data(), sizeof(unsigned char), length, fp) <
-          (size_t)length) {
+      if (fread(key.data(), sizeof(unsigned char), length, fp) < length) {
         std::println("Unable to read own public key");
         fclose(fp);
         return false;
       }
       fclose(fp);
-      alignas(32) std::array<unsigned char, LENGTH_SIZE> lengthArr =
+      alignas(ALIGNMENT) std::array<unsigned char, LENGTH_SIZE> lengthArr =
           toArray(length);
       key.insert(key.begin(), lengthArr.begin(), lengthArr.end());
       if (!writePrimitive(this->_fd, key.data(), LENGTH_SIZE + length)) {
@@ -84,10 +86,11 @@ protected:
         std::cerr << "Unable to open file " << file << "\n";
         return false;
       } else {
-        unsigned char *buf = (unsigned char *)mmap(
-            NULL, file.file_size(), PROT_READ, MAP_FILE | MAP_SHARED, fd, 0);
+        unsigned char *buf = static_cast<unsigned char *>(
+            mmap(nullptr, file.file_size(), PROT_READ, MAP_FILE | MAP_SHARED,
+                 fd, 0));
         if (key.size() == file.file_size() &&
-            !memcmp(key.data(), buf, key.size())) {
+            (memcmp(key.data(), buf, key.size()) == 0)) {
           munmap(buf, file.file_size());
           close(fd);
           return true;
@@ -100,5 +103,5 @@ protected:
   }
 
   int _fd = -1;
-  bool _error = false;
+  std::atomic_bool _error = false;
 };

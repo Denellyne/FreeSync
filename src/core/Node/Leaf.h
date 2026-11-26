@@ -31,18 +31,21 @@ public:
 
     this->_objPath = path;
   }
-  bool isExecutable() const noexcept { return this->_isExecutable; }
+  [[nodiscard]] bool isExecutable() const noexcept {
+    return this->_isExecutable;
+  }
 
-  constexpr const std::string_view getHash() const noexcept override {
+  [[nodiscard]] constexpr std::string_view getHash() const noexcept override {
     return this->_hash;
   }
-  constexpr const fs::path &getFilePath() const noexcept override {
+  [[nodiscard]] constexpr const fs::path &
+  getFilePath() const noexcept override {
     return this->_filePath;
   }
-  constexpr const fs::path &getObjPath() const noexcept override {
+  [[nodiscard]] constexpr const fs::path &getObjPath() const noexcept override {
     return this->_objPath;
   }
-  constexpr const std::string getFileName() const noexcept override {
+  [[nodiscard]] constexpr std::string getFileName() const noexcept override {
     return this->_filePath.filename().string();
   }
 
@@ -61,7 +64,7 @@ public:
 
   static std::span<unsigned char>
   readBlobData(std::span<unsigned char> data) noexcept;
-  Leaf getParentLeaf(const std::span<unsigned char> data) noexcept;
+  Leaf getParentLeaf(const std::span<unsigned char> data) const noexcept;
 
 private:
   [[nodiscard]] bool writeBlob(const std::span<unsigned char> data) noexcept;

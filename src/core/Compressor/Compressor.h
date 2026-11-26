@@ -3,7 +3,6 @@
 #include <cassert>
 #include <fcntl.h>
 #include <span>
-#include <stdlib.h>
 #include <string_view>
 #include <sys/mman.h>
 #include <vector>
@@ -52,7 +51,7 @@ public:
   }
 
   operator bool() const noexcept { return !this->_error; }
-  std::span<unsigned char> getData() const noexcept {
+  [[nodiscard]] std::span<unsigned char> getData() const noexcept {
     return this->_file.toSpan();
   }
 

@@ -16,9 +16,9 @@ using StringOpt = std::optional<SSLString>;
 #define PUBKEY_PATH "/.local/share/freesync/certs/pub.pem"
 #define PKEY_PATH "/.local/share/freesync/certs/priv.pem"
 #define CLIENTS_CERTS_PATH "/.local/share/freesync/clients/"
-#define FSMANAGER_PACKET 64 * 1024
+#define FSMANAGER_PACKET (64L * 1024L)
 
-enum FSCode {
+enum FSCode : uint16_t {
   ERR = 100,  // Generic Error command followed by reason
   QUIT = 101, // Generic close connection command
   PING = 102, // Generic heartbeat command
@@ -37,6 +37,7 @@ enum FSCode {
               // session, either after a set ammount of times the key is used or
               // for a transfer, there only exists one AES key at a time
   MOV = 306,  // Moves the file to a new Path
+  HASH = 307, // Asks the hash of a specific file
   // PUBK = 306, // Sends the public key
 
 };
@@ -81,34 +82,36 @@ constexpr FSCode FSStrCode(const std::string_view command) noexcept {
   const std::string_view code = command.substr(0, command.find_first_of(' '));
   if (code == "200")
     return OK;
-  else if (code == "101")
+  if (code == "101")
     return QUIT;
-  else if (code == "102")
+  if (code == "102")
     return PING;
-  else if (code == "201")
+  if (code == "201")
     return LIST;
-  else if (code == "202")
+  if (code == "202")
     return AESK;
-  else if (code == "203")
+  if (code == "203")
     return INV;
-  else if (code == "204")
+  if (code == "204")
     return DATA;
-  else if (code == "205")
+  if (code == "205")
     return ITER;
-  else if (code == "300")
+  if (code == "300")
     return AUTH;
-  else if (code == "301")
+  if (code == "301")
     return RETR;
-  else if (code == "302")
+  if (code == "302")
     return STRU;
-  else if (code == "303")
+  if (code == "303")
     return DEL;
-  else if (code == "304")
+  if (code == "304")
     return ATTR;
-  else if (code == "305")
+  if (code == "305")
     return AES;
-  else if (code == "306")
+  if (code == "306")
     return MOV;
+  if (code == "307")
+    return HASH;
 
   return ERR;
 }
@@ -118,12 +121,11 @@ constexpr std::string FSCodeStr(const FSCode code) noexcept {
 }
 
 struct Request {
-  enum OP { ADD, DELETE } type = ADD;
+  enum OP : uint8_t { ADD, DELETE } type = ADD;
   explicit Request(const std::string_view filePath,
                    const std::string_view fsPath,
                    const bool isExecutable) noexcept
-      : type(ADD), filePath(filePath), fsPath(fsPath),
-        isExecutable(isExecutable) {}
+      : filePath(filePath), fsPath(fsPath), isExecutable(isExecutable) {}
 
   explicit Request(const std::string_view fsPath) noexcept
       : type(DELETE), fsPath(fsPath) {
@@ -142,7 +144,7 @@ struct Request {
     std::swap(this->file, other.file);
     return *this;
   }
-  std::string filePath = "", fsPath = "", hash = "";
+  std::string filePath, fsPath, hash;
   int id = -1;
   bool complete = type == DELETE, isExecutable = false;
   DiskFile file = DiskFile(true);
@@ -161,8 +163,8 @@ protected:
                                    const SSLString &message) noexcept;
   [[nodiscard]] bool writeToSocketAES(const int fd,
                                       const SSLString &message) noexcept;
-  [[nodiscard]] bool writePrimitive(const int fd, void *data,
-                                    const uint32_t size) noexcept;
+  [[nodiscard]] static bool writePrimitive(const int fd, void *data,
+                                           const uint32_t size) noexcept;
   // virtual bool writeToSocket(std::string_view message, bool aes = true) = 0;
   // virtual StringOpt readSocket(bool aes = true) = 0;
   [[nodiscard]] static bool readPacket(const int fd, void *data,

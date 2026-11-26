@@ -10,6 +10,8 @@
 #include <sys/mman.h>
 #include <utility>
 
+using std::filesystem::file_size;
+
 FSClient::FSClient(const std::string_view ip) noexcept {
 
   std::error_code ec;
@@ -30,10 +32,10 @@ FSClient::FSClient(const std::string_view ip) noexcept {
     exit(EXIT_FAILURE);
   }
 }
-FSClient::FSManagerSocket::FSManagerSocket(const std::string &file,
-                                           const std::string &fsPath,
+FSClient::FSManagerSocket::FSManagerSocket(std::string &&file,
+                                           std::string &&fsPath,
                                            const uint64_t nodeId)
-    : _file(std::move(file)), _fsPath(std::move(fsPath)), _nodeId(nodeId) {
+    : _file(file), _fsPath(fsPath), _nodeId(nodeId) {
 
   this->_serverAddr.sin_family = AF_INET;
   this->_serverAddr.sin_port = htons(FSMANAGER_PORT);
@@ -60,6 +62,8 @@ FSClient::validateCommand(const SSLString &command) noexcept {
   const FSCode c =
       FSStrCode(std::string_view((char *)command._data, command._length));
   switch (c) {
+  default:
+    return false;
   case ERR:
   case OK:
   case AESK:
@@ -128,6 +132,66 @@ FSClient::validateCommand(const SSLString &command) noexcept {
 
   return true;
 }
+bool FSClient::handleSendFile(
+    const std::span<const unsigned char> dataView) noexcept {
+
+  auto split =
+      std::string{dataView.cbegin(), dataView.cend()} | std::views::split(' ') |
+      std::views::transform([](auto &&rg) { return std::string_view{rg}; }) |
+      std::ranges::to<std::vector<std::string>>() | std::views::adjacent<2> |
+      std::views::stride(2);
+  std::string raw;
+  for (const auto &[file, fsPath] : split) {
+    char isExecutable = '0';
+    if (const fs::perms permissions = fs::status(file).permissions();
+        (fs::perms::none != (permissions & fs::perms::owner_exec)) ||
+        (fs::perms::none != (permissions & fs::perms::group_exec)) ||
+        (fs::perms::none != (permissions & fs::perms::others_exec)))
+      isExecutable = '1';
+
+    raw += ' ';
+    raw += file;
+    raw += ' ';
+    raw += fsPath;
+    raw += ' ';
+    raw += isExecutable;
+  }
+
+  if (StringOpt msgOpt = issueCommandRead(SSLString(FSCodeStr(STRU) + raw));
+      !msgOpt.has_value()) {
+    std::println("Unable to get the server answer, closing connection");
+    return false;
+  } else {
+    const SSLString msg = std::move(msgOpt.value());
+    if (const FSCode answer =
+            FSStrCode(std::string_view((char *)msg._data, COMMAND_LENGTH));
+        answer != OK) {
+      const std::string msg = msgOpt->toString();
+      std::println("{}",
+                   std::string(msg.cbegin() + COMMAND_LENGTH + 1, msg.cend()));
+      return false;
+    } else {
+      if (msg._length != COMMAND_LENGTH + 1 + PTR_SIZE) {
+        std::println("Message isn't the node id");
+        return false;
+      }
+      if (const auto idOpt = ptrToNumber(std::span<const unsigned char>(
+              msg._data + COMMAND_LENGTH + 1, PTR_SIZE));
+          !idOpt.has_value()) {
+        std::println("Unable to get node id");
+        return false;
+      } else {
+        const uint64_t nodeId = idOpt.value();
+        for (const auto &[file, fsPath] : split) {
+          this->_pool.enqueue([nodeId, file, fsPath] {
+            sendFile(file, fsPath, nodeId);
+          }); // add a way to see if it sent or not
+        }
+      }
+    }
+  }
+  return true;
+}
 
 bool FSClient::processCommand(const SSLString &command) noexcept {
 
@@ -139,7 +203,8 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
       FSStrCode(std::string_view((char *)command._data, command._length));
   switch (c) {
   default:
-    std::unreachable();
+    std::println("Illegal instruction");
+    return false;
   case RETR: {
 
     std::vector<std::string> split =
@@ -152,63 +217,13 @@ bool FSClient::processCommand(const SSLString &command) noexcept {
                                 SSLString(FSCodeStr(RETR) + ' ' + split[0]))) {
       std::println("Unable to send request to server");
       return false;
-    } else
-      return downloadFile(split[1]);
+    }
+    return downloadFile(split[1]);
 
   } break;
-  case STRU: {
-    auto split =
-        std::string{dataView.cbegin(), dataView.cend()} |
-        std::views::split(' ') |
-        std::views::transform([](auto &&rg) { return std::string_view{rg}; }) |
-        std::ranges::to<std::vector<std::string>>() | std::views::adjacent<2> |
-        std::views::stride(2);
-    std::string raw = "";
-    for (const auto &[file, fsPath] : split) {
-      char isExecutable = '0';
-      if (const fs::perms permissions = fs::status(file).permissions();
-          (fs::perms::none != (permissions & fs::perms::owner_exec)) ||
-          (fs::perms::none != (permissions & fs::perms::group_exec)) ||
-          (fs::perms::none != (permissions & fs::perms::others_exec)))
-        isExecutable = '1';
-
-      raw += ' ' + file + ' ' + fsPath + ' ' + isExecutable;
-    }
-
-    if (StringOpt msgOpt = issueCommandRead(SSLString(FSCodeStr(STRU) + raw));
-        !msgOpt.has_value()) {
-      std::println("Unable to get the server answer, closing connection");
-      return false;
-    } else {
-      const SSLString msg = std::move(msgOpt.value());
-      if (const FSCode answer =
-              FSStrCode(std::string_view((char *)msg._data, COMMAND_LENGTH));
-          answer != OK) {
-        const std::string msg = msgOpt->toString();
-        std::println(
-            "{}", std::string(msg.cbegin() + COMMAND_LENGTH + 1, msg.cend()));
-        return false;
-      } else {
-        if (msg._length != COMMAND_LENGTH + 1 + PTR_SIZE) {
-          std::println("Message isn't the node id");
-          return false;
-        }
-        if (const auto idOpt = ptrToNumber(std::span<const unsigned char>(
-                msg._data + COMMAND_LENGTH + 1, PTR_SIZE));
-            !idOpt.has_value()) {
-          std::println("Unable to get node id");
-          return false;
-        } else {
-          const uint64_t nodeId = idOpt.value();
-          for (const auto &[file, fsPath] : split) {
-            this->_pool.enqueue(
-                std::bind(&FSClient::sendFile, this, file, fsPath,
-                          nodeId)); // add a way to see if it sent or not
-          }
-        }
-      }
-    }
-  } break;
+  case STRU:
+    return this->handleSendFile(dataView);
+    break;
   case QUIT:
   case ITER:
   case LIST:
@@ -235,13 +250,13 @@ void FSClient::FSManagerSocket::run() noexcept {
 
   std::println("Sending {}", this->_file);
 
-  const ssize_t fileSize = std::filesystem::file_size(this->_file);
+  const size_t fileSize = file_size(this->_file);
   if (int fd = open(this->_file.c_str(), O_RDONLY, 0); fd < 0) {
     std::cerr << "Unable to open file " << this->_file << "\n";
     return;
   } else {
-    unsigned char *buf = (unsigned char *)mmap(NULL, fileSize, PROT_READ,
-                                               MAP_FILE | MAP_SHARED, fd, 0);
+    unsigned char *buf = static_cast<unsigned char *>(
+        mmap(nullptr, fileSize, PROT_READ, MAP_FILE | MAP_SHARED, fd, 0));
     madvise(buf, fileSize, MADV_SEQUENTIAL);
     std::span<unsigned char> data(buf, fileSize);
     const std::string hash = Node::hash(data);
@@ -304,9 +319,9 @@ void FSClient::FSManagerSocket::run() noexcept {
   }
 }
 
-void FSClient::sendFile(const std::string &file, const std::string &fsPath,
-                        const uint64_t nodeId) const noexcept {
-  FSManagerSocket manager(file, fsPath, nodeId);
+void FSClient::sendFile(std::string file, std::string fsPath,
+                        const uint64_t nodeId) noexcept {
+  FSManagerSocket manager(std::move(file), std::move(fsPath), nodeId);
   manager.run();
 }
 
@@ -318,7 +333,7 @@ void FSClient::run() noexcept {
 
   volatile bool shouldRun = true;
   while (shouldRun) {
-    std::string str = "";
+    std::string str;
     if (!std::getline(std::cin, str))
       break;
 
@@ -334,7 +349,7 @@ void FSClient::run() noexcept {
       return;
     }
     this->_aesLifetime++;
-    if (!this->_aesLifetime)
+    if (this->_aesLifetime == 0)
       shouldRun = this->invalidateAES() && this->switchAES();
 
     if (!shouldRun)

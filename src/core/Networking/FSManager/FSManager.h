@@ -22,7 +22,7 @@ public:
     auto nodeOpt = this->_list.getNode(connection);
     if (!nodeOpt.has_value())
       return false;
-    auto node = nodeOpt.value();
+    const auto &node = nodeOpt.value();
 
     if (std::any_of(node->_data.cbegin(), node->_data.cend(),
                     [id](const Request &req) {
@@ -67,7 +67,7 @@ private:
                                std::chrono::milliseconds(30000).count() >
                            currentTime;
               }))
-        ids.emplace_back(this->_list.getId(node).value());
+        ids.emplace_back(FSLList<Request>::getId(node).value());
     }
     for (const auto &id : ids)
       this->_list.removeNode(id);
@@ -86,10 +86,10 @@ private:
     }
     ~Connection() noexcept {
       std::println("Closing connection of sock:{}", this->_fd);
-      close(const_cast<int &>(this->_fd));
+      close(this->_fd);
     }
 
-    enum processStatus {
+    enum processStatus : uint8_t {
       ERR,
       OK,
       NODESET,
@@ -97,27 +97,32 @@ private:
     };
     processStatus process() noexcept;
     bool confirmFile() noexcept;
-    virtual void run() noexcept override {}
-    constexpr int getFd() const noexcept { return this->_fd; }
-    constexpr uint64_t getNode() const noexcept { return this->_node; }
+    void run() noexcept override {}
+    [[nodiscard]] constexpr int getFd() const noexcept { return this->_fd; }
+    [[nodiscard]] constexpr uint64_t getNode() const noexcept {
+      return this->_node;
+    }
     constexpr void setNodeId(const uint64_t nodeId) noexcept {
       this->_node = nodeId;
     }
-    std::optional<std::span<unsigned char>> getFileContents() const noexcept {
+    [[nodiscard]] std::optional<std::span<unsigned char>>
+    getFileContents() const noexcept {
       return this->_file.toSpan();
     }
     bool acquireRequest() noexcept;
-    std::string_view getOriginalPath() const noexcept {
+    [[nodiscard]] std::string_view getOriginalPath() const noexcept {
       return this->_originalPath;
     }
-    std::string_view getFilePath() const noexcept {
+    [[nodiscard]] std::string_view getFilePath() const noexcept {
       return this->_file.getFilePath();
     }
     DiskFile &&releaseFile() noexcept { return std::move(this->_file); }
-    std::string_view getHash() const noexcept { return this->_hash; }
+    [[nodiscard]] std::string_view getHash() const noexcept {
+      return this->_hash;
+    }
 
     DiskFile _file;
-    std::string _hash = "", _originalPath = "";
+    std::string _hash, _originalPath;
     uint64_t _node = 0;
   };
   FSLList<Request> _list;

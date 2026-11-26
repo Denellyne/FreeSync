@@ -1,4 +1,6 @@
 #include "Node.h"
+#include "../DiskObject/DiskView.hpp"
+#include "../defines.hpp"
 #include <cassert>
 #include <filesystem>
 #include <iomanip>
@@ -8,11 +10,9 @@
 #include <optional>
 #include <sstream>
 
-#include "../DiskObject/DiskView.hpp"
-
 std::string Node::hash(const std::span<unsigned char> data) noexcept {
 
-  alignas(32) std::array<uint8_t, 32> hash{};
+  alignas(ALIGNMENT) std::array<uint8_t, 32> hash{};
   EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
   const EVP_MD *md = EVP_sha256();
 

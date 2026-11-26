@@ -3,7 +3,6 @@
 #include <condition_variable>
 #include <functional>
 #include <mutex>
-#include <print>
 #include <queue>
 #include <thread>
 #include <unistd.h>
@@ -13,7 +12,7 @@ static inline unsigned maxThreads() noexcept {
   return std::thread::hardware_concurrency();
 }
 
-typedef std::function<void()> Job;
+using Job = std::function<void()>;
 
 class ThreadPool {
 public:
@@ -25,7 +24,7 @@ public:
     // std::println("Starting ThreadPool with {} threads", threadCount);
     this->_workers.reserve(threadCount);
     for (size_t i = 0; i < threadCount; i++) {
-      this->_workers.emplace_back(std::thread{[this, i] {
+      this->_workers.emplace_back([this] {
         while (true) {
           Job task;
           {
@@ -52,7 +51,7 @@ public:
           //   std::println("Caught exception {}", e.what());
           // }
         }
-      }});
+      });
     }
   }
   ~ThreadPool() noexcept {
@@ -60,7 +59,6 @@ public:
     this->shutdown();
   }
 
-public:
   void enqueue(Job &&task) noexcept {
     {
       std::unique_lock<std::mutex> lock(this->_mutex);

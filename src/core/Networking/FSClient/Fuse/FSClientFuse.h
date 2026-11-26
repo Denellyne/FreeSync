@@ -20,7 +20,7 @@ public:
       close(this->_fd);
     this->_fd = -1;
   }
-  virtual void run() noexcept override {};
+  void run() noexcept override {};
   std::optional<SSLString> readPacket() noexcept {
     return this->readSocketAES(this->_fd);
   }

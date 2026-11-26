@@ -9,7 +9,8 @@ private:
     std::string _entry;
     std::string _fileName;
     std::string _hash;
-    size_t getFileSize() const noexcept;
+    [[nodiscard]] size_t getFileSize() const noexcept;
+    [[nodiscard]] size_t getModificationDate() const noexcept;
   };
 
 public:
@@ -22,7 +23,6 @@ public:
         : _objPath(path), _timestamp(tm) {}
   };
 
-public:
   LTree() noexcept = default;
   LTree(const std::array<char, 64> &hash, const std::string_view filePath,
         const bool root = false) noexcept;
@@ -33,16 +33,17 @@ public:
     return tree;
   }
 
-  constexpr const std::string_view getHash() const noexcept override {
+  [[nodiscard]] constexpr std::string_view getHash() const noexcept override {
     return this->_hash;
   }
-  constexpr const fs::path &getFilePath() const noexcept override {
+  [[nodiscard]] constexpr const fs::path &
+  getFilePath() const noexcept override {
     return this->_filePath;
   }
-  constexpr const fs::path &getObjPath() const noexcept override {
+  [[nodiscard]] constexpr const fs::path &getObjPath() const noexcept override {
     return this->_objPath;
   }
-  constexpr const std::string getFileName() const noexcept override {
+  [[nodiscard]] constexpr std::string getFileName() const noexcept override {
     return this->_filePath.filename().string();
   }
   [[nodiscard]] bool writeTree() noexcept;
@@ -73,11 +74,13 @@ public:
   std::expected<DiskFile, std::string_view>
   getChildFile(const std::filesystem::path &filePath) const noexcept;
 
-  std::expected<std::vector<Commit>, std::string_view> getAllCommits() noexcept;
-  const std::vector<LNode> &getChildren() const noexcept {
+  static std::expected<std::vector<Commit>, std::string_view>
+  getAllCommits() noexcept;
+  [[nodiscard]] const std::vector<LNode> &getChildren() const noexcept {
     return this->_children;
   }
-  std::optional<LTree> getChildTree(std::string_view path) const noexcept;
+  [[nodiscard]] std::optional<LTree>
+  getChildTree(std::string_view path) const noexcept;
 
   std::string getBlobSize() noexcept;
   bool commit() noexcept { return this->writeMerkleTree(); }

@@ -1,8 +1,11 @@
 #include "LTree.h"
 #include "../Compressor/Compressor.h"
+#include "../defines.hpp"
 #include "Leaf.h"
 #include "Node.h"
+#include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
@@ -24,7 +27,7 @@ LTree::LTree(const std::array<char, 64> &hash, const std::string_view filePath,
   if (const auto val =
           getTreeFromBlob(this->_objPath.c_str(), this->_filePath.c_str());
       val.has_value()) {
-    this->_children = std::move(val->_children);
+    this->_children = val->_children;
   } else [[unlikely]]
     this->_error = true;
 }
@@ -66,7 +69,8 @@ LTree::getTreeFromBlob(const std::string_view objPath,
     }
     const std::string hash(dataStr.substr(0, 64));
     dataStr.remove_prefix(64);
-    tree._children.emplace_back(LNode{entry, fileName, hash});
+    tree._children.emplace_back(
+        LNode{._entry = entry, ._fileName = fileName, ._hash = hash});
   }
   tree.hashTree();
 
@@ -74,7 +78,7 @@ LTree::getTreeFromBlob(const std::string_view objPath,
 }
 
 void LTree::hashTree() noexcept {
-  std::sort(this->_children.begin(), this->_children.end());
+  std::ranges::sort(this->_children);
   this->_hash.clear();
 
   if (this->_root) {
@@ -103,7 +107,7 @@ void LTree::hashTree() noexcept {
 bool LTree::writeBlob() noexcept {
   fs::path path = this->_objPath;
   fs::create_directories(path.parent_path());
-  std::string data = "";
+  std::string data;
   if (this->_root) {
     if (const auto str = Node::getHeadFile(); !str.has_value()) {
       std::cerr << "Head file is null optional\n";
@@ -115,8 +119,8 @@ bool LTree::writeBlob() noexcept {
   for (const auto &children : this->_children)
     data += children._entry + ' ' + children._fileName + '\0' + children._hash;
 
-  DiskFile file = compressData(
-      std::span<unsigned char>((unsigned char *)data.data(), data.length()));
+  DiskFile file = compressData(std::span<unsigned char>(
+      reinterpret_cast<unsigned char *>(data.data()), data.length()));
   if (!file) [[unlikely]] {
     std::println("Unable to compress tree blob");
     return false;
@@ -139,7 +143,7 @@ bool LTree::writeHeadFile() noexcept {
 
   if (const std::span<const unsigned char> data =
           std::span<const unsigned char>(
-              (const unsigned char *)this->_hash.data(), 64);
+              reinterpret_cast<const unsigned char *>(this->_hash.data()), 64);
       !newHead.write(data)) [[unlikely]] {
     std::println("Unable to write new hash to temporary file");
     return false;
@@ -205,24 +209,24 @@ LTree::getChildFile(const std::filesystem::path &filePath) const noexcept {
 
   if (filePath.parent_path() == this->_filePath) {
     const std::string fileName = filePath.filename();
-    auto it = std::find_if(
-        this->_children.begin(), this->_children.end(),
-        [&fileName](auto &child) { return child._fileName == fileName; });
+    auto it = std::ranges::find_if(this->_children, [&fileName](auto &child) {
+      return child._fileName == fileName;
+    });
     if (it != this->_children.end()) {
       Leaf l(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
       return l.getFinalDecompressFile();
     }
 
   } else if (isSubPath(filePath, this->_filePath)) {
-    for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
-      if ((*it)._entry == DIRECTORY) {
-        const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
+    for (const auto &it : this->_children) {
+      if (it._entry == DIRECTORY) {
+        const std::string p = this->_filePath.string() + '/' + it._fileName;
         if (isSubPath(filePath, p)) {
           std::string obj = OBJFOLDER;
 
-          obj.append((*it)._hash, 0, 2);
+          obj.append(it._hash, 0, 2);
           obj += '/';
-          obj.append((*it)._hash, 2, 62);
+          obj.append(it._hash, 2, 62);
           if (auto tree = getTreeFromBlob(obj, p); tree.has_value())
             return tree->getChildFile(filePath);
           else
@@ -244,24 +248,24 @@ LTree::getChild(const std::filesystem::path &filePath) const noexcept {
 
   if (filePath.parent_path() == this->_filePath) {
     const std::string fileName = filePath.filename();
-    auto it = std::find_if(
-        this->_children.begin(), this->_children.end(),
-        [&fileName](auto &child) { return child._fileName == fileName; });
+    auto it = std::ranges::find_if(this->_children, [&fileName](auto &child) {
+      return child._fileName == fileName;
+    });
     if (it != this->_children.end()) {
       Leaf l(filePath.string(), it->_hash, it->_entry == EXECUTABLE_FILE);
       return l.getFinalDecompressBlob();
     }
 
   } else if (isSubPath(filePath, this->_filePath)) {
-    for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
-      if ((*it)._entry == DIRECTORY) {
-        const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
+    for (const auto &it : this->_children) {
+      if (it._entry == DIRECTORY) {
+        const std::string p = this->_filePath.string() + '/' + it._fileName;
         if (isSubPath(filePath, p)) {
           std::string obj = OBJFOLDER;
 
-          obj.append((*it)._hash, 0, 2);
+          obj.append(it._hash, 0, 2);
           obj += '/';
-          obj.append((*it)._hash, 2, 62);
+          obj.append(it._hash, 2, 62);
           if (auto tree = getTreeFromBlob(obj, p); tree.has_value())
             return tree->getChild(filePath);
           else
@@ -285,9 +289,9 @@ LTree::removeFile(const std::filesystem::path &filePath) noexcept {
 
   if (filePath.parent_path() == this->_filePath) {
     const std::string fileName = filePath.filename();
-    auto it = std::find_if(
-        this->_children.begin(), this->_children.end(),
-        [&fileName](auto &child) { return child._fileName == fileName; });
+    auto it = std::ranges::find_if(this->_children, [&fileName](auto &child) {
+      return child._fileName == fileName;
+    });
     if (it != this->_children.end())
       this->_children.erase(it);
 
@@ -305,7 +309,7 @@ LTree::removeFile(const std::filesystem::path &filePath) noexcept {
                 !newHash.has_value())
               return std::unexpected(newHash.error());
             else {
-              if (const std::string hash = newHash.value(); hash.empty())
+              if (const std::string &hash = newHash.value(); hash.empty())
                 this->_children.erase(it);
               else
                 it->_hash = newHash.value();
@@ -336,7 +340,7 @@ std::expected<std::string, std::string_view> LTree::addCompressedFile(
         std::mismatch(path.begin(), path.end(), base.begin(), base.end());
     return mismatchPair.second == base.end();
   };
-  if (hash.empty() || hash == "")
+  if (hash.empty() || hash.empty())
     return std::unexpected("Hash is empty");
 
   if (filePath.parent_path() == this->_filePath) {
@@ -367,8 +371,11 @@ std::expected<std::string, std::string_view> LTree::addCompressedFile(
           std::string entry = REGULAR_FILE;
           if (isExecutable)
             entry = EXECUTABLE_FILE;
-          this->_children.emplace_back(LNode{entry, newLeaf.getFileName(),
-                                             std::string(newLeaf.getHash())});
+          this->_children.emplace_back(LNode{
+              ._entry = entry,
+              ._fileName = newLeaf.getFileName(),
+              ._hash = std::string(newLeaf.getHash()),
+          });
         }
         break;
       }
@@ -386,22 +393,22 @@ std::expected<std::string, std::string_view> LTree::addCompressedFile(
 
   } else if (isSubPath(filePath, this->_filePath)) {
     bool newDirectory = true;
-    for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
-      if ((*it)._entry == DIRECTORY) {
-        const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
+    for (auto &it : this->_children) {
+      if (it._entry == DIRECTORY) {
+        const std::string p = this->_filePath.string() + '/' + it._fileName;
         if (isSubPath(filePath, p)) {
           std::string obj = OBJFOLDER;
 
-          obj.append((*it)._hash, 0, 2);
+          obj.append(it._hash, 0, 2);
           obj += '/';
-          obj.append((*it)._hash, 2, 62);
+          obj.append(it._hash, 2, 62);
           if (auto tree = getTreeFromBlob(obj, p); tree.has_value()) {
             if (const auto newHash = tree.value().addCompressedFile(
                     data, filePath, isExecutable, hash);
                 !newHash.has_value())
               return std::unexpected(newHash.error());
             else {
-              it->_hash = newHash.value();
+              it._hash = newHash.value();
             }
           } else
             return std::unexpected(tree.error());
@@ -416,7 +423,7 @@ std::expected<std::string, std::string_view> LTree::addCompressedFile(
 
       const std::string subDirectory =
           filePath.string().substr(treePath.length());
-      const int pos = subDirectory.find_first_of('/');
+      const size_t pos = subDirectory.find_first_of('/');
       treePath += subDirectory.substr(0, pos);
 
       LTree tree = LTree::newEmptyLTree(treePath);
@@ -471,8 +478,11 @@ LTree::addFile(const std::span<unsigned char> data,
           std::string entry = REGULAR_FILE;
           if (isExecutable)
             entry = EXECUTABLE_FILE;
-          this->_children.emplace_back(LNode{entry, newLeaf.getFileName(),
-                                             std::string(newLeaf.getHash())});
+          this->_children.emplace_back(LNode{
+              ._entry = entry,
+              ._fileName = newLeaf.getFileName(),
+              ._hash = std::string(newLeaf.getHash()),
+          });
         }
         break;
       }
@@ -490,22 +500,22 @@ LTree::addFile(const std::span<unsigned char> data,
 
   } else if (isSubPath(filePath, this->_filePath)) {
     bool newDirectory = true;
-    for (auto it = this->_children.begin(); it != this->_children.end(); it++) {
-      if ((*it)._entry == DIRECTORY) {
-        const std::string p = this->_filePath.string() + '/' + (*it)._fileName;
+    for (auto &it : this->_children) {
+      if (it._entry == DIRECTORY) {
+        const std::string p = this->_filePath.string() + '/' + it._fileName;
         if (isSubPath(filePath, p)) {
           std::string obj = OBJFOLDER;
 
-          obj.append((*it)._hash, 0, 2);
+          obj.append(it._hash, 0, 2);
           obj += '/';
-          obj.append((*it)._hash, 2, 62);
+          obj.append(it._hash, 2, 62);
           if (auto tree = getTreeFromBlob(obj, p); tree.has_value()) {
             if (const auto newHash =
                     tree.value().addFile(data, filePath, isExecutable);
                 !newHash.has_value())
               return std::unexpected(newHash.error());
             else {
-              it->_hash = newHash.value();
+              it._hash = newHash.value();
             }
           } else
             return std::unexpected(tree.error());
@@ -520,7 +530,7 @@ LTree::addFile(const std::span<unsigned char> data,
 
       const std::string subDirectory =
           filePath.string().substr(treePath.length());
-      const int pos = subDirectory.find_first_of('/');
+      const size_t pos = subDirectory.find_first_of('/');
       treePath += subDirectory.substr(0, pos);
 
       LTree tree = LTree::newEmptyLTree(treePath);
@@ -551,7 +561,8 @@ LTree::getAllCommits() noexcept {
   obj += '/';
   obj.append(head.value(), 2, 62);
   std::vector<LTree::Commit> commits = {
-      LTree::Commit(obj, std::filesystem::last_write_time(obj))};
+      LTree::Commit(obj, std::filesystem::last_write_time(obj)),
+  };
   while (true) {
     obj = OBJFOLDER;
 
@@ -568,8 +579,7 @@ LTree::getAllCommits() noexcept {
       obj.append(hash, 0, 2);
       obj += '/';
       obj.append(hash, 2, 62);
-      commits.emplace_back(
-          LTree::Commit(obj, std::filesystem::last_write_time(obj)));
+      commits.emplace_back(obj, std::filesystem::last_write_time(obj));
     } else
       return std::unexpected(std::string("Invalid tree blob\n"));
   }
@@ -587,7 +597,7 @@ std::optional<LTree> LTree::getChildTree(std::string_view path) const noexcept {
     return std::nullopt;
   }
 
-  alignas(32) std::array<char, 64> hash;
+  alignas(ALIGNMENT) std::array<char, 64> hash;
   const std::string treeName = this->getFileName();
   if (path == treeName) {
     memcpy(hash.data(), this->_hash.data(), 64);
@@ -611,6 +621,17 @@ std::optional<LTree> LTree::getChildTree(std::string_view path) const noexcept {
     }
 
   return std::nullopt;
+}
+size_t LTree::LNode::getModificationDate() const noexcept {
+  std::string path = OBJFOLDER;
+  path.append(this->_hash, 0, 2);
+  path += '/';
+  path.append(this->_hash, 2, 62);
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::clock_cast<std::chrono::system_clock>(
+                 std::filesystem::last_write_time(path))
+                 .time_since_epoch())
+      .count();
 }
 size_t LTree::LNode::getFileSize() const noexcept {
   assert(!this->_hash.empty());

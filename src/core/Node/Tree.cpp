@@ -2,6 +2,7 @@
 #include "../Compressor/Compressor.h"
 #include "Leaf.h"
 #include "Node.h"
+#include <algorithm>
 #include <cassert>
 #include <filesystem>
 #include <print>
@@ -65,7 +66,7 @@ std::unique_ptr<Node> Tree::newNode(const std::string_view filePath) noexcept {
 
 void Tree::hashTree() noexcept {
   this->_hash.reserve(this->_children.size() * 64);
-  std::sort(this->_children.begin(), this->_children.end());
+  std::ranges::sort(this->_children);
   for (const auto &child : this->_children)
     this->_hash += child->getHash();
   this->_hash = Node::hash(this->_hash);
@@ -79,7 +80,7 @@ void Tree::hashTree() noexcept {
 }
 
 bool Tree::writeBlob() noexcept {
-  std::string data = "";
+  std::string data;
   if (this->_root) {
     if (const auto str = Node::getHeadFile(); !str.has_value()) {
       std::println("Head file is null optional");
@@ -95,12 +96,12 @@ bool Tree::writeBlob() noexcept {
 
   for (const auto &children : this->_children) {
     const fs::path &p = children->getFilePath();
-    std::string entry = "";
+    std::string entry;
     if (fs::is_directory(p))
       entry = DIRECTORY;
     else if (fs::is_regular_file(p)) {
       const Leaf *leaf = reinterpret_cast<Leaf *>(children.get());
-      if (!leaf) {
+      if (leaf == nullptr) {
         std::println("Regular file isn't of Leaf type: {}", p);
         return false;
       }
@@ -114,8 +115,8 @@ bool Tree::writeBlob() noexcept {
             children->getHash().data();
   }
 
-  DiskFile file = compressData(
-      std::span<unsigned char>((unsigned char *)data.data(), data.length()));
+  DiskFile file = compressData(std::span<unsigned char>(
+      reinterpret_cast<unsigned char *>(data.data()), data.length()));
 
   if (!file) [[unlikely]] {
     std::println("Unable to compress data of tree blob");
@@ -139,7 +140,7 @@ bool Tree::writeHeadFile() noexcept {
 
   if (const std::span<const unsigned char> data =
           std::span<const unsigned char>(
-              (const unsigned char *)this->_hash.data(), 64);
+              reinterpret_cast<const unsigned char *>(this->_hash.data()), 64);
       !newHead.write(data)) [[unlikely]] {
     std::println("Unable to write new hash to temporary file");
     return false;

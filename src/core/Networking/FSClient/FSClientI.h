@@ -23,7 +23,7 @@ public:
   bool connect() noexcept;
   std::optional<SSLString> issueCommandRead(const SSLString &command) noexcept;
   bool issueCommand(const SSLString &command) noexcept;
-  bool downloadFile(const std::string_view outPath);
+  bool downloadFile(const std::string_view outPath) noexcept;
 
   void disconnect() noexcept {
     if (this->_fd >= 0)
@@ -41,4 +41,7 @@ protected:
   void sendFile(const std::string &file, const std::string &fsPath,
                 const uint64_t nodeId) const noexcept;
   constexpr bool checkConnection() noexcept;
+
+private:
+  bool finishDownload(DiskFile &&file, const std::string_view outPath) noexcept;
 };

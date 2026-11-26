@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <print>
 #include <unistd.h>
+#define NON_SYNC_MAX_DATA (1024 * 1024 * 512)
 class DiskFile : public DiskObject {
 public:
   explicit DiskFile(const bool error = false) noexcept {
@@ -52,11 +53,11 @@ public:
       std::string TMP_TEMPLATE = TEMP_FOLDER + "FS_XXXXXX";
       this->_fd = mkstemp(TMP_TEMPLATE.data());
       this->_path = TMP_TEMPLATE;
-      std::error_code ec;
+      std::error_code errCode;
       std::filesystem::copy_file(
           filePath, this->_path,
-          std::filesystem::copy_options::overwrite_existing, ec);
-      if (ec) {
+          std::filesystem::copy_options::overwrite_existing, errCode);
+      if (errCode) {
         this->_error = true;
         this->_buf = nullptr;
         return;
@@ -64,9 +65,10 @@ public:
 
       this->_length = std::filesystem::file_size(this->_path);
 
-      this->_buf = (unsigned char *)::mmap(
-          0, this->_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, this->_fd, 0);
-      if (!this->_buf || this->_buf == MAP_FAILED) {
+      this->_buf = static_cast<unsigned char *>(
+          ::mmap(nullptr, this->_length, PROT_READ | PROT_WRITE, MAP_PRIVATE,
+                 this->_fd, 0));
+      if ((this->_buf == nullptr) || this->_buf == MAP_FAILED) {
         this->_error = true;
         this->_buf = nullptr;
         return;
@@ -93,7 +95,7 @@ public:
   }
 
   ~DiskFile() noexcept override {
-    if (this->_buf)
+    if (this->_buf != nullptr)
       ::munmap(this->_buf, this->_length);
     if (this->_fd >= 0) {
       this->sync();
@@ -118,7 +120,7 @@ public:
       this->_length += wrote;
       this->_sync += wrote;
     }
-    if (this->_sync > (1024 * 1024 * 512))
+    if (this->_sync > NON_SYNC_MAX_DATA)
       this->sync();
     return true;
   }
@@ -138,7 +140,7 @@ public:
       this->_length += wrote;
       this->_sync += wrote;
     }
-    if (this->_sync > (1024 * 1024 * 512))
+    if (this->_sync > NON_SYNC_MAX_DATA)
       this->sync();
     return true;
   }
@@ -158,19 +160,19 @@ public:
       this->_length += wrote;
       this->_sync += wrote;
     }
-    if (this->_sync > (1024 * 1024 * 512))
+    if (this->_sync > NON_SYNC_MAX_DATA)
       this->sync();
     return true;
   }
   [[nodiscard]] bool moveFile(const std::filesystem::path &newPath) noexcept {
-    std::error_code ec;
+    std::error_code errCode;
     std::filesystem::create_directories(newPath.parent_path());
     sync();
-    std::filesystem::rename(this->_path, newPath, ec);
+    std::filesystem::rename(this->_path, newPath, errCode);
     sync();
 
-    if (ec) [[unlikely]] {
-      std::println("Unable to move file to new path: {}", ec.message());
+    if (errCode) [[unlikely]] {
+      std::println("Unable to move file to new path: {}", errCode.message());
       this->_error = true;
       return false;
     }
